@@ -1,0 +1,1 @@
+"""Market Insights feature module."""
