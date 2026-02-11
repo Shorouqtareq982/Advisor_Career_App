@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 from core.config import Settings, get_settings
-from shared.providers.llm_models.llm_models import Gemini
+from backend.shared.providers.llm_models.gemeni import Gemini
 
 router = APIRouter(prefix="/gemeni", tags=["Test Gemeni"])
 
