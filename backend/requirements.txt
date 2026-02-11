@@ -20,7 +20,9 @@ azure-core
 cloudinary
 
 # Supabase
-supabase
+supabase>=2.0.0
+python-dotenv>=1.0.0
+httpx[http2]>=0.28.0
 
 # HTTP Client
 httpx
