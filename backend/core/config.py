@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     # Supabase
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""
+
     
     # Azure Blob Storage
     AZURE_STORAGE_CONNECTION_STRING: str = ""
@@ -47,6 +48,8 @@ class Settings(BaseSettings):
     
     # AI/ML Services
     GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = ""
+    GEMINI_EMBEDDING_MODEL: str = ""
     OPENAI_API_KEY: str = ""
     
     # External APIs

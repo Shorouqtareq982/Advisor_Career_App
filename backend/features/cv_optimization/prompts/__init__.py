@@ -1,0 +1,2 @@
+from .cv_analysis_prompt import CV_ANALYST, CV_WRITER_PERSONA, COVER_LETTER_GENERATOR
+from .data_extraction_prompt import CV_DATA_EXTRACTOR, JOB_DATA_EXTRACTOR

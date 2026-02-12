@@ -57,6 +57,10 @@ logs/
 *.sqlite
 *.sqlite3
 
+#my gitignore files
+supabasetest.py
+cloudinarytest.py
+
 # Frontend
 frontend/node_modules/
 frontend/.next/

@@ -8,6 +8,9 @@ pydantic
 pydantic-settings
 python-dotenv
 
+# libraries
+pandas
+
 # Security & Authentication
 python-jose[cryptography]
 passlib[bcrypt]
@@ -35,3 +38,12 @@ python-dateutil
 pytest
 pytest-asyncio
 pytest-cov
+
+# LLM Providers
+# google-generativeai
+google-genai
+
+# File Parsing 
+pdfplumber
+docx
+pytesseract

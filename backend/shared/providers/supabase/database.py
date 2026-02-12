@@ -169,6 +169,10 @@ class DatabaseProvider:
     def delete_cv(self, cv_id: str) -> bool:
         """Delete a CV"""
         return self.delete("cv", {"cv_id": cv_id})
+    
+    def update_cv(self, cv_id: str, update_data: Dict) -> Optional[Dict]:
+        """Update CV details (e.g., file_url, text_content)"""
+        return self.update("cv", update_data, {"cv_id": cv_id})
 
     def request_cv_optimization(self, user_id: str, cv_id: str) -> Optional[Dict]:
         """Create a CV optimization request"""
@@ -188,6 +192,34 @@ class DatabaseProvider:
         }
         return self.update("cv_optimization_requests", update_data, {"request_id": request_id})
 
+    # ============================================================
+    # JOB POSTING for cv optmization feature
+    # ============================================================
+    def save_job_posting(self, job_data: Dict) -> Optional[Dict]:
+        """Save a job posting for CV optimization analysis"""
+        return self.create("job_postings", job_data)
+    
+    def get_job_posting_by_id(self, job_id: str) -> Optional[Dict]:
+        """Get a job posting by ID"""
+        jobs = self.read("job_postings", {"job_id": job_id}, limit=1)
+        return jobs[0] if jobs else None
+    
+    def get_job_posting_by_userid(self, user_id: str) -> List[Dict]:
+        """Get all job postings for a user"""
+        return self.read("job_postings", {"user_id": user_id}, order_by="created_at", desc=True)
+    
+    def get_all_job_postings(self) -> List[Dict]:
+        """Get all job postings"""
+        return self.read("job_postings", order_by="created_at", desc=True)
+    
+    def update_job_posting(self, job_id: str, update_data: Dict) -> Optional[Dict]:
+        """Update a job posting"""
+        return self.update("job_postings", update_data, {"job_id": job_id})
+
+    def delete_job_posting(self, job_id: str) -> bool:
+        """Delete a job posting"""
+        return self.delete("job_postings", {"job_id": job_id})
+    
     # ============================================================
     # CAREER BUILDER
     # ============================================================
