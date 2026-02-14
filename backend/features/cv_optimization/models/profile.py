@@ -3,8 +3,9 @@ from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+
 class Profile(BaseModel):
-    id: UUID
+    id: Optional[UUID] = None
     email: Optional[str] = None
     username: str
     display_name: Optional[str] = None

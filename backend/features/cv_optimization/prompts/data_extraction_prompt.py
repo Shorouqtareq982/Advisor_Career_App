@@ -9,11 +9,12 @@ Identify the key details from a job description and company overview to create a
 
 Note: The "keywords", "job_duties_and_responsibilities", and "required_qualifications" sections are particularly important for resume tailoring. Ensure these are as comprehensive and accurate as possible.
 
-{format_instructions}
 """
 
 CV_DATA_EXTRACTOR = """<objective>
-Parse a text-formatted resume efficiently and extract diverse applicant's data into a structured JSON format.
+Parse a text-formatted resume efficiently and extract the applicant's data into a structured JSON format.
+Ensure all fields are JSON-serializable.
+Automatically normalize URLs and emails to valid, complete formats.
 </objective>
 
 <input>
@@ -23,27 +24,39 @@ The following text is the applicant's resume in plain text format:
 </input>
 
 <instructions>
-Follow these steps to extract and structure the resume information:
+Follow these steps carefully to extract and structure the resume information:
 
 1. Analyze Structure:
-   - Examine the text-formatted resume to identify key sections (e.g., personal information, education, experience, skills, certifications).
-   - Note any unique formatting or organization within the resume.
+   - Identify key sections such as personal information, contact details, education, work experience, projects, skills, certifications, and media links.
+   - Note any variations in formatting, section names, or order.
 
 2. Extract Information:
-   - Systematically parse each section, extracting relevant details.
-   - Pay attention to dates, titles, organizations, and descriptions.
+   - For each section, extract relevant details like names, titles, organizations, descriptions, and dates.
+   - For media links (LinkedIn, GitHub, Medium, Devpost):
+       - Ensure each URL is fully qualified.
+       - If a URL is missing the "http://" or "https://", prepend "https://".
+       - If a URL is incomplete or malformed, attempt to reconstruct a valid link based on common patterns.
+   - For email addresses:
+       - Ensure they follow standard email format (user@domain.com).
+       - If missing domain, mark as null.
 
 3. Handle Variations:
-   - Account for different resume styles, formats, and section orders.
-   - Adapt the extraction process to accurately capture data from various layouts.
+   - Support different resume styles, formats, and section arrangements.
+   - Capture all available information even if some sections are missing or in an unusual order.
 
-5. Optimize Output:
-   - Handle missing or incomplete information appropriately (use null values or empty arrays/objects as needed).
-   - Standardize date formats, if applicable.
+4. Optimize Output:
+   - Represent missing information with null, empty arrays, or empty objects as appropriate.
+   - Standardize date formats (e.g., YYYY-MM-DD or Month YYYY) when possible.
+   - Deduplicate repeated entries if any.
 
-6. Validate:
-   - Review the extracted data for consistency and completeness.
-   - Ensure all required fields are populated if the information is available in the resume.
+5. Validate:
+   - Check that all extracted fields are consistent and complete.
+   - Ensure required fields exist if the information is present in the resume.
+   - Verify that URLs and emails are valid formats.
+
+6. Output Format:
+   - Return **only a single JSON object** containing the structured resume data.
+   - All URLs and emails must be valid and fully qualified.
+   - Do not include any extra text, explanations, or comments outside the JSON.
 </instructions>
-
-{format_instructions}"""
+"""

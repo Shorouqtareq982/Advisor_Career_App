@@ -21,10 +21,11 @@ class SupabaseClient:
     def __init__(self):
         self.url = os.getenv("SUPABASE_URL")
         self.anon_key = os.getenv("SUPABASE_ANON_KEY")
+        self.service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
         print(f"🔑 SUPABASE_URL: {'✅' if self.url else '❌'}")
         print(f"🔑 SUPABASE_ANON_KEY: {'✅' if self.anon_key else '❌'}")
-
+        print(f"🔑 SUPABASE_SERVICE_ROLE_KEY: {'✅' if self.service_role_key else '❌'}")
         if not self.url or not self.anon_key:
             raise ValueError(
                 "❌ Supabase credentials not found in .env file. "
@@ -32,7 +33,7 @@ class SupabaseClient:
             )
 
         try:
-            self.client: Client = create_client(self.url, self.anon_key)
+            self.client: Client = create_client(self.url, self.service_role_key or self.anon_key)
             print("✅ Supabase client initialized successfully.")
         except Exception as e:
             print(f"❌ Failed to connect to Supabase: {e}")

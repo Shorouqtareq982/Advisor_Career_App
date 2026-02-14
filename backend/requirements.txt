@@ -45,5 +45,5 @@ google-genai
 
 # File Parsing 
 pdfplumber
-docx
+python-docx
 pytesseract
