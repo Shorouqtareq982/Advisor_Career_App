@@ -2,10 +2,10 @@ from typing import Optional, Any
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, Field
-from schemas import CVData
+from ..schemas import CVData
 
 class CV(BaseModel):
-    cv_id: UUID
+    cv_id: Optional[UUID] = None
     user_id: Optional[UUID] = None
     file_url: str
     parsed_content: Optional[CVData] = None  # JSONB

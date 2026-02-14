@@ -3,7 +3,7 @@ from typing import Optional, Type
 from fastapi import Depends
 from pydantic import BaseModel
 
-from backend.core.config import Settings, get_settings
+from core.config import Settings, get_settings
 
 class LLMProvider(ABC):
     """
@@ -31,12 +31,13 @@ class LLMProvider(ABC):
         """
         pass
 
-def create_llm_provider(settings:Settings = Depends(get_settings), system_prompt: str = None) -> LLMProvider:
+def create_llm_provider(settings:Settings = None, system_prompt: str = None) -> LLMProvider:
     """
     Factory function to create an instance of the appropriate LLM provider based on settings.
     """
+    settings = settings or get_settings()
     if settings.LLM_PROVIDER == "gemini":
-        from backend.shared.providers.llm_models.gemeni import Gemini
+        from .gemeni import Gemini
         return Gemini(settings, system_prompt=system_prompt)
     else:
         raise ValueError(f"Unsupported LLM provider: {settings.LLM_PROVIDER}")

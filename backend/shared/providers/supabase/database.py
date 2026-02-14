@@ -132,18 +132,22 @@ class DatabaseProvider:
     # CV / RESUME
     # ============================================================
     
-    def upload_cv(self, user_id: str, file_url: str, text_content: str = None) -> Optional[Dict]:
+    def upload_cv(self, user_id: str, file_url: str, text_content: str = None, is_primary: bool = False) -> Optional[Dict]:
         """Upload a new CV/resume"""
         # Auto-detect language
         language = "ar" if text_content and any(
             char in text_content for char in "ابتثجحخدذرزسشصضطظعغفقكلمنهوي"
         ) else "en"
+
+        if is_primary:
+            # unset all primary CVs for this user
+            self.update("cv", {"is_primary": False}, {"user_id": user_id})
         
         cv_data = {
             "user_id": user_id,
             "file_url": file_url,
             "text_content": text_content,
-            "is_primary": True,
+            "is_primary": is_primary,
             "language": language
         }
         return self.create("cv", cv_data)
@@ -174,23 +178,19 @@ class DatabaseProvider:
         """Update CV details (e.g., file_url, text_content)"""
         return self.update("cv", update_data, {"cv_id": cv_id})
 
-    def request_cv_optimization(self, user_id: str, cv_id: str) -> Optional[Dict]:
+    def request_cv_optimization(self, user_id: str, cv_id: str, jd_id: str) -> Optional[Dict]:
         """Create a CV optimization request"""
         request_data = {
             "user_id": user_id,
             "cv_id": cv_id,
+            "job_posting_id": jd_id,
             "status": "pending"
         }
         return self.create("cv_optimization_requests", request_data)
 
-    def save_cv_optimization_report(self, request_id: str, report_data: Dict) -> Optional[Dict]:
+    def save_cv_optimization_report(self, report_data: Dict) -> Optional[Dict]:
         """Save CV optimization analysis report"""
-        update_data = {
-            "status": "completed",
-            "report": report_data,
-            "completed_at": datetime.utcnow().isoformat()
-        }
-        return self.update("cv_optimization_requests", update_data, {"request_id": request_id})
+        return self.create("cv_optimization_reports", report_data)
 
     # ============================================================
     # JOB POSTING for cv optmization feature
