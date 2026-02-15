@@ -11,7 +11,7 @@ from core.config import Settings, get_settings
 
 #TODO: fix public_id generation to avoid collisions and ensure uniqueness (e.g. include timestamp or UUID) and also consider using folder structure based on user_id and fileType for better organization
 #TODO: fix error handling and logging for all operations, especially file uploads and interactions with Cloudinary API
-#TODO: add function to delete cv files from storage when a CV optimization request is deleted or user accounts are deleted to avoid orphaned files and manage storage costs effectively
+#TODO: test all methods
 class CloudinaryStorageProvider:
     def __init__(self):
         pass
@@ -55,7 +55,8 @@ class CloudinaryStorageProvider:
     # Delete file
     # -----------------------------
     async def delete_file(self, public_id: str, prefix: Optional[str] = None) -> bool:
-
+        if prefix:
+            public_id = f"{prefix}/{public_id}"
         def _delete():
             return cloudinary.uploader.destroy(
                 public_id,
@@ -64,6 +65,18 @@ class CloudinaryStorageProvider:
 
         result = await asyncio.to_thread(_delete)
         return result.get("result") == "ok"
+    
+    # -----------------------------
+    # Delete file bulk
+    # -----------------------------
+    async def delete_all_user_files_bulk(self, user_id: UUID, fileType: str) -> Dict:
+        prefix = f"user_{user_id}/{fileType}"
+
+        def _delete():
+            return cloudinary.api.delete_resources_by_prefix(prefix)
+
+        result = await asyncio.to_thread(_delete)
+        return result
 
     # -----------------------------
     # List files
@@ -108,7 +121,7 @@ class CloudinaryStorageProvider:
             return True
         except Exception:
             return False 
-        
+    
 
 def configure_cloudinary(settings: Settings = None):
     if settings is None:
