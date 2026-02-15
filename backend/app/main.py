@@ -20,7 +20,7 @@ if str(backend_dir) not in sys.path:
 # ------------------------------------------------------------
 from core.config import settings
 from shared.providers import supabase_client, db
-
+from shared.providers.storage.cloudinary_provider import configure_cloudinary
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,6 +30,8 @@ async def lifespan(app: FastAPI):
         print("✅ Supabase connected successfully")
     else:
         print("⚠️ Supabase connection failed – check .env")
+
+    configure_cloudinary()  # Ensure Cloudinary is configured at startup
     yield
     print("🛑 Shutting down...")
 

@@ -4,7 +4,7 @@ from features.cv_optimization.schemas.job_data_schema import JobData
 from features.cv_optimization.schemas.cv_data_schema import CVData
 from shared.helpers.file_validation import FileValidator
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
-from shared.providers.storage.cloudinarytest import CloudinaryStorageProvider
+from backend.shared.providers.storage.cloudinary_provider import CloudinaryStorageProvider
 from shared.providers.supabase import db
 from .document_parser import DocumentParser
 from ..models import CVOptimizationRequest, JobPosting, CVOptimizationReport
