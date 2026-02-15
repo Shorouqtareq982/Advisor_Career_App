@@ -3,7 +3,7 @@ from typing import Optional, Type
 from fastapi import Depends
 from pydantic import BaseModel
 
-from backend.core.config import Settings, get_settings
+from core.config import Settings, get_settings
 
 class LLMProvider(ABC):
     """

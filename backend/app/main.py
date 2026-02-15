@@ -84,7 +84,11 @@ def create_application() -> FastAPI:
             "profiles": profiles
         }
 
-    # You can add routers from features later
+    # Include API routers
+    from app.api.router import api_router
+    app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+    
+    # Include feature routers
     from features.career_builder.routers.career_router import router as career_router
     app.include_router(career_router, prefix=settings.API_V1_PREFIX)
     

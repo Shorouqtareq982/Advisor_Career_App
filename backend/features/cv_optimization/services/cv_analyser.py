@@ -1,6 +1,6 @@
 from fastapi import Depends
-from backend.shared.helpers.file_validation import FileValidator
-from backend.shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
+from shared.helpers.file_validation import FileValidator
+from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
 from .parser import DocumentParser
 from models import optmization_request
 from schemas import ATSAnalysisResponse
