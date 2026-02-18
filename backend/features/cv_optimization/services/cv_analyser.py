@@ -13,7 +13,7 @@ from ..prompts import CV_ANALYST
 
 """
 TODO:
-[ ] Fix UserId to be dynamic and extracted from JWT token instead of hardcoded value.
+[x] Fix UserId to be dynamic and extracted from JWT token instead of hardcoded value.
 [ ] Fix the file url not working
 [ ] Fix extracted urls from CV not being parsed correctly in the analysis.
 [ ] Implement authentication and authorization to ensure that only authorized users can access the CV analysis functionality.
@@ -30,10 +30,8 @@ class CVAnalyser:
         self.parser = DocumentParser(self.llm)
         self.storage_provider = CloudinaryStorageProvider()
 
-    async def analyze_cv(self, cv_file: UploadFile, jd_text: str):
+    async def analyze_cv(self, user_id: str, cv_file: UploadFile, jd_text: str):
 
-        # #TODO: get user id from jwt 
-        user_id = "3e2e72f7-e53b-4eed-9487-b9d8f23da63d"
         # Validate CV File
         isvalid, signal = FileValidator.validate_cv_file(cv_file)
         if not isvalid:

@@ -18,6 +18,7 @@ if str(backend_dir) not in sys.path:
 # ------------------------------------------------------------
 # 2. Import settings and Supabase
 # ------------------------------------------------------------
+from shared.helpers.supabase_auth_middleware import SupabaseAuthMiddleware
 from core.config import settings
 from shared.providers import supabase_client, db
 from shared.providers.storage.cloudinary_provider import configure_cloudinary
@@ -55,6 +56,8 @@ def create_application() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    app.add_middleware(SupabaseAuthMiddleware)
 
     # ----------------------------
     # 3. Basic endpoints (prevent 404)
