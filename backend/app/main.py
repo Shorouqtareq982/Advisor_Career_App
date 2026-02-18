@@ -96,6 +96,9 @@ def create_application() -> FastAPI:
     from app.api.cv_optmization import router as cv_optmization_router
     app.include_router(cv_optmization_router, prefix=settings.API_V1_PREFIX)
     
+    from app.api.user import router as user_router
+    app.include_router(user_router, prefix=settings.API_V1_PREFIX)
+
     return app
 
 
