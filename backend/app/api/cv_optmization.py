@@ -1,8 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi import Depends, Request
-from pydantic import BaseModel
 
-from shared.providers import supabase_client
 from features.cv_optimization.services.cv_analyser import CVAnalyser, get_cv_analyser
 
 router = APIRouter(prefix="/cv_optimization", tags=["Test CV Optimization"])

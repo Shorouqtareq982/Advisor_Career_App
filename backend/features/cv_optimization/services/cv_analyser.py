@@ -1,7 +1,6 @@
 from fastapi import Depends, UploadFile
 from starlette.datastructures import UploadFile as StarletteUploadFile
-from features.cv_optimization.schemas.job_data_schema import JobData
-from features.cv_optimization.schemas.cv_data_schema import CVData
+from features.cv_optimization.schemas import JobData, CVData
 from shared.helpers.file_validation import FileValidator
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
 from shared.providers.storage.cloudinary_provider import CloudinaryStorageProvider
@@ -14,9 +13,9 @@ from ..prompts import CV_ANALYST
 """
 TODO:
 [x] Fix UserId to be dynamic and extracted from JWT token instead of hardcoded value.
+[x] Implement authentication and authorization to ensure that only authorized users can access the CV analysis functionality.
 [ ] Fix the file url not working
 [ ] Fix extracted urls from CV not being parsed correctly in the analysis.
-[ ] Implement authentication and authorization to ensure that only authorized users can access the CV analysis functionality.
 [ ] Test the CV analysis process with various CV formats and job descriptions to ensure robustness and accuracy.
 [ ] Add more detailed error messages and logging for debugging and monitoring purposes.
 [ ] Implement try-except blocks around critical operations to catch and log exceptions.
@@ -39,7 +38,7 @@ class CVAnalyser:
             return {f"error": {signal}}
         
         #clean filename
-        cleaned_filename = FileValidator.clean_filename(cv_file.filename)
+        cleaned_filename = FileValidator.clean_filename(cv_file.filename, remove_extension=True)
         
         #upload file to storage and get URL
         uploaded_file = await self.storage_provider.upload_file(cv_file, cleaned_filename,user_id,fileType="cv")
