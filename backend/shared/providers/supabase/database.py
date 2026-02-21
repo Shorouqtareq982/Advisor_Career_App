@@ -722,7 +722,7 @@ def get_db():
 Example Usage:
 
 # Import the global instance
-from backend.shared.providers.supabase.database import db
+from shared.providers.supabase.database import db
 
 # Profile operations
 profile = db.get_profile_by_id("user-123")
