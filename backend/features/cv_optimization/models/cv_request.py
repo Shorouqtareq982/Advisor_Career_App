@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 class CVOptimizationRequest(BaseModel):
-    request_id: UUID
+    request_id: Optional[UUID] = None
     cv_id: Optional[UUID] = None
     job_posting_id: Optional[UUID] = None
     user_id: Optional[UUID] = None

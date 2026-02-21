@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: str = ""
     
     # AI/ML Services
+    LLM_PROVIDER: str = ""
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = ""
     GEMINI_EMBEDDING_MODEL: str = ""

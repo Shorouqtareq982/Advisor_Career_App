@@ -1,4 +1,4 @@
-from .ats_analysis_schema import ATSAnalysisResponse
+from .ATS_analysis_schema import ATSAnalysisResponse
 from .cv_data_schema import CVData
 from .job_data_schema import JobData
 

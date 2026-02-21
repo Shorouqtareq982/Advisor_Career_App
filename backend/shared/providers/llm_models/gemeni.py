@@ -5,7 +5,7 @@ from google import genai
 from google.genai import types
 import pandas as pd
 from pydantic import BaseModel, Field
-from shared.providers.llm_models.llm_provider import LLMProvider
+from .llm_provider import LLMProvider
 from core.config import Settings
 
 class Gemini(LLMProvider): 
