@@ -711,6 +711,8 @@ class DatabaseProvider:
 # Create a single global instance to be imported across the application
 db = DatabaseProvider()
 
+def get_db():
+    return db
 
 # ============================================================
 # USAGE EXAMPLES
@@ -720,7 +722,7 @@ db = DatabaseProvider()
 Example Usage:
 
 # Import the global instance
-from backend.shared.providers.supabase.database import db
+from shared.providers.supabase.database import db
 
 # Profile operations
 profile = db.get_profile_by_id("user-123")

@@ -7,10 +7,8 @@ python-multipart
 pydantic
 pydantic-settings
 python-dotenv
-
-# libraries
-pandas
-
+python-jose[cryptography]
+sqlalchemy[asyncio]
 # Security & Authentication
 python-jose[cryptography]
 passlib[bcrypt]
@@ -26,7 +24,7 @@ cloudinary
 supabase>=2.0.0
 python-dotenv>=1.0.0
 httpx[http2]>=0.28.0
-
+dotenv
 # HTTP Client
 httpx
 requests
@@ -38,6 +36,11 @@ python-dateutil
 pytest
 pytest-asyncio
 pytest-cov
+pydantic-settings>=2.0.0
+leverparser
+pdfplumber>=0.10.0
+pdf2image>=1.16.0
+pytesseract>=0.3.10
 
 # LLM Providers
 # google-generativeai

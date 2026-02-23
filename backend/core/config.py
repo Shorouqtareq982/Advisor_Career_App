@@ -31,17 +31,19 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
     
     # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/growza_db"
+    DATABASE_URL: str = ""
     
     # Supabase
     SUPABASE_URL: str = ""
-    SUPABASE_KEY: str = ""
-
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
     
     # Azure Blob Storage
     AZURE_STORAGE_CONNECTION_STRING: str = ""
-    AZURE_CONTAINER_NAME: str = "uploads"
-    
+    AZURE_CONTAINER_NAME: str = ""
+    STORAGE_ACCOUNT_NAME: str = ""
+    STORAGE_ACCOUNT_KEY: str = ""
+
     # Cloudinary
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""

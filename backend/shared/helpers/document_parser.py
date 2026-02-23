@@ -9,9 +9,8 @@ import pytesseract
 
 from features.cv_optimization.services.text_extractor import TextExtractor
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
-from ..prompts import CV_DATA_EXTRACTOR, JOB_DATA_EXTRACTOR
-from ..schemas import CVData, JobData
-
+from features.cv_optimization.prompts.data_extraction_prompt import CV_DATA_EXTRACTOR, JOB_DATA_EXTRACTOR#from ...features.cv_optimization.prompts import CV_DATA_EXTRACTOR, JOB_DATA_EXTRACTOR
+from features.cv_optimization.schemas import CVData, JobData
 
 class DocumentParser:
     def __init__(self, llm: LLMProvider = None):
