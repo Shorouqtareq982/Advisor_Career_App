@@ -45,5 +45,7 @@ google-genai
 
 # File Parsing 
 pdfplumber
+pymupdf4llm
+pymupdf-layout
 python-docx
 pytesseract

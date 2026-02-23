@@ -7,6 +7,7 @@ from docx import Document
 from PIL import Image
 import pytesseract
 
+from features.cv_optimization.services.text_extractor import TextExtractor
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
 from ..prompts import CV_DATA_EXTRACTOR, JOB_DATA_EXTRACTOR
 from ..schemas import CVData, JobData
@@ -15,6 +16,7 @@ from ..schemas import CVData, JobData
 class DocumentParser:
     def __init__(self, llm: LLMProvider = None):
         self.llm = llm or create_llm_provider()
+        self.textExtractor = TextExtractor()
 
     def _extract_text(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> str:
         """
@@ -28,7 +30,7 @@ class DocumentParser:
             file_name = None
             file_obj = file
 
-            # ✅ Handle UploadFile
+            # Handle UploadFile
             if isinstance(file, (UploadFile, StarletteUploadFile)):
                 file_name = file.filename
                 file_obj = file.file  # this is a BinaryIO stream
