@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"
+    SUPABASE_JWT_SECRET: str = ""
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ALGORITHM: str = "HS256"
@@ -30,17 +31,19 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
     
     # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/growza_db"
+    DATABASE_URL: str = ""
     
     # Supabase
     SUPABASE_URL: str = ""
-    SUPABASE_KEY: str = ""
-
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
     
     # Azure Blob Storage
     AZURE_STORAGE_CONNECTION_STRING: str = ""
-    AZURE_CONTAINER_NAME: str = "uploads"
-    
+    AZURE_CONTAINER_NAME: str = ""
+    STORAGE_ACCOUNT_NAME: str = ""
+    STORAGE_ACCOUNT_KEY: str = ""
+
     # Cloudinary
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""

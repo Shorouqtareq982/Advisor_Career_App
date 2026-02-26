@@ -18,6 +18,7 @@ if str(backend_dir) not in sys.path:
 # ------------------------------------------------------------
 # 2. Import settings and Supabase
 # ------------------------------------------------------------
+from shared.helpers.supabase_auth_middleware import SupabaseAuthMiddleware
 from core.config import settings
 from shared.providers import supabase_client, db
 from shared.providers.storage.cloudinary_provider import configure_cloudinary
@@ -56,6 +57,8 @@ def create_application() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.add_middleware(SupabaseAuthMiddleware)
+
     # ----------------------------
     # 3. Basic endpoints (prevent 404)
     # ----------------------------
@@ -86,16 +89,17 @@ def create_application() -> FastAPI:
             "profiles": profiles
         }
 
-    # You can add routers from features later
-  
-    #app.include_router(...)
+    # Include API routers
+    from app.api.router import api_router
+    app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+    
+    # Include feature routers
     from features.career_builder.routers.career_router import router as level_router
     from features.career_builder.routers.level_endpoints import router as level_router1
 
     app.include_router(level_router, prefix=settings.API_V1_PREFIX)
     app.include_router(level_router1, prefix=settings.API_V1_PREFIX)
     return app
-
 
     #from app.api.cv_optmization import router as cv_optmization_router
     #app.include_router(cv_optmization_router, prefix=settings.API_V1_PREFIX)

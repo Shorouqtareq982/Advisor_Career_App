@@ -7,6 +7,7 @@ from docx import Document
 from PIL import Image
 import pytesseract
 
+from shared.helpers.text_extractor import TextExtractor
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
 from features.cv_optimization.prompts.data_extraction_prompt import CV_DATA_EXTRACTOR, JOB_DATA_EXTRACTOR#from ...features.cv_optimization.prompts import CV_DATA_EXTRACTOR, JOB_DATA_EXTRACTOR
 from features.cv_optimization.schemas import CVData, JobData
@@ -14,8 +15,9 @@ from features.cv_optimization.schemas import CVData, JobData
 class DocumentParser:
     def __init__(self, llm: LLMProvider = None):
         self.llm = llm or create_llm_provider()
+        self.textExtractor = TextExtractor()
 
-    def _extract_text(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> str:
+    async def _extract_text(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> str:
         """
         Extract text from PDF, DOCX, TXT, or images.
         Automatically falls back to OCR for scanned PDFs/images.
@@ -24,77 +26,20 @@ class DocumentParser:
         text = ""
 
         try:
-            file_name = None
-            file_obj = file
-
-            # ✅ Handle UploadFile
-            if isinstance(file, (UploadFile, StarletteUploadFile)):
-                file_name = file.filename
-                file_obj = file.file  # this is a BinaryIO stream
-                file_obj.seek(0)
-
-            # BytesIO case
-            elif isinstance(file, io.BytesIO):
-                file_name = getattr(file, "name", None)
-                file.seek(0)
-
-            # string path case
-            elif isinstance(file, str):
-                file_name = file
-
-            # ========================
-            # PDF
-            # ========================
-            if file_name and file_name.lower().endswith(".pdf"):
-                with pdfplumber.open(file_obj) as pdf:
-                    for page in pdf.pages:
-                        page_text = page.extract_text()
-                        if page_text:
-                            text += page_text + "\n"
-                        else:
-                            image = page.to_image(resolution=300).original
-                            text += pytesseract.image_to_string(image, lang="ara+eng") + "\n"
-
-            # ========================
-            # DOCX
-            # ========================
-            elif file_name and file_name.lower().endswith(".docx"):
-                doc = Document(file_obj)
-                text = "\n".join([p.text for p in doc.paragraphs])
-
-            # ========================
-            # TXT
-            # ========================
-            elif file_name and file_name.lower().endswith(".txt"):
-                if isinstance(file_obj, (io.BytesIO, BinaryIO)):
-                    file_obj.seek(0)
-                    text = file_obj.read().decode("utf-8")
-                else:
-                    with open(file_obj, "r", encoding="utf-8") as f:
-                        text = f.read()
-
-            # ========================
-            # Images
-            # ========================
-            elif file_name and file_name.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".tiff")):
-                img = Image.open(file_obj)
-                text = pytesseract.image_to_string(img, lang="ara+eng")
-
-            else:
-                raise ValueError("Unsupported file type for text extraction.")
+            text = await TextExtractor.extract_text(file)
 
         except Exception as e:
             print(f"Error extracting text: {e}")
 
         return text
 
-    def parse_cv(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> tuple[str,CVData]:
+    async def parse_cv(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> tuple[str,CVData]:
         """
         Parses a CV file into structured data using LLM.
         Returns a dictionary with extracted information.
         """
         try:
-            text = self._extract_text(file)
+            text = await self._extract_text(file)
             # Send text to LLM for structured extraction
             parsed_content = self.llm.get_response(
                 prompt=CV_DATA_EXTRACTOR.format(cv_text=text),

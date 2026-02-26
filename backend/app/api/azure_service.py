@@ -5,7 +5,7 @@ from shared.providers.storage.azure_blob_storage import get_azure_storage_provid
 from shared.helpers.loggers import get_logger
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/upload", tags=["File Upload"])
+router = APIRouter(prefix="/azure_service", tags=["operations related to Azure Blob Storage"])
 
 
 @router.post("/file")
