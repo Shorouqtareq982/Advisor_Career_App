@@ -103,9 +103,11 @@ class FileValidator:
         return True, None
 
     @staticmethod
-    def clean_filename(orig_file_name: str) -> str:
+    def clean_filename(orig_file_name: str, remove_extension: bool = False) -> str:
         cleaned_file_name = re.sub(r"[^\w.]", "", orig_file_name.strip())
         cleaned_file_name = cleaned_file_name.replace(" ", "_")
+        if remove_extension:
+            cleaned_file_name = os.path.splitext(cleaned_file_name)[0]
         return cleaned_file_name
 
     # =========================
@@ -119,3 +121,22 @@ class FileValidator:
     @staticmethod
     def get_extension(file: UploadFile) -> str:
         return FileValidator.get_extension_from_name(file.filename)
+    
+    @staticmethod
+    def get_extension_from_string(file_str: str) -> str:
+        # Try to extract extension from base64 string
+        if file_str.startswith("data:"):
+            try:
+                header = file_str.split(";")[0]
+                ext = header.split("/")[1]
+                return ext
+            except Exception:
+                pass
+
+        #extract extension from file path if it's a local file path
+        if "/" in file_str:
+            ext = file_str.split("/")[-1].split(".")[-1]
+            if ext:
+                return ext
+            
+        return FileValidator.get_extension_from_name(file_str)

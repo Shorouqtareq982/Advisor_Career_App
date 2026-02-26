@@ -132,7 +132,7 @@ class DatabaseProvider:
     # CV / RESUME
     # ============================================================
     
-    def upload_cv(self, user_id: str, file_url: str, text_content: str = None, is_primary: bool = False) -> Optional[Dict]:
+    def upload_cv(self, user_id: str, file_url: str, text_content: str = None, parsed_content: dict = None, is_primary: bool = False) -> Optional[Dict]:
         """Upload a new CV/resume"""
         # Auto-detect language
         language = "ar" if text_content and any(
@@ -147,6 +147,7 @@ class DatabaseProvider:
             "user_id": user_id,
             "file_url": file_url,
             "text_content": text_content,
+            "parsed_content": parsed_content,
             "is_primary": is_primary,
             "language": language
         }
@@ -184,9 +185,13 @@ class DatabaseProvider:
             "user_id": user_id,
             "cv_id": cv_id,
             "job_posting_id": jd_id,
-            "status": "pending"
+            "status": "processing"
         }
         return self.create("cv_optimization_requests", request_data)
+    
+    def update_optimization_request_status(self, request_id: str, status: str) -> Optional[Dict]:
+        """Update the status of a CV optimization request"""
+        return self.update("cv_optimization_requests", {"status": status}, {"request_id": request_id})
 
     def save_cv_optimization_report(self, report_data: Dict) -> Optional[Dict]:
         """Save CV optimization analysis report"""

@@ -7,12 +7,15 @@ from typing import Dict, List, Any, Optional
 from uuid import UUID
 from dataclasses import dataclass
 import logging
+import json
 
 from shared.helpers.document_parser import DocumentParser
-from ..ml_models.skill_extractor import SkillExtractor, LevelDetector
-from ..ml_models.skill_matcher import SkillMatcher
-from ..ml_models.skill_gap import SkillGapAnalyzer, RealismChecker
-from ..repositories.career_repository import CareerRepository
+from features.career_builder.ml_models.skill_extractor import SkillExtractor
+from features.career_builder.ml_models.skill_matcher import SkillMatcher
+from features.career_builder.ml_models.level_detector import LevelDetector
+from features.career_builder.ml_models.gap_analyzer import SkillGapAnalyzer
+from features.career_builder.ml_models.realism_checker import RealismChecker
+from features.career_builder.repositories.career_repository import CareerRepository
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +112,6 @@ class CareerAnalysisService:
         
         # If parsed_content is string, parse it
         if isinstance(parsed_content, str):
-            import json
             try:
                 parsed_content = json.loads(parsed_content)
             except:
@@ -148,21 +150,24 @@ class CareerAnalysisService:
         # Get track skills
         # =====================================================
         track_skills_all = await self.repo.get_skills_by_track(track_id, 'beginner')
+        required_skill_names = [s['skill_name'] for s in track_skills_all]
         
         # =====================================================
-        # PHASE 2: Level Detection (Hybrid)
+        # PHASE 2: Level Detection (Hybrid) using LevelDetector
         # =====================================================
         logger.info("🎓 PHASE 2: Detecting user level...")
         
-        level_result = self.level_detector.detect_level(
+        # Use the async detect_skill_levels method
+        level_result = await self.level_detector.detect_skill_levels(
+            cv_text=cv_text,
             parsed_cv_data=parsed_content,
-            extracted_skills=list(normalized_skills),
-            track_skills_count=len(track_skills_all)
+            required_skills=required_skill_names
         )
         
-        detected_level = level_result['detected_level']
-        level_confidence = level_result['confidence']
-        level_reasoning = level_result.get('reasoning', '')
+        # Extract overall level from result
+        detected_level = level_result.get('overall_level', 'beginner')
+        level_confidence = level_result.get('overall_confidence', 0.5)
+        level_reasoning = level_result.get('summary', '')
         
         logger.info(
             f"✅ Level: {detected_level} "
@@ -232,10 +237,11 @@ class CareerAnalysisService:
         # =====================================================
         # Calculate overall analysis quality
         # =====================================================
+        match_rate = len(matched_skills) / max(len(normalized_skills), 1)
         analysis_quality = self._calculate_overall_quality(
             extraction_confidence=extraction_confidence,
             level_confidence=level_confidence,
-            match_rate=len(matched_skills) / max(len(normalized_skills), 1)
+            match_rate=match_rate
         )
         
         logger.info(f"✅ Analysis complete (quality: {analysis_quality:.2f})")
