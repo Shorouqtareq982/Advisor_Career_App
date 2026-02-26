@@ -1,8 +1,7 @@
 """
 Main API Router - Aggregates all API endpoints
 """
-from fastapi import APIRouter, Depends
-from fastapi.security import HTTPBearer
+from fastapi import APIRouter
 
 from app.api.azure_service import router as azure_service_router
 from app.api.cloudinary_service import router as cloudinary_router

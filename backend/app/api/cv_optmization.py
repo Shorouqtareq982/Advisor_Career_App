@@ -1,12 +1,8 @@
-import re
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi import Depends, Request
-
-from shared.helpers.file_validation import FileValidator
-from shared.helpers.document_parser import DocumentParser
+from fastapi.security import HTTPBearer
 from features.cv_optimization.services.cv_analyser import CVAnalyser, get_cv_analyser
-from shared.providers.storage.cloudinary_provider import CloudinaryStorageProvider
-router = APIRouter(prefix="/cv_optimization", tags=["Test CV Optimization"])
+router = APIRouter(prefix="/cv_optimization", tags=["CV Optimization"],dependencies=[Depends(HTTPBearer())])
 
 @router.post("/analyze")
 async def analyze_cv(

@@ -1,9 +1,7 @@
-from fastapi import Depends, UploadFile
-from starlette.datastructures import UploadFile as StarletteUploadFile
+from fastapi import UploadFile
 from features.cv_optimization.schemas import JobData, CVData
 from shared.helpers.file_validation import FileValidator
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
-from shared.providers.storage.cloudinary_provider import CloudinaryStorageProvider
 from shared.providers.supabase import db
 from shared.helpers.document_parser import DocumentParser
 from shared.providers.storage import CloudinaryProvider

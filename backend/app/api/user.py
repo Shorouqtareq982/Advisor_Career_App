@@ -15,7 +15,7 @@ class UserSignUpRequest(User):
     phone:str
 
 
-@router.get("/me")
+@router.get("/me",dependencies=[Depends(HTTPBearer())])
 async def read_current_user(request: Request):
     user = request.state.user
     if not user:
