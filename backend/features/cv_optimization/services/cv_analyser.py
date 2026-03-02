@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import Optional
 from fastapi import UploadFile, HTTPException, status
-from backend.features.cv_optimization.repositories.cv_optmization_repo import CVOptRepository
+from features.cv_optimization.repositories.cv_optmization_repo import CVOptRepository
 from features.cv_optimization.schemas import JobData, CVData
 from shared.helpers.file_validation import FileValidator
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
@@ -25,10 +25,10 @@ TODO:
 [x] Add more detailed error messages and logging for debugging and monitoring purposes.
 [x] Break down the analyze_cv method into smaller helper methods for better readability and maintainability.
 [x] Implement try-except blocks around critical operations to catch and log exceptions.
+[x] Update all used methods to be asynchronous to improve performance and scalability.
 [ ] Test the CV analysis process with various CV formats and job descriptions to ensure robustness and accuracy.
 [ ] Consider adding a retry mechanism for transient errors, especially for file uploads and LLM interactions.
 [ ] Implement rate limiting or queuing for CV analysis requests to manage load and ensure fair usage.
-[ ] Update all used methods to be asynchronous to improve performance and scalability.
 """
 
 class CVAnalyser:
@@ -55,7 +55,7 @@ class CVAnalyser:
             )
             
             # Step 4: Perform analysis
-            analysis_results = self._perform_analysis(parsed_cv, parsed_jd)
+            analysis_results = await self._perform_analysis(parsed_cv, parsed_jd)
             
             # Step 5: Save report
             await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
@@ -164,7 +164,13 @@ class CVAnalyser:
             jd_id = None
             if jd_text and parsed_jd:
                 logger.debug(f"Saving job posting to database")
-                jd_id = await self.repo.create_jd_record(user_id, parsed_jd)
+                jd = JobPosting(
+                    raw_text=jd_text,
+                    parsed_data=parsed_jd,
+                    source_type="text"
+                ).model_dump(mode="json", exclude_none=True)
+            
+                jd_id = await self.repo.create_jd_record(jd)
                 logger.info(f"Job posting saved to database with job_id: {jd_id}")
             
             # Create optimization request
@@ -182,14 +188,14 @@ class CVAnalyser:
                 detail=f"Database operation failed: {str(e)}"
             )
 
-    def _perform_analysis(self, parsed_cv: dict, parsed_jd: Optional[dict]) -> dict:
+    async def _perform_analysis(self, parsed_cv: dict, parsed_jd: Optional[dict]) -> dict:
         """Perform ATS analysis using LLM."""
         try:
             logger.debug(f"Preparing analysis prompt")
             job_description = parsed_jd if parsed_jd else "No job description provided"
             
             logger.debug(f"Sending request to LLM for CV analysis")
-            results = self.llm.get_response(
+            results = await self.llm.get_response(
                 prompt=CV_ANALYST.format(cv_text=parsed_cv, job_description=job_description),
                 need_json_output=True,
                 schema=ATSAnalysisResponse

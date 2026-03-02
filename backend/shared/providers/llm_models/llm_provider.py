@@ -11,7 +11,7 @@ class LLMProvider(ABC):
     """
 
     @abstractmethod
-    def get_response(
+    async def get_response(
         self,
         prompt: str,
         expecting_longer_output: bool = False,
@@ -25,7 +25,7 @@ class LLMProvider(ABC):
         pass
 
     @abstractmethod
-    def get_embedding(self, content: str, model: Optional[str] = None, task_type: Optional[str] = None):
+    async def get_embedding(self, content: str, model: Optional[str] = None, task_type: Optional[str] = None):
         """
         Generate embeddings for given content.
         """

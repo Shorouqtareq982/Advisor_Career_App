@@ -41,7 +41,7 @@ class DocumentParser:
         try:
             text = await self._extract_text(file)
             # Send text to LLM for structured extraction
-            parsed_content = self.llm.get_response(
+            parsed_content = await self.llm.get_response(
                 prompt=CV_DATA_EXTRACTOR.format(cv_text=text),
                 need_json_output=True,
                 schema=CVData
@@ -63,7 +63,7 @@ class DocumentParser:
         Returns a dictionary with extracted information.
         """
         try:
-            parsed_content = self.llm.get_response(
+            parsed_content = await self.llm.get_response(
                 prompt=JOB_DATA_EXTRACTOR.format(job_description=jd_text),
                 need_json_output=True,
                 schema= JobData
