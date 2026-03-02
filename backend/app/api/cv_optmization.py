@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, UploadFile, Form
 from fastapi import Depends, Request
 from fastapi.security import HTTPBearer
 from features.cv_optimization.services.cv_analyser import CVAnalyser, get_cv_analyser
@@ -8,7 +8,7 @@ router = APIRouter(prefix="/cv_optimization", tags=["CV Optimization"],dependenc
 async def analyze_cv(
     request: Request,
     cv_file: UploadFile,
-    jd_text: str,
+    jd_text: str = Form(None),
     cv_analyser: CVAnalyser = Depends(get_cv_analyser),
 ):
     user = request.state.user

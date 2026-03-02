@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -173,7 +173,7 @@ class ATSAnalysisResponse(BaseModel):
         ),
     )
     Section_Analysis: SectionAnalysis = Field(..., description="Per-section pass/fail results and overall section score.")
-    Job_Alignment: JobAlignment = Field(..., description="Resume vs job-description matching details and scores.")
+    Job_Alignment: Optional[JobAlignment] = Field(None, description="Resume vs job-description matching details and scores.")
     Industry_Keyword_Optimization: IndustryKeywordOptimization = Field(
         ...,
         description="Suggestions and missing industry keywords to improve discoverability and relevance."
