@@ -61,7 +61,7 @@ class CVOptRepository:
     async def get_all_cvs_by_user(self, user_id: str) -> list[Dict]:
         """Fetch all CV records for a given user."""
         db = await self._get_client()
-        response = await db.table("cv").select("*").eq("user_id", user_id).execute()
+        response = await db.table("cv").select("*").eq("user_id", user_id).order("updated_at", desc=True).execute()
         return response.data if response.data else []
 
     # ======================== Job Postings Table Methods ========================
@@ -109,7 +109,7 @@ class CVOptRepository:
     async def get_optimization_requests_by_user(self, user_id: str) -> list[Dict]:
         """Fetch all optimization requests for a given user."""
         db = await self._get_client()
-        response = await db.table("cv_optimization_requests").select("*").eq("user_id", user_id).execute()
+        response = await db.table("cv_optimization_requests").select("*").eq("user_id", user_id).order("requested_at", desc=True).execute()
         return response.data if response.data else []
     
     # ======================== CV Optimization Reports Table Methods ========================
@@ -137,5 +137,22 @@ class CVOptRepository:
     async def get_optmization_reports_by_user(self, user_id: str) -> list[Dict]:
         """Fetch all optimization reports for a given user."""
         db = await self._get_client()
-        response = await db.table("cv_optimization_reports").select("*, cv_optimization_requests!inner(user_id)").eq("cv_optimization_requests.user_id", user_id).execute()
+        response = await db.table("cv_optimization_reports").select("*, cv_optimization_requests!inner(user_id)").eq("cv_optimization_requests.user_id", user_id).order("generated_at", desc=True).execute()
+        return response.data if response.data else []
+    
+    async def get_optmization_report_by_request_id(self, request_id: str) -> Optional[Dict]:
+        """Fetch an optimization report by its associated request ID."""
+        db = await self._get_client()
+        response = await db.table("cv_optimization_reports").select("*").eq("request_id", request_id).execute()
+        return response.data[0] if response.data else None
+    
+    async def get_optmization_report_by_cv_id(self, cv_id: str, jd_id: str = None, no_jd: bool = False) -> list[Dict]:
+        """Fetch an optimization report by its associated CV ID."""
+        db = await self._get_client()
+        if jd_id:
+            response = await db.table("cv_optimization_reports").select("*").eq("cv_id", cv_id).eq("job_posting_id", jd_id).order("generated_at", desc=True).execute()
+        elif no_jd:
+            response = await db.table("cv_optimization_reports").select("*").eq("cv_id", cv_id).is_("job_posting_id", None).order("generated_at", desc=True).execute()
+        else:
+            response = await db.table("cv_optimization_reports").select("*").eq("cv_id", cv_id).order("generated_at", desc=True).execute()
         return response.data if response.data else []
