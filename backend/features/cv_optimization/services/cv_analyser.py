@@ -293,10 +293,6 @@ class CVAnalyser:
     def _compute_hashes(self, file_bytes: bytes, jd_text: Optional[str]) -> tuple[str, Optional[str]]:
         """Compute content hashes for CV and JD."""
         cv_hash = self.compute_content_hash(file_bytes)
-        # For JD, we clean the text by removing whitespace and truncating to 1000 characters to avoid minor differences affecting the hash
-        if jd_text:
-            jd_text = jd_text[:1000] if jd_text else None   
-            jd_text = "".join(jd_text.split())
         jd_hash = self.compute_content_hash(jd_text) if jd_text else None
         return cv_hash, jd_hash
 
@@ -578,6 +574,8 @@ class CVAnalyser:
     def compute_content_hash(content: str | bytes) -> str:
         """Compute a SHA256 hash for the given text or bytes."""
         if isinstance(content, str):
+            content = content[:1000]
+            content = "".join(content.split())
             content = content.encode("utf-8")
         return hashlib.sha256(content).hexdigest()
 
