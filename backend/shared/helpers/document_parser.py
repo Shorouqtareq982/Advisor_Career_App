@@ -24,7 +24,7 @@ class DocumentParser:
         Supports Arabic (requires tesseract Arabic language pack).
         """
         text = ""
-
+        
         try:
             text = await TextExtractor.extract_text(file)
 
@@ -40,22 +40,35 @@ class DocumentParser:
         """
         try:
             text = await self._extract_text(file)
-            # Send text to LLM for structured extraction
+            if not text:
+                print("No text extracted from CV.")
+                return "", None
+            parsed_content = await self.parse_cv_text(text)
+            return text, parsed_content
+        except Exception as e:
+            print(f"Error parsing CV: {e}")
+            return text, None
+        
+    async def parse_cv_text(self, cv_text: str) -> CVData:
+        """
+        Parses CV text into structured data using LLM.
+        Returns a dictionary with extracted information.
+        """
+        try:
             parsed_content = await self.llm.get_response(
-                prompt=CV_DATA_EXTRACTOR.format(cv_text=text),
+                prompt=CV_DATA_EXTRACTOR.format(cv_text=cv_text),
                 need_json_output=True,
                 schema=CVData
             )
 
-            # Validate and return the structured data
             if not parsed_content:
-                print("LLM returned empty response for CV parsing.")
-                return text, None
+                print("LLM returned empty response for CV text parsing.")
+                return None
             
-            return text, parsed_content.dict() if isinstance(parsed_content, CVData) else parsed_content
+            return parsed_content.dict() if isinstance(parsed_content, CVData) else parsed_content
         except Exception as e:
-            print(f"Error parsing CV: {e}")
-            return text, None
+            print(f"Error parsing CV text: {e}")
+            return None
 
     async def parse_job_description(self, jd_text: str) -> JobData:
         """

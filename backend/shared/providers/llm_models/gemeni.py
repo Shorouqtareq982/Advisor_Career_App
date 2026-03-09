@@ -20,7 +20,7 @@ class Gemini(LLMProvider):
         expecting_longer_output: bool = False,
         need_json_output: bool = False,
         schema: Optional[Type[BaseModel]] = None,
-        temperature: float = 0.1
+        temperature: float = 0.0
     ):
         try:
             generation_config = types.GenerateContentConfig(
@@ -28,7 +28,8 @@ class Gemini(LLMProvider):
                 max_output_tokens=4000 if expecting_longer_output else None,
                 response_mime_type="application/json" if need_json_output else None,
                 response_schema=schema.model_json_schema() if schema else None,
-                system_instruction=self.system_prompt
+                system_instruction=self.system_prompt,
+                top_p = 0.95,  # nucleus sampling to improve output quality
             )
 
             response = await asyncio.to_thread(

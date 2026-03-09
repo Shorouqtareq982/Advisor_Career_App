@@ -2,7 +2,9 @@ from fastapi import APIRouter, HTTPException, UploadFile, Form
 from fastapi import Depends, Request
 from fastapi.security import HTTPBearer
 from features.cv_optimization.services import get_optimization_report_service, OptmizationReportService, CVAnalyser, get_cv_analyser
-router = APIRouter(prefix="/cv_optimization", tags=["CV Optimization"],dependencies=[Depends(HTTPBearer())])
+router = APIRouter(prefix="/cv_optimization", 
+                   tags=["CV Optimization"],
+                   dependencies=[Depends(HTTPBearer())])
 
 @router.post("/analyze")
 async def analyze_cv(

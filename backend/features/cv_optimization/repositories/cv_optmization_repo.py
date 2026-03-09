@@ -24,7 +24,7 @@ class CVOptRepository:
         return self.db_client
     
     # ======================== CV Table Methods ========================
-    async def create_cv_record(self, user_id: str, file_url: str, text_content: Optional[str] = None, parsed_content: Optional[Dict] = None, is_primary: bool = False) -> str:
+    async def create_cv_record(self, user_id: str, file_url: str, text_content: Optional[str] = None, parsed_content: Optional[Dict] = None, cv_layout_analysis: Optional[Dict] = None, is_primary: bool = False) -> str:
         """Create a new CV record in the database and return its ID."""
         db = await self._get_client()
         language = "ar" if text_content and any(
@@ -40,6 +40,7 @@ class CVOptRepository:
             "text_content": text_content,
             "parsed_content": parsed_content,
             "is_primary": is_primary,
+            "cv_layout_analysis": cv_layout_analysis,
             "language": language
         }).execute()
         if not response.data:
@@ -137,7 +138,7 @@ class CVOptRepository:
     async def get_optmization_reports_by_user(self, user_id: str) -> list[Dict]:
         """Fetch all optimization reports for a given user."""
         db = await self._get_client()
-        response = await db.table("cv_optimization_reports").select("*, cv_optimization_requests!inner(user_id)").eq("cv_optimization_requests.user_id", user_id).order("generated_at", desc=True).execute()
+        response = await db.table("cv_optimization_reports").select("*, cv_optimization_requests!left(user_id), cv!left(parsed_content ->> title), job_postings!left(parsed_data ->> job_title)").eq("cv_optimization_requests.user_id", user_id).order("generated_at", desc=True).execute()
         return response.data if response.data else []
     
     async def get_optmization_report_by_request_id(self, request_id: str) -> Optional[Dict]:

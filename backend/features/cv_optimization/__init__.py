@@ -15,4 +15,5 @@ TODO:
 [ ] Test the CV analysis process with various CV formats and job descriptions to ensure robustness and accuracy.
 [ ] Consider adding a retry mechanism for transient errors, especially for file uploads and LLM interactions.
 [ ] Implement rate limiting or queuing for CV analysis requests to manage load and ensure fair usage.
+[ ] Create Layout analysis for cv
 """

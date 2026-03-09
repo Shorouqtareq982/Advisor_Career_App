@@ -1,12 +1,16 @@
 import asyncio
+import io
 import logging
 from typing import Optional
 
 from fastapi import HTTPException, UploadFile, status
+import pymupdf
+from docx import Document
 
 from features.cv_optimization.repositories.cv_optmization_repo import CVOptRepository
 from features.cv_optimization.schemas import CVData, JobData
 from shared.helpers.document_parser import DocumentParser
+from shared.helpers.text_extractor import TextExtractor
 from shared.helpers.file_validation import FileValidator
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
 from shared.providers.storage import CloudinaryProvider
@@ -14,8 +18,18 @@ from shared.providers.storage import CloudinaryProvider
 from ..models import CVOptimizationRequest, CVOptimizationReport, JobPosting
 from ..prompts import CV_ANALYST
 from ..schemas import ATSAnalysisResponse
+from .cv_layout_analyzer import CVLayoutAnalyzer
 
 logger = logging.getLogger(__name__)
+
+"""
+TODO:
+[x] save layout analysis results to database and include in report
+[x] return job title or cv title in response for better UI display
+[ ] optmize LLM prompt by including layout analysis results and file metadata (e.g. file size, number of pages, fonts used) to help LLM better understand the CV structure and provide more tailored optimization suggestions
+[ ] implement retry logic for LLM calls in case of transient errors
+[ ] implement caching for previously analyzed CVs (e.g. if same file hash is uploaded again, return previous results)
+"""
 
 class CVAnalyser:
     def __init__(self, llm: LLMProvider = None):
@@ -32,24 +46,28 @@ class CVAnalyser:
         """Main orchestration method for CV analysis."""
         try:
             logger.info(f"Starting CV analysis for user: {user_id}")
-            
             # Step 1: Validate and upload CV
             file_url = await self._validate_and_upload_cv(user_id, cv_file)
-            
-            # Step 2: Parse CV and JD
-            parsed_cv_text, parsed_cv, parsed_jd = await self._parse_cv_and_jd(cv_file, jd_text)
-            
-            # Step 3: Save to database
+
+            # Step 2: Read file bytes once, then create separate buffers for
+            # parsing and layout analysis so the file is opened only one time.
+            cv_file.file.seek(0)
+            file_bytes = cv_file.file.read()
+            file_size_kb = len(file_bytes) / 1024
+
+            parse_buf = io.BytesIO(file_bytes)
+            parse_buf.name = cv_file.filename  # preserve filename for format detection
+            # Step 3: Parse CV/JD and analyse layout 
+            parsed_cv_text, parsed_cv, parsed_jd, cv_layout_analysis = await self._parse_cv_and_jd(parse_buf, file_size_kb, cv_file.content_type, jd_text)
+
+            # Step 4: Save to database
             cv_id, jd_id, request_id = await self._save_parsed_data(
-                user_id, file_url, parsed_cv_text, parsed_cv, jd_text, parsed_jd
+                user_id, file_url, parsed_cv_text, parsed_cv, jd_text, parsed_jd, cv_layout_analysis
             )
-            
-            # Step 4: Perform analysis
-            analysis_results = await self._perform_analysis(parsed_cv, parsed_jd)
-            
-            # Step 5: Save report
+            # Step 5: Perform analysis
+            analysis_results = await self._perform_analysis(parsed_cv, parsed_jd, cv_layout_analysis)
+            # Step 6: Save report
             final_report = await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
-            
             logger.info(f"CV analysis completed successfully for user: {user_id}, request_id: {request_id}")
             return final_report
         except HTTPException:
@@ -90,8 +108,10 @@ class CVAnalyser:
             # Create optimization request
             request_id = await self.repo.create_optimization_request(user_id, cv_id, jd_id)
 
+            layout_analysis = cv_record["cv_layout_analysis"]
+
             # Perform analysis
-            analysis_results = await self._perform_analysis(cv_record["parsed_content"], parsed_jd)
+            analysis_results = await self._perform_analysis(cv_record["parsed_content"], parsed_jd, cv_layout_analysis=layout_analysis)
             
             final_report = await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
 
@@ -160,11 +180,18 @@ class CVAnalyser:
     # PARSING
     # ========================
 
-    async def _parse_cv_and_jd(self, cv_file: UploadFile, jd_text: Optional[str]) -> tuple:
+    async def _parse_cv_and_jd(self, cv_file: io.BytesIO, file_size_kb: float, file_type: str, jd_text: Optional[str]) -> tuple:
         """Parse CV and job description files."""
         try:
-            logger.debug(f"Starting to parse CV file: {cv_file.filename}")
-            parsed_cv_text, parsed_cv = await self.parser.parse_cv(cv_file)
+            logger.debug(f"Starting to parse CV file: {cv_file.name}")
+            cv_layout_analysis, parsed_cv_text = CVLayoutAnalyzer.analyze_file_layout(
+                cv_file, cv_file.name, file_size_kb, file_type
+            )
+
+            if not cv_layout_analysis:
+                parsed_cv_text = await TextExtractor.extract_text(cv_file)
+
+            parsed_cv = await self.parser.parse_cv_text(parsed_cv_text)
             logger.info("CV parsed successfully")
             
             parsed_jd = None
@@ -175,7 +202,7 @@ class CVAnalyser:
             else:
                 logger.debug("No job description provided")
             
-            return parsed_cv_text, parsed_cv, parsed_jd
+            return parsed_cv_text, parsed_cv, parsed_jd, cv_layout_analysis
         except HTTPException:
             raise
         except Exception as e:
@@ -191,7 +218,7 @@ class CVAnalyser:
 
     async def _save_parsed_data(
         self, user_id: str, file_url: str, parsed_cv_text: str, 
-        parsed_cv: CVData, jd_text: Optional[str], parsed_jd: Optional[dict]
+        parsed_cv: CVData, jd_text: Optional[str], parsed_jd: Optional[dict], cv_layout_analysis: Optional[dict]
     ) -> tuple:
         """Save CV, JD, and optimization request to database."""
         try:
@@ -203,9 +230,14 @@ class CVAnalyser:
                 else parsed_cv
             )
 
+            parsed_layout_json = (
+                cv_layout_analysis.model_dump(mode="json", exclude_none=True)
+                if cv_layout_analysis else None
+            )
+
             # Save CV to database
             logger.debug(f"Uploading CV to database for user: {user_id}")
-            created_cv_id = await self.repo.create_cv_record(user_id, file_url, parsed_cv_text, parsed_cv_json)
+            created_cv_id = await self.repo.create_cv_record(user_id, file_url, parsed_cv_text, parsed_cv_json, parsed_layout_json)
             logger.info(f"CV saved to database with cv_id: {created_cv_id}")
             
             # Save JD if provided
@@ -268,15 +300,16 @@ class CVAnalyser:
     # ANALYSIS
     # ========================
 
-    async def _perform_analysis(self, parsed_cv: dict, parsed_jd: Optional[dict]) -> dict:
+    async def _perform_analysis(self, parsed_cv: dict, parsed_jd: Optional[dict], cv_layout_analysis: Optional[dict]) -> dict:
         """Perform ATS analysis using LLM."""
         try:
             logger.debug("Preparing analysis prompt")
             job_description = parsed_jd if parsed_jd else "No job description provided"
+            cv_layout_analysis = cv_layout_analysis if cv_layout_analysis else {"message": "No layout analysis available"}
             
             logger.debug("Sending request to LLM for CV analysis")
             results = await self.llm.get_response(
-                prompt=CV_ANALYST.format(cv_text=parsed_cv, job_description=job_description),
+                prompt=CV_ANALYST.format(cv_text=parsed_cv, job_description=job_description, cv_layout_analysis=cv_layout_analysis),
                 need_json_output=True,
                 schema=ATSAnalysisResponse
             )
