@@ -73,7 +73,7 @@ FILE QUALITY
 - File type is PDF or DOCX → PASS / FAIL
 - File name is CV-relevant (contains "CV" or "Resume" or candidate name) → PASS / FAIL
 - File name length is valid (≤ 100 characters) → PASS / FAIL
-- File name does not contain special characters → PASS / FAIL
+- File name is not safe (path traversal sequences, dangerous (; | & $ ` > < ( ) { } [ ] * ? ! #) /shell characters, null bytes, hidden files, reserved system names, suspicious Unicode) → PASS / FAIL
 
 Process:
 1. Evaluate each check and mark PASS or FAIL.

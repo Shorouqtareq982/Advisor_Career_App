@@ -289,6 +289,11 @@ class SkillsAnalysis(BaseModel):
     """
     Skills matching analysis between CV and job description.
     
+    CRITICAL FORMAT REQUIREMENT:
+    - Each skill must be a CONCISE TERM (1-4 words max)
+    - NO sentences, NO descriptions, NO "experience with X" phrases
+    - Extract the CORE SKILL NAME only
+    
     MATCHING RULES:
     - Extract skills from both JD and CV
     - Normalize case for comparison (Python = python = PYTHON)
@@ -313,8 +318,10 @@ class SkillsAnalysis(BaseModel):
         max_length=20,
         description=(
             "Skills that appear in both JD and CV (exact or close matches). "
+            "CRITICAL: Each item must be a SINGLE SKILL NAME (1-4 words max). "
             "Normalize case, ignore duplicates. Maximum 20 items. "
-            "Examples: ['Python', 'React', 'AWS', 'Machine Learning', 'Agile']"
+            "CORRECT examples: ['Python', 'React', 'AWS', 'Machine Learning', 'Agile']. "
+            "INCORRECT examples: ['Experience with Python', 'Strong React skills', 'Knowledge of AWS services']."
         ),
     )
     Missing_Skills: List[str] = Field(
@@ -322,8 +329,10 @@ class SkillsAnalysis(BaseModel):
         max_length=20,
         description=(
             "Important skills required by JD that are missing from CV. "
+            "CRITICAL: Each item must be a SINGLE SKILL NAME (1-4 words max). "
             "Prioritize most critical/frequently mentioned skills. Maximum 20 items. "
-            "Examples: ['Kubernetes', 'Docker', 'SQL', 'Project Management']"
+            "CORRECT examples: ['Kubernetes', 'Docker', 'SQL', 'Project Management']. "
+            "INCORRECT examples: ['Needs Kubernetes experience', 'Should know Docker', 'Missing SQL database skills']."
         ),
     )
 
@@ -374,6 +383,11 @@ class KeywordAnalysis(BaseModel):
     """
     Keyword extraction and matching for ATS optimization.
     
+    CRITICAL FORMAT REQUIREMENT:
+    - Each keyword must be a CONCISE TERM (1-4 words max)
+    - NO sentences, NO descriptions, NO contextual phrases
+    - Extract the CORE KEYWORD/TERM only
+    
     KEYWORD EXTRACTION FROM JD:
     - Technical terms: programming languages, frameworks, tools, platforms
     - Domain-specific terminology: industry jargon, specialized concepts
@@ -404,8 +418,11 @@ class KeywordAnalysis(BaseModel):
         max_length=20,
         description=(
             "Important keywords extracted from JD: role-specific terms, industry vocabulary, tools, technologies, "
-            "methodologies, certifications. Prioritize most critical/frequent terms. Maximum 20 items. "
-            "Examples: ['Python', 'TensorFlow', 'CI/CD', 'AWS Lambda', 'RESTful API', 'Microservices']"
+            "methodologies, certifications. "
+            "CRITICAL: Each item must be a SINGLE KEYWORD/TERM (1-4 words max). "
+            "Prioritize most critical/frequent terms. Maximum 20 items. "
+            "CORRECT examples: ['Python', 'TensorFlow', 'CI/CD', 'AWS Lambda', 'RESTful API', 'Microservices']. "
+            "INCORRECT examples: ['Experience with Python required', 'Must know TensorFlow framework', 'CI/CD pipeline experience']."
         ),
     )
     Matched_Keywords: List[str] = Field(
@@ -413,8 +430,10 @@ class KeywordAnalysis(BaseModel):
         max_length=20,
         description=(
             "Subset of JD keywords that are present in CV (helps with ATS matching). "
+            "CRITICAL: Each item must be a SINGLE KEYWORD/TERM (1-4 words max). "
             "Normalize case, count each keyword once. Maximum 20 items. "
-            "Examples: ['Python', 'AWS Lambda', 'CI/CD']"
+            "CORRECT examples: ['Python', 'AWS Lambda', 'CI/CD']. "
+            "INCORRECT examples: ['Has Python experience', 'Uses AWS Lambda', 'Implemented CI/CD']."
         ),
     )
     Missing_Keywords: List[str] = Field(
@@ -422,8 +441,10 @@ class KeywordAnalysis(BaseModel):
         max_length=20,
         description=(
             "Keywords from JD that do not appear in CV and should be considered for addition. "
+            "CRITICAL: Each item must be a SINGLE KEYWORD/TERM (1-4 words max). "
             "Prioritize high-value, ATS-critical keywords. Maximum 20 items. "
-            "Examples: ['TensorFlow', 'Microservices', 'RESTful API']"
+            "CORRECT examples: ['TensorFlow', 'Microservices', 'RESTful API']. "
+            "INCORRECT examples: ['Should add TensorFlow', 'Missing microservices experience', 'No RESTful API development mentioned']."
         ),
     )
 
@@ -570,9 +591,11 @@ class IndustryKeywordOptimization(BaseModel):
         max_length=20,
         description=(
             "Industry/role-specific keywords recommended but missing from CV. "
+            "CRITICAL: Each item must be a SINGLE KEYWORD/TERM (1-4 words max). "
             "Include terms important for ATS and recruiter search, even if not in JD. "
             "Prioritize high-value, industry-standard terms. Maximum 20 items. "
-            "Examples: ['Scrum', 'Data Visualization', 'API Integration', 'Cloud Architecture', 'GDPR Compliance']"
+            "CORRECT examples: ['Scrum', 'Data Visualization', 'API Integration', 'Cloud Architecture', 'GDPR Compliance']. "
+            "INCORRECT examples: ['Should learn Scrum methodology', 'Experience with data visualization tools', 'Knowledge of API integration']."
         ),
     )
     Suggestions: List[str] = Field(
