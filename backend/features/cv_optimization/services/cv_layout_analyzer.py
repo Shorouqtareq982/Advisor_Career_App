@@ -89,7 +89,7 @@ class CVLayoutAnalyzer:
         file_name: str,
         file_size_kb: float,
         file_type: str,
-    ) -> CVLayoutAnalysis | Tuple[CVLayoutAnalysis, str]:
+    ) -> Dict | Tuple[Dict, str]:
         """Analyze layout of a CV file (PDF or DOCX).
         
         Args:
@@ -99,7 +99,7 @@ class CVLayoutAnalyzer:
             file_type: MIME type of the file
         
         Returns:
-            CVLayoutAnalysis object for PDF, or tuple(CVLayoutAnalysis, text) for DOCX
+            Dictionary containing layout analysis results for PDF, or tuple(Dictionary, text) for DOCX
             Returns default analysis with None values on error
         """
         try:
@@ -118,7 +118,27 @@ class CVLayoutAnalyzer:
         except Exception as e:
             # Log the error and return a default analysis indicating failure
             print(f"Error analyzing file layout: {e}")
-            return None
+            return {
+                "have_images": None,
+                "have_tables": None,
+                "have_columns": None,
+                "have_graphics": None,
+                "have_textboxes": None,
+                "information_in_header": None,
+                "information_in_footer": None,
+                "fonts_used": None,
+                "avg_font_size": None,
+                "file_size_kb": file_size_kb,
+                "file_type": file_type,
+                "num_of_pages": None,
+                "num_of_sections": None,
+                "word_count": None,
+                "valid_cv_filename": None,
+                "valid_cv_filename_length": None,
+                "original_filename": file_name,
+                "page_sizes_in_points": None,
+                "page_margins_in_inches": None
+            }, None
 
     # ==================== PDF Analysis Methods ====================
 
@@ -502,6 +522,7 @@ class CVLayoutAnalyzer:
             left=round(section.left_margin / CVLayoutAnalyzer.EMU_PER_INCH, 2),
             right=round(section.right_margin / CVLayoutAnalyzer.EMU_PER_INCH, 2)
         )
+
 
     @staticmethod
     def _distribute_section_properties(

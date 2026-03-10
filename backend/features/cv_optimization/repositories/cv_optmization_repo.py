@@ -153,7 +153,7 @@ class CVOptRepository:
     async def get_optmization_reports_by_user(self, user_id: str) -> list[Dict]:
         """Fetch all optimization reports for a given user."""
         db = await self._get_client()
-        response = await db.table("cv_optimization_reports").select("*, cv_optimization_requests!left(user_id), cv!left(parsed_content ->> title), job_postings!left(parsed_data ->> job_title)").eq("cv_optimization_requests.user_id", user_id).order("generated_at", desc=True).execute()
+        response = await db.table("cv_optimization_reports").select("*, cv_optimization_requests!left(user_id), cv!left(parsed_content ->> title, cv_layout_analysis ->> original_filename), job_postings!left(parsed_data ->> job_title)").eq("cv_optimization_requests.user_id", user_id).order("generated_at", desc=True).execute()
         return response.data if response.data else []
     
     async def get_optmization_report_by_request_id(self, request_id: str) -> Optional[Dict]:

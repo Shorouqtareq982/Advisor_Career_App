@@ -412,7 +412,7 @@ class CVAnalyser:
         )
         
         # Extract text if layout analysis didn't provide it
-        if not cv_layout_analysis:
+        if not parsed_cv_text:
             parsed_cv_text = await TextExtractor.extract_text(cv_file)
         
         # Parse CV content

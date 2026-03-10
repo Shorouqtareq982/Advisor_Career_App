@@ -1,0 +1,113 @@
+Quantify impact (measurable results) >=5
+number of bullet points
+repetition in bullet points
+Spelling and grammar
+essential sections
+hyperlinks in header 
+cv name
+strong Summary
+action verbs no personal verbs
+length max 1000 characters
+date formatting
+page setup: no info in header and footer, page margin between 0.5 - 1 inch, page size witin a4 or letter page size
+
+
+for job aligment 
+title matching
+Education match
+
+
+
+section ats readability
+- date formatting  format: “MM / YY or MM / YYYY or Month YYYY” (e.g. 03/18, 03/2019, Mar 2019 or March 2019). (valid_date_format)
+- hyperlinks in header 
+- page setup: no info in header and footer, page margin between 0.5 - 1 inch, page size witin a4 or letter page size
+{
+    "information_in_header": True,
+    "information_in_footer": False,
+    "page_sizes_in_points"
+    "page_margins_in_inches"
+}
+- existance of tables, columns, images, graphics
+{
+    "have_images": True,
+    "have_tables": False,
+    "have_columns": False,
+    "have_graphics": False,
+    "have_textboxes": False
+}
+- File type not PDF or DOCX and size more than 5 mega
+{
+    "file_size_kb": 245.3,
+    "file_type": "application/pdf"
+}
+- file name dosn't contain spectial characters and length 
+{
+    "valid_cv_filename": True,
+    "valid_cv_filename_length": True
+}
+- average font size between 9 - 13
+{
+    "avg_font_size": 11.5,
+}
+- length max 1000 word
+{
+    "num_of_doc_words": 542,
+}
+- More than 2 - 3 pages 
+{
+    "num_of_pages": 2
+}
+
+section content quality
+- essential sections (Summary, skills, Education, experience)
+- Contact info (email, phone, address)
+- name and title exist
+- Spelling and grammar (typos)
+- action verbs no personal verbs 
+- No vague wording (Clarity)
+- Quantify impact (measurable results) >=5
+
+section sections-content 
+- pass/fail
+- description
+
+section job_alignment
+- title matching
+- Education match if required
+- experience level match
+- number of matched skills/missed
+- number of matched keywords/missed
+- number of experiences match / total
+
+eachPoint:
+{
+    "key"
+    "category"
+    "status":pass/fail
+    "message":string
+    "evidence":[]
+    "values":[]
+}
+
+{
+    "date_well_formated"
+    "hyperlinks_exists_in_header"
+    "no_info_in_header_nor_footer"
+    "page_margin_between_0.5_1"
+    "page_size_within_a4"
+    "table_exist" etc
+    "file_type_valid"
+    "averge_font_less_than__"
+    "characters_less_than_1000"
+    "pages_less_than_3"
+}
+
+metric(passnote)
+name:
+
+ats_readability:
+Score
+metrics:List[metric]
+
+content_quality(ats_readability)
