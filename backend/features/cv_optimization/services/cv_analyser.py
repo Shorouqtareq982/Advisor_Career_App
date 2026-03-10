@@ -53,7 +53,7 @@ class CVAnalyser:
             
             # Read file and compute hashes
             file_bytes, parse_buf, file_size_kb = await self._read_file_bytes(cv_file)
-            cv_hash, jd_hash = self._compute_hashes(file_bytes, jd_text)
+            cv_hash, jd_hash = self._compute_hashes(file_bytes, jd_text, user_id)
             
             # Check cache for existing CV and JD records
             cv_record, jd_record = await self._check_cache(cv_hash, jd_hash)
@@ -97,7 +97,7 @@ class CVAnalyser:
             # Handle different JD scenarios
             if jd_text:
                 # Compute JD hash and check cache
-                jd_hash = self.compute_content_hash(jd_text)
+                jd_hash = self.compute_content_hash(jd_text, user_id)
                 jd_record = await self.repo.get_jd_by_hash(jd_hash)
                 
                 if jd_record:
@@ -290,10 +290,10 @@ class CVAnalyser:
         
         return file_bytes, parse_buf, file_size_kb
 
-    def _compute_hashes(self, file_bytes: bytes, jd_text: Optional[str]) -> tuple[str, Optional[str]]:
+    def _compute_hashes(self, file_bytes: bytes, jd_text: Optional[str], user_id: str) -> tuple[str, Optional[str]]:
         """Compute content hashes for CV and JD."""
-        cv_hash = self.compute_content_hash(file_bytes)
-        jd_hash = self.compute_content_hash(jd_text) if jd_text else None
+        cv_hash = self.compute_content_hash(file_bytes, user_id)
+        jd_hash = self.compute_content_hash(jd_text, user_id) if jd_text else None
         return cv_hash, jd_hash
 
     async def _check_cache(self, cv_hash: str, jd_hash: Optional[str]) -> tuple[Optional[dict], Optional[dict]]:
@@ -571,12 +571,13 @@ class CVAnalyser:
     # ========================
 
     @staticmethod
-    def compute_content_hash(content: str | bytes) -> str:
+    def compute_content_hash(content: str | bytes, user_id: str) -> str:
         """Compute a SHA256 hash for the given text or bytes."""
         if isinstance(content, str):
-            content = content[:1000]
             content = "".join(content.split())
             content = content.encode("utf-8")
+        # Append user_id to the content before hashing
+        content += user_id.encode("utf-8")
         return hashlib.sha256(content).hexdigest()
 
     def _convert_to_json(self, data: any) -> Optional[dict]:
