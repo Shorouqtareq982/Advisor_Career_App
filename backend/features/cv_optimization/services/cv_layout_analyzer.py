@@ -133,8 +133,8 @@ class CVLayoutAnalyzer:
                 "num_of_pages": None,
                 "num_of_sections": None,
                 "word_count": None,
-                "valid_cv_filename": None,
-                "valid_cv_filename_length": None,
+                "valid_cv_filename": FileValidator.validate_filename(file_name)[0] if file_name else None,
+                "valid_cv_filename_length": len(file_name) <= CVLayoutAnalyzer.MAX_FILENAME_LENGTH if file_name else None,
                 "original_filename": file_name,
                 "page_sizes_in_points": None,
                 "page_margins_in_inches": None
