@@ -414,7 +414,7 @@ class CVAnalyser:
         # Extract text if layout analysis didn't provide it
         if not parsed_cv_text:
             parsed_cv_text = await TextExtractor.extract_text(cv_file)
-            if cv_layout_analysis:
+            if cv_layout_analysis and cv_layout_analysis.get('word_count') is None:
                 cv_layout_analysis["word_count"] = CVLayoutAnalyzer.word_count(parsed_cv_text)
         
         # Parse CV content
