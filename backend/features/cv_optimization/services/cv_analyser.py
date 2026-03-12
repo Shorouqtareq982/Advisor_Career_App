@@ -48,32 +48,34 @@ class CVAnalyser:
         try:
             logger.info(f"Starting CV analysis for user: {user_id}")
             
-            # Validate and upload CV
-            file_url = await self._validate_and_upload_cv(user_id, cv_file)
-            
-            # Read file and compute hashes
+            # Read file bytes once and compute hashes
             file_bytes, parse_buf, file_size_kb = await self._read_file_bytes(cv_file)
             cv_hash, jd_hash = self._compute_hashes(file_bytes, jd_text, user_id)
             
-            # Check cache for existing CV and JD records
-            cv_record, jd_record = await self._check_cache(cv_hash, jd_hash)
+            # Reset file pointer, then upload CV and check cache in parallel
+            cv_file.file.seek(0)
+            file_url, (cv_record, jd_record) = await asyncio.gather(
+                self._validate_and_upload_cv(user_id, cv_file),
+                self._check_cache(cv_hash, jd_hash)
+            )
             
             # Route to appropriate handler based on cache status
             if cv_record and jd_record:
-                return await self._handle_both_cached(user_id, cv_record, jd_record)
+                result = await self._handle_both_cached(user_id, cv_record, jd_record)
             elif cv_record:
-                return await self._handle_cv_cached_only(user_id, cv_record, jd_text, jd_hash)
+                result = await self._handle_cv_cached_only(user_id, cv_record, jd_text, jd_hash)
             elif jd_record:
-                return await self._handle_jd_cached_only(
+                result = await self._handle_jd_cached_only(
                     user_id, file_url, jd_record, parse_buf, file_size_kb, 
                     cv_file.content_type, cv_hash
                 )
             else:
-                return await self._handle_no_cache(
+                result = await self._handle_no_cache(
                     user_id, file_url, parse_buf, file_size_kb, 
                     cv_file.content_type, jd_text, cv_hash, jd_hash
                 )
                 
+                return result
         except HTTPException:
             raise
         except Exception as e:
@@ -88,18 +90,24 @@ class CVAnalyser:
         try:
             logger.info(f"Starting analysis for saved CV: {cv_id} for user: {user_id}")
             
-            # Fetch CV record
-            cv_record = await self.repo.get_cv_by_id(cv_id)
+            # Fetch CV record and JD hash lookup in parallel when JD is provided
+            if jd_text:
+                jd_hash = self.compute_content_hash(jd_text, user_id)
+                cv_record, jd_record = await asyncio.gather(
+                    self.repo.get_cv_by_id(cv_id),
+                    self.repo.get_jd_by_hash(jd_hash)
+                )
+            else:
+                cv_record = await self.repo.get_cv_by_id(cv_id)
+                jd_record = None
+                jd_hash = None
+
             if not cv_record:
                 logger.error(f"CV record not found for cv_id: {cv_id}")
                 raise HTTPException(status_code=404, detail="CV record not found.")
             
             # Handle different JD scenarios
             if jd_text:
-                # Compute JD hash and check cache
-                jd_hash = self.compute_content_hash(jd_text, user_id)
-                jd_record = await self.repo.get_jd_by_hash(jd_hash)
-                
                 if jd_record:
                     # JD exists in cache, check for existing report
                     return await self._handle_saved_cv_with_cached_jd(user_id, cv_id, cv_record, jd_record)
@@ -252,6 +260,14 @@ class CVAnalyser:
         # Check for existing report
         existing_report = await self._check_existing_report(cv_id, jd_id, no_jd)
         if existing_report:
+            existing_report["cv"] = {
+                "title": cv_data.get("title", "CV"),
+                "original_filename": cv_layout.get("original_filename") if cv_layout else None
+            }
+            existing_report["job_posting"] = {
+                "job_title": jd_data.get("job_title") if jd_data else None
+            }
+            logger.info(f"Returning existing report for {log_context}")
             return existing_report
         
         # No existing report, perform analysis
@@ -259,6 +275,15 @@ class CVAnalyser:
         request_id = await self.repo.create_optimization_request(user_id, cv_id, jd_id)
         analysis_results = await self._perform_analysis(cv_data, jd_data, cv_layout)
         final_report = await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
+
+        if final_report:
+            final_report["cv"] = {
+                "title": cv_data.get("title", "CV"),
+                "original_filename": cv_layout.get("original_filename") if cv_layout else None
+            }
+            final_report["job_posting"] = {
+                "job_title": jd_data.get("job_title") if jd_data else None
+            }
         
         logger.info(f"Analysis completed for {log_context}, request_id: {request_id}")
         return final_report
@@ -298,8 +323,14 @@ class CVAnalyser:
 
     async def _check_cache(self, cv_hash: str, jd_hash: Optional[str]) -> tuple[Optional[dict], Optional[dict]]:
         """Check cache for existing CV and JD records."""
-        cv_record = await self.repo.get_cv_by_hash(cv_hash)
-        jd_record = await self.repo.get_jd_by_hash(jd_hash) if jd_hash else None
+        if jd_hash:
+            cv_record, jd_record = await asyncio.gather(
+                self.repo.get_cv_by_hash(cv_hash),
+                self.repo.get_jd_by_hash(jd_hash)
+            )
+        else:
+            cv_record = await self.repo.get_cv_by_hash(cv_hash)
+            jd_record = None
         return cv_record, jd_record
 
     async def _process_new_cv(
@@ -384,13 +415,17 @@ class CVAnalyser:
     async def _parse_cv_and_jd(self, cv_file: io.BytesIO, file_size_kb: float, file_type: str, jd_text: Optional[str]) -> tuple:
         """Parse CV and job description files."""
         try:
-            # Parse CV
-            parsed_cv_text, parsed_cv, cv_layout_analysis = await self._parse_cv_file(
-                cv_file, file_size_kb, file_type
-            )
-            
-            # Parse JD if provided
-            parsed_jd = await self._parse_jd_text(jd_text) if jd_text else None
+            if jd_text:
+                # Parse CV and JD concurrently
+                (parsed_cv_text, parsed_cv, cv_layout_analysis), parsed_jd = await asyncio.gather(
+                    self._parse_cv_file(cv_file, file_size_kb, file_type),
+                    self._parse_jd_text(jd_text)
+                )
+            else:
+                parsed_cv_text, parsed_cv, cv_layout_analysis = await self._parse_cv_file(
+                    cv_file, file_size_kb, file_type
+                )
+                parsed_jd = None
             
             return parsed_cv_text, parsed_cv, parsed_jd, cv_layout_analysis
         except HTTPException:
@@ -441,17 +476,19 @@ class CVAnalyser:
     ) -> tuple:
         """Save CV, JD, and optimization request to database."""
         try:
-            # Convert and save CV
-            cv_id = await self._save_cv_record(
-                user_id, file_url, parsed_cv_text, parsed_cv, cv_layout_analysis, cv_hash
-            )
-            
-            # Save JD if provided
-            jd_id = None
+            # Save CV and JD records concurrently
             if jd_text and parsed_jd:
-                jd_id = await self._save_jd_record(jd_text, parsed_jd, jd_hash)
+                cv_id, jd_id = await asyncio.gather(
+                    self._save_cv_record(user_id, file_url, parsed_cv_text, parsed_cv, cv_layout_analysis, cv_hash),
+                    self._save_jd_record(jd_text, parsed_jd, jd_hash)
+                )
+            else:
+                cv_id = await self._save_cv_record(
+                    user_id, file_url, parsed_cv_text, parsed_cv, cv_layout_analysis, cv_hash
+                )
+                jd_id = None
             
-            # Create optimization request
+            # Create optimization request (depends on cv_id and jd_id)
             request_id = await self._create_optimization_request(user_id, cv_id, jd_id)
             
             return cv_id, jd_id, request_id
@@ -545,6 +582,7 @@ class CVAnalyser:
             logger.debug("Sending request to LLM for CV analysis")
             results = await self.llm.get_response(
                 prompt=CV_ANALYST.format(cv_text=parsed_cv, job_description=job_description, cv_layout_analysis=cv_layout_analysis),
+                # expecting_longer_output=True,
                 need_json_output=True,
                 schema=ATSAnalysisResponse
             )

@@ -147,7 +147,7 @@ class CVOptRepository:
     async def get_optimization_report_by_id(self, report_id: str) -> Optional[Dict]:
         """Fetch an optimization report by its ID."""
         db = await self._get_client()
-        response = await db.table("cv_optimization_reports").select("*").eq("report_id", report_id).execute()
+        response = await db.table("cv_optimization_reports").select("*, cv!left(parsed_content ->> title, cv_layout_analysis ->> original_filename), job_postings!left(parsed_data ->> job_title)").eq("report_id", report_id).execute()
         return response.data[0] if response.data else None
 
     async def get_optmization_reports_by_user(self, user_id: str) -> list[Dict]:
@@ -159,7 +159,7 @@ class CVOptRepository:
     async def get_optmization_report_by_request_id(self, request_id: str) -> Optional[Dict]:
         """Fetch an optimization report by its associated request ID."""
         db = await self._get_client()
-        response = await db.table("cv_optimization_reports").select("*").eq("request_id", request_id).execute()
+        response = await db.table("cv_optimization_reports").select("*, cv!left(parsed_content ->> title, cv_layout_analysis ->> original_filename), job_postings!left(parsed_data ->> job_title)").eq("request_id", request_id).execute()
         return response.data[0] if response.data else None
     
     async def get_optmization_report_by_cv_id(self, cv_id: str, jd_id: str = None, no_jd: bool = False) -> list[Dict]:
