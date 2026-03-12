@@ -674,12 +674,12 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                       ],
 
                       SizedBox(height: context.h(24)),
-                    ], // Column children
-                  ), // Column
-                ), // Padding
-              ), // SingleChildScrollView
-            ), // Container
-          ), // Positioned
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

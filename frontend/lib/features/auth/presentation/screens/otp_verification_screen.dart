@@ -195,7 +195,6 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
             ),
           ),
 
-          // Container بيتحدد بالمحتوى من تحت
           Positioned(
             left: 0,
             right: 0,
@@ -498,8 +497,9 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
   String get _resendStatusText {
     if (_isBlocked) return 'Try again in $_resendTimer s';
     if (!_isResendActive) return 'Resend in $_resendTimer s';
-    if (_resendAttempts >= _maxResendAttempts)
+    if (_resendAttempts >= _maxResendAttempts) {
       return 'Maximum attempts reached';
+    }
     return 'Resend Code';
   }
 

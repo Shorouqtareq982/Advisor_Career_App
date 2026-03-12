@@ -18,7 +18,7 @@ class SettingsSwitch extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, c) {
         final w = c.maxWidth;
-        final scale = (w * 0.004).clamp(0.85, 1.10); // ✅ scale responsive
+        final scale = (w * 0.004).clamp(0.85, 1.10);
 
         return Transform.scale(
           scale: scale,

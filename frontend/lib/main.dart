@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'core/services/supabase_service.dart';
+import 'core/network/api_client.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,6 +11,9 @@ void main() async {
   try {
     await SupabaseService.initialize();
     print('Supabase initialized successfully');
+
+    apiClient.init();
+    print(' ApiClient initialized');
   } catch (e) {
     debugPrint(' Failed to initialize Supabase: $e');
   }

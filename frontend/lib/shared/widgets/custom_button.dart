@@ -28,7 +28,7 @@ class CustomButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final buttonHeight = height ?? 48.0;
     final borderRadius = context.r(50);
-    final loadingSize = 24.0;
+    const loadingSize = 24.0;
 
     final bgColor = backgroundColor ??
         (isPrimary ? AppColors.lightBlue700 : AppColors.lightBlue500);

@@ -39,7 +39,7 @@ abstract class AuthRepository {
   /// Sign out
   Future<void> signOut();
 
-  // 🗑️ DELETE ACCOUNT METHODS
+  // DELETE ACCOUNT METHODS
 
   /// Send OTP for account deletion
   Future<bool> sendDeleteAccountOTP(String method);

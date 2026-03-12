@@ -34,20 +34,27 @@ dependencies:
   pinput: ^6.0.1
   flutter_svg: ^2.2.3
   app_links: ^6.3.2
+  cached_network_image: ^3.3.0
 
   # File picking (for CV upload)
   file_picker: ^10.3.10
   dotted_border: ^2.1.0
+  image_picker: ^1.0.4
 
+  # State Management (optional)
   flutter_bloc: ^8.1.3
   equatable: ^2.0.5
-  image_picker: ^1.0.4
+
+  # Notifications
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.2
+
+  # Utils
   url_launcher: ^6.2.4
-  path_provider: ^2.1.1
-  permission_handler: ^11.0.1
-  cached_network_image: ^3.3.0
+  path_provider: ^2.1.1              # ✨ مرة واحدة
+  permission_handler: ^11.3.1        # ✨ مرة واحدة (آخر إصدار)
+  intl: ^0.18.1
+  http_parser: ^4.0.2
 
 #           
 # Dev Dependencies
@@ -57,10 +64,10 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^3.0.0
 
-  #     App Launcher Icon Generator
+  # App Launcher Icon Generator
   flutter_launcher_icons: ^0.13.1
 
-#     Launcher Icons Config
+# Launcher Icons Config
 flutter_launcher_icons:
   android: true
   ios: true
@@ -87,6 +94,9 @@ flutter:
     - assets/images/reset_password.png
     - assets/images/new_password.png
     - assets/images/success_illustration.png
+    - assets/images/empty_resume.png
+    - assets/images/home_light.png
+    - assets/images/home_dark.png
 
     # Branding & Onboarding
     - assets/images/branding/
@@ -95,7 +105,7 @@ flutter:
     # Home icons
     - assets/images/home_icons/
 
-    #     Alerts icons folder (بدل ما تكتبي كل صورة)
+    # Alerts icons folder
     - assets/images/alerts/
 
     # Your icons

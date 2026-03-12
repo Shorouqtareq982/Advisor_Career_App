@@ -33,10 +33,10 @@ class _SettingsAccountScreenState extends State<SettingsAccountScreen> {
                   showBackButton: true,
                   actions: [
                     SizedBox(
-                      width: context.w(32),
-                      height: context.w(32),
+                      width: context.w(105),
+                      height: context.h(40),
                       child: Image.asset(
-                        'assets/images/branding/logo.png',
+                        'assets/images/branding/growza_logo.png',
                         fit: BoxFit.contain,
                         errorBuilder: (_, __, ___) => Icon(
                           Icons.person,

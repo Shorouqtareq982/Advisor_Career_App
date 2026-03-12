@@ -10,6 +10,7 @@ class AlertModel extends AlertEntity {
     required super.type,
   });
 
+  @override
   AlertModel copyWith({
     String? id,
     String? title,

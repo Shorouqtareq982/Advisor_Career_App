@@ -9,7 +9,6 @@ import 'package:dotted_border/dotted_border.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../core/utils/file_utils.dart';
-import '../../../../shared/widgets/app_logo.dart';
 import '../../../../shared/widgets/custom_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
@@ -101,12 +100,14 @@ class _CareerPreferencesScreenState
     if (user?.cvUrl != null && user!.cvUrl!.isNotEmpty) {
       try {
         final success = await FileUtils.openFile(user.cvUrl!);
-        if (!success && mounted)
+        if (!success && mounted) {
           _showSnack('Could not open file. No app found to open PDF.',
               isError: true);
+        }
       } catch (e) {
-        if (mounted)
+        if (mounted) {
           _showSnack('Could not open file: ${e.toString()}', isError: true);
+        }
       }
     }
   }
@@ -148,17 +149,19 @@ class _CareerPreferencesScreenState
         final success =
             await FileUtils.downloadFile(user.cvUrl!, onProgress: (_) {});
         if (mounted) Navigator.pop(context);
-        if (mounted)
+        if (mounted) {
           _showSnack(
             success
                 ? 'CV downloaded successfully to Downloads folder'
                 : 'Could not download file',
             isError: !success,
           );
+        }
       } catch (e) {
         if (mounted) Navigator.pop(context);
-        if (mounted)
+        if (mounted) {
           _showSnack('Could not download file: ${e.toString()}', isError: true);
+        }
       }
     }
   }
@@ -188,14 +191,16 @@ class _CareerPreferencesScreenState
           if (success && mounted) {
             await ref.read(authProvider.notifier).refreshUser();
             _loadUserPreferences();
-            if (mounted)
+            if (mounted) {
               _showSnack('CV uploaded successfully!', isError: false);
+            }
           }
         }
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         _showSnack('Failed to upload CV: ${e.toString()}', isError: true);
+      }
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
@@ -434,14 +439,13 @@ class _CareerPreferencesScreenState
             : context.sp(13);
 
     // ── Adaptive colors ────────────────────────────────────────────────────────
-    final bgColor = isDark ? AppColors.blue700 : AppColors.grey200;
     final titleColor = isDark ? AppColors.grey50 : AppColors.blue900;
     final viewBorderColor = isDark ? AppColors.blue400 : AppColors.grey600;
     final accentColor =
         isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
 
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: LayoutBuilder(
@@ -464,7 +468,12 @@ class _CareerPreferencesScreenState
                             color: titleColor, size: context.icon(20)),
                       ),
                       const Spacer(),
-                      const AppLogo(),
+                      Image.asset(
+                        'assets/images/branding/growza_logo.png',
+                        width: context.w(105),
+                        height: context.h(40),
+                        fit: BoxFit.contain,
+                      ),
                       const Spacer(),
                       SizedBox(width: context.icon(20)),
                     ],
@@ -695,7 +704,7 @@ class _CareerPreferencesScreenState
                               child: DottedBorder(
                                 borderType: BorderType.RRect,
                                 radius: Radius.circular(context.r(12)),
-                                color: accentColor, // ✅
+                                color: accentColor,
                                 dashPattern: const [6, 3],
                                 child: Container(
                                   width: double.infinity,

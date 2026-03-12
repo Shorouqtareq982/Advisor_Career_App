@@ -7,7 +7,6 @@ import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../shared/widgets/app_logo.dart';
 import '../../../../shared/widgets/custom_button.dart';
 import '../../../auth/presentation/widgets/custom_text_field.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
 
 class ProfileInformationScreen extends ConsumerStatefulWidget {
   final bool fromHome;
@@ -55,7 +54,6 @@ class _ProfileInformationScreenState
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // ✅ ألوان فقط (بدون تغيير أي Layout)
     final cardBg = isDark ? const Color(0xFF1E1E2F) : Colors.white;
     final titleColor = isDark ? AppColors.grey50 : AppColors.blue900;
     final descColor = isDark ? Colors.grey.shade400 : AppColors.grey800;

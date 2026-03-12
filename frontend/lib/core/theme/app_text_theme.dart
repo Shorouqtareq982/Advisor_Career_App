@@ -153,7 +153,6 @@ extension ResponsiveText on BuildContext {
     );
   }
 
-  // Method إضافي لو عاوز تعمل الـ responsive لنص معين
   Widget text(
     String data, {
     required TextStyle style,

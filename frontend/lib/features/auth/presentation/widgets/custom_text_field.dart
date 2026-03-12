@@ -80,8 +80,9 @@ class _CustomTextFieldState extends State<CustomTextField> {
 
     Color getBorderColor() {
       if (_displayError != null) return AppColors.red600;
-      if (_isFocused)
+      if (_isFocused) {
         return isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
+      }
       return widget.useTheme
           ? (isDark ? AppColors.blue400 : AppColors.grey600)
           : AppColors.grey600;
@@ -97,8 +98,9 @@ class _CustomTextFieldState extends State<CustomTextField> {
 
     Color getIconColor() {
       if (!widget.enabled) return AppColors.grey700.withOpacity(0.5);
-      if (_isFocused)
+      if (_isFocused) {
         return isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
+      }
       return widget.useTheme
           ? (isDark ? AppColors.blue200 : AppColors.grey700)
           : AppColors.grey700;
