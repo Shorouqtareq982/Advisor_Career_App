@@ -61,21 +61,20 @@ class CVAnalyser:
             
             # Route to appropriate handler based on cache status
             if cv_record and jd_record:
-                result = await self._handle_both_cached(user_id, cv_record, jd_record)
+                return await self._handle_both_cached(user_id, cv_record, jd_record)
             elif cv_record:
-                result = await self._handle_cv_cached_only(user_id, cv_record, jd_text, jd_hash)
+                return await self._handle_cv_cached_only(user_id, cv_record, jd_text, jd_hash)
             elif jd_record:
-                result = await self._handle_jd_cached_only(
+                return await self._handle_jd_cached_only(
                     user_id, file_url, jd_record, parse_buf, file_size_kb, 
                     cv_file.content_type, cv_hash
                 )
             else:
-                result = await self._handle_no_cache(
+                return await self._handle_no_cache(
                     user_id, file_url, parse_buf, file_size_kb, 
                     cv_file.content_type, jd_text, cv_hash, jd_hash
                 )
-                
-                return result
+
         except HTTPException:
             raise
         except Exception as e:
@@ -582,7 +581,6 @@ class CVAnalyser:
             logger.debug("Sending request to LLM for CV analysis")
             results = await self.llm.get_response(
                 prompt=CV_ANALYST.format(cv_text=parsed_cv, job_description=job_description, cv_layout_analysis=cv_layout_analysis),
-                # expecting_longer_output=True,
                 need_json_output=True,
                 schema=ATSAnalysisResponse
             )
