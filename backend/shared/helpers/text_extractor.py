@@ -4,7 +4,7 @@ import logging
 from typing import Union, BinaryIO, List, Tuple
 from fastapi import UploadFile
 from starlette.datastructures import UploadFile as StarletteUploadFile
-import pymupdf
+import pymupdf 
 import pytesseract
 from PIL import Image
 from docx import Document

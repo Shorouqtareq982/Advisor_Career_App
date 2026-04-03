@@ -1,98 +1,203 @@
 """
-Backend 1 - Final Router
+Career Builder Router ✅
 """
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import Dict, Any
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from typing import Optional
 from uuid import UUID
+from pydantic import BaseModel
 import logging
-from features.career_builder.repositories.career_repository import CareerRepository
+
 from features.career_builder.services.career_analysis_service import CareerAnalysisService
+from features.career_builder.ml_models.realism_checker import RealismChecker
+from features.career_builder.repositories.career_repository import CareerRepository
+from shared.helpers.document_parser import DocumentParser
+from shared.providers.supabase.database import db as supabase_db  # ✅ استيراد كائن db
 
 logger = logging.getLogger(__name__)
-
-router = APIRouter(
-    prefix="/career/backend1",
-    tags=["career-backend1"]
-)
+router = APIRouter(prefix="/career", tags=["career-builder"])
 
 
-# =====================================================
-# DEPENDENCY - بدون وسيط
-# =====================================================
-
-async def get_analysis_service() -> CareerAnalysisService:
-    """Get Backend 1 analysis service"""
-    repository = CareerRepository()  # ← بدون وسيط
-    return CareerAnalysisService(repository)
+class ConfirmRequest(BaseModel):
+    cv_id: UUID
+    track_id: int
+    requested_weeks: int
+    user_level: Optional[str] = None
 
 
 # =====================================================
-# MAIN ENDPOINT - COMPLETE ANALYSIS
+# ENDPOINT 1: /analyze
 # =====================================================
-
-@router.post(
-    "/analyze",
-    status_code=status.HTTP_200_OK,
-    summary="🎯 Backend 1 - Complete CV Analysis"
-)
-async def analyze_cv_backend1(
-    cv_id: UUID,
-    track_id: int,
-    service: CareerAnalysisService = Depends(get_analysis_service)
-) -> Dict[str, Any]:
-    """Backend 1 - Complete Analysis"""
+@router.post("/analyze")
+async def analyze_cv(
+    cv_file:  UploadFile = File(...),
+    track_id: int        = Form(...),
+):
+    """
+    تحميل وتحليل السيرة الذاتية ومقارنتها بمسار وظيفي محدد.
+    """
     try:
-        logger.info(f"🎯 Backend 1 Analysis: cv_id={cv_id}, track_id={track_id}")
-        
-        # Run complete analysis
-        result = await service.analyze_cv_for_track(
+        # ✅ إنشاء repository مع تمرير db مباشرة (بدون keyword)
+        repo   = CareerRepository(supabase_db)
+        parser = DocumentParser()
+
+        # استخراج النص والبيانات المنظمة من ملف PDF
+        cv_text, parsed_cv = await parser.parse_cv(file=cv_file)
+
+        if not cv_text:
+            raise HTTPException(
+                status_code=400,
+                detail="فشل استخراج النص من الـ CV"
+            )
+
+        # حفظ الـ CV في قاعدة البيانات
+        cv_id = await repo.save_cv(
+            file_url=cv_file.filename,      # اسم الملف أو الرابط
+            text_content=cv_text,
+            parsed_content=parsed_cv or {}
+        )
+
+        if not cv_id:
+            raise HTTPException(status_code=500, detail="فشل حفظ الـ CV")
+
+        # تحليل المهارات والمقارنة مع المسار
+        service  = CareerAnalysisService(repository=repo)
+        analysis = await service.analyze_cv_for_track(
             cv_id=cv_id,
-            track_id=track_id
+            track_id=track_id,
+            requested_weeks=0,               # غير مستخدم في التحليل حالياً
         )
-        
-        # Convert to output contract
-        output_contract = service.to_output_contract(result)
-        
-        logger.info(
-            f"✅ Analysis complete: "
-            f"level={result.detected_level}, "
-            f"gaps={result.missing_skills_count}, "
-            f"quality={result.analysis_quality:.2f}"
+
+        # تخزين نتيجة التحليل في الكاش
+        await repo.save_analysis_cache(
+            cv_id=cv_id,
+            track_id=track_id,
+            analysis_data={
+                "missing_skills":   analysis.missing_skills,
+                "matched_skills":   analysis.matched_skills,
+                "match_percentage": analysis.match_percentage,
+                "matching_method":  analysis.matching_method,
+                "detected_level":   analysis.detected_level,
+                "level_confidence": analysis.level_confidence,
+                "level_reasoning":  analysis.level_reasoning,
+                "track_name":       analysis.track_name,
+                "cv_skills":        analysis.cv_skills,
+                "analysis_quality": analysis.analysis_quality,
+            }
         )
-        
-        return output_contract
-        
+
+        # تجهيز الرد
+        return {
+            "status":   "success",
+            "cv_id":    str(cv_id),
+            "track_id": track_id,
+
+            "track_name":        analysis.track_name,
+            "detected_level":    analysis.detected_level,
+            "level_confidence":  round(analysis.level_confidence, 2),
+            "level_reasoning":   analysis.level_reasoning,
+
+            "missing_skills": [
+                {
+                    "skill_name":     s['skill_name'],
+                    "category":       s.get('category', 'General'),
+                    "importance":     s.get('importance', 3),
+                    "duration_weeks": s.get('duration_weeks', 4),
+                }
+                for s in analysis.missing_skills
+            ],
+
+            "matched_skills": [
+                {
+                    "skill_name": s['skill_name'],
+                    "category":   s.get('category', 'General'),
+                }
+                for s in analysis.matched_skills
+            ],
+
+            "summary": {
+                "total_required":   len(analysis.missing_skills) + len(analysis.matched_skills),
+                "already_have":     len(analysis.matched_skills),
+                "need_to_learn":    len(analysis.missing_skills),
+                "match_percentage": analysis.match_percentage,
+                "matching_method":  analysis.matching_method,
+            }
+        }
+
+    except HTTPException:
+        raise
     except ValueError as e:
-        logger.error(f"Validation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Analysis failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Backend 1 analysis failed: {str(e)}"
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =====================================================
+# ENDPOINT 2: /confirm
+# =====================================================
+@router.post("/confirm")
+async def confirm_duration(request: ConfirmRequest):
+    """
+    تأكيد المدة المختارة بعد عرض التحليل، مع التحقق من واقعيتها.
+    """
+    try:
+        # ✅ نفس الشيء هنا: تمرير db مباشرة
+        repo   = CareerRepository(supabase_db)
+        cached = await repo.get_analysis_cache(
+            cv_id=request.cv_id,
+            track_id=request.track_id
+        )
+        if not cached:
+            raise HTTPException(
+                status_code=400,
+                detail="لازم تعمل /analyze الأول قبل /confirm"
+            )
+
+        # تحديد المستوى (من المستخدم إن وجد، وإلا المستوى المُكتشف)
+        level = (
+            request.user_level
+            if request.user_level in ('beginner', 'intermediate', 'advanced')
+            else cached['detected_level']
         )
 
+        checker = RealismChecker()
+        realism = checker.check_realism(
+            requested_weeks=request.requested_weeks,
+            missing_skills=cached['missing_skills'],
+            level=level
+        )
 
-# =====================================================
-# HEALTH CHECK
-# =====================================================
+        return {
+            "status":     "success",
+            "cv_id":      str(request.cv_id),
+            "track_id":   request.track_id,
+            "track_name": cached['track_name'],
 
-@router.get("/health")
-async def backend1_health():
-    """Backend 1 health check"""
-    return {
-        "status": "healthy",
-        "backend": "Backend 1 - Analysis Engine",
-        "version": "2.1.0",
-        "capabilities": [
-            "CV Parsing (multi-format)",
-            "LLM Skill Extraction",
-            "Hybrid Level Detection",
-            "Smart Gap Scoring",
-            "Time Realism Logic",
-            "Standardized Output Contract"
-        ]
-    }
+            "detected_level":   cached['detected_level'],
+            "level_used":       level,
+            "level_confidence": round(cached['level_confidence'], 2),
+
+            "realism": {
+                "requested_weeks":   realism.requested_weeks,
+                "safe_min_weeks":    realism.safe_min_weeks,
+                "recommended_weeks": realism.recommended_weeks,
+                "is_below_safe":     realism.is_below_safe,
+                "adjustment":        realism.adjustment,
+                "warning":           realism.warning,
+            },
+
+            "missing_skills": cached['missing_skills'],
+            "matched_skills": cached['matched_skills'],
+
+            "metadata": {
+                "match_percentage": cached['match_percentage'],
+                "matching_method":  cached['matching_method'],
+                "analysis_quality": cached['analysis_quality'],
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Confirm failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

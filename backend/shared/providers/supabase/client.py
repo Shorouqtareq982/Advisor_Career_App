@@ -3,7 +3,6 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from pathlib import Path
 
-# المسار الثابت لمجلد backend
 backend_dir = Path(__file__).parent.parent.parent.parent  # 4 parents = backend/
 env_path = backend_dir / '.env'
 

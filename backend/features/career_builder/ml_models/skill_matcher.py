@@ -1,361 +1,416 @@
 """
-LLM-Powered Skill Matcher
-Uses AI to intelligently match CV skills to database skills
-Much more accurate than rule-based matching
+Hybrid Career Analyzer - LLM-First + Smart Compound Skill Fallback ✅
 """
-from typing import List, Dict, Optional
-from dataclasses import dataclass
-from pydantic import BaseModel, Field
-from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
+import json
+import re
 import logging
+from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass
+from uuid import UUID
+
+from features.career_builder.ml_models.skill_extractor import SkillExtractor
+from features.career_builder.ml_models.level_detector import LevelDetector
+from shared.providers.llm_models.llm_provider import create_llm_provider
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
-
-# =====================================================
-# DATACLASSES
-# =====================================================
 
 @dataclass
-class SkillMatch:
-    """Represents a matched skill"""
-    cv_skill: str
-    db_skill_id: int
-    db_skill_name: str
-    category: str
-    confidence: float
-    match_type: str
-    reasoning: Optional[str] = None
+class HybridAnalysisResult:
+    source: str
+    matching_method: str
+    cv_skills: List[str]
+    required_skills: List[str]
+    matched_skills: List[Dict]
+    missing_skills: List[Dict]
+    skill_levels: Optional[List[Dict]] = None
+    match_percentage: float = 0.0
+    estimated_weeks: int = 0
 
 
-# =====================================================
-# PYDANTIC SCHEMAS FOR LLM
-# =====================================================
+class HybridCareerAnalyzer:
 
-class SkillMatchResult(BaseModel):
-    """Single skill match result from LLM"""
-    cv_skill: str = Field(description="Original skill from CV")
-    matched_db_skill: str = Field(description="Best matching database skill name")
-    confidence: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Match confidence (0-1)"
-    )
-    reasoning: str = Field(description="Brief explanation of why they match")
+    def __init__(self, repository=None):
+        logger.debug("🔍 Initializing HybridCareerAnalyzer")
 
+        # ✅ بياخد الـ repository من بره أو بيعمله بنفسه
+        if repository:
+            self.repo = repository
+        else:
+            from features.career_builder.repositories.career_repository import CareerRepository
+            from shared.providers.supabase.database import db as supabase_db
+            self.repo = CareerRepository(supabase_db)
 
-class SkillMatchingResponse(BaseModel):
-    """Complete skill matching response from LLM"""
-    matches: List[SkillMatchResult] = Field(
-        description="List of matched skills"
-    )
+        self.skill_extractor = SkillExtractor()
+        self.level_detector  = LevelDetector()
+        self.llm             = create_llm_provider()
+        logger.debug("✅ HybridCareerAnalyzer ready")
 
-
-# =====================================================
-# LLM PROMPT
-# =====================================================
-
-SKILL_MATCHING_PROMPT = """
-You are an expert technical skill matcher. Your job is to match skills extracted from a CV to our standardized database of skills.
-
-**CV Skills (extracted from resume):**
-{cv_skills}
-
-**Database Skills (our standardized list):**
-{db_skills}
-
----
-
-**Your Task:**
-For each CV skill, find the BEST matching database skill. Be smart about:
-- Synonyms (e.g., "JS" = "JavaScript", "React.js" = "React")
-- Different naming conventions (e.g., "Node" = "Node.js", "Postgres" = "PostgreSQL")
-- Related concepts (e.g., "Django" matches "Backend Frameworks")
-- Abbreviations (e.g., "K8s" = "Kubernetes")
-
-**Matching Rules:**
-1. **Exact or Synonym match** → confidence 0.9-1.0
-2. **Related/Similar technologies** → confidence 0.7-0.9
-3. **Same category but different tool** → confidence 0.5-0.7
-4. **No good match** → don't include it
-
-**IMPORTANT:**
-- Only include matches with confidence ≥ 0.65
-- If a CV skill doesn't match any database skill well, skip it
-- Be conservative - don't force matches
-
-**Output Format:**
-Return ONLY a JSON object:
-
-{{
-  "matches": [
-    {{
-      "cv_skill": "React.js",
-      "matched_db_skill": "React",
-      "confidence": 0.95,
-      "reasoning": "React.js is standard name for React framework"
-    }},
-    {{
-      "cv_skill": "Postgres",
-      "matched_db_skill": "PostgreSQL",
-      "confidence": 0.95,
-      "reasoning": "Postgres is common abbreviation for PostgreSQL"
-    }}
-  ]
-}}
-
-**Examples of Good Matching:**
-- "JS" → "JavaScript" (0.95, synonym)
-- "Node" → "Node.js" (0.95, standard naming)
-- "AWS Lambda" → "AWS" (0.85, specific service under AWS umbrella)
-- "FastAPI" → "Backend Frameworks" (0.75, related category)
-
-**Examples of What NOT to Match:**
-- "Excel" → "Python" (completely different)
-- "Leadership" → "Docker" (not technical match)
-"""
-
-
-# =====================================================
-# LLM-POWERED SKILL MATCHER
-# =====================================================
-
-class SkillMatcher:
-    """
-    LLM-powered skill matcher
-    Replaces rule-based matching with intelligent AI matching
-    """
-    
-    def __init__(self, llm: LLMProvider = None):
-        self.llm = llm or create_llm_provider()
-        self.cache = {}  # Cache results to avoid redundant LLM calls
-    
-    async def match_skills(
+    # =====================================================
+    # الطريقة الرئيسية
+    # =====================================================
+    async def analyze(
         self,
-        cv_skills: List[str],
-        db_skills: List[Dict],
-        threshold: float = 0.65
-    ) -> List[SkillMatch]:
-        """
-        Match CV skills to database skills using LLM
-        
-        Args:
-            cv_skills: Skills extracted from CV
-            db_skills: Available skills in database
-            threshold: Minimum confidence threshold
-        
-        Returns:
-            List of SkillMatch objects
-        """
-        if not cv_skills or not db_skills:
-            return []
-        
-        logger.info(f"Matching {len(cv_skills)} CV skills to {len(db_skills)} DB skills...")
-        
-        # Check cache
-        cache_key = self._get_cache_key(cv_skills, db_skills)
-        if cache_key in self.cache:
-            logger.info("Using cached matching results")
-            return self.cache[cache_key]
-        
-        try:
-            # Call LLM for intelligent matching
-            llm_matches = await self._match_with_llm(cv_skills, db_skills)
-            
-            # Convert to SkillMatch objects
-            matches = self._convert_to_skill_matches(llm_matches, db_skills, threshold)
-            
-            # Cache results
-            self.cache[cache_key] = matches
-            
-            logger.info(f"Successfully matched {len(matches)} skills")
-            return matches
-            
-        except Exception as e:
-            logger.error(f"LLM matching failed: {e}")
-            # Fallback to simple exact matching
-            return self._fallback_exact_matching(cv_skills, db_skills, threshold)
-    
-    async def _match_with_llm(
-        self,
-        cv_skills: List[str],
-        db_skills: List[Dict]
-    ) -> List[SkillMatchResult]:
-        """Use LLM to match skills"""
-        
-        # Format skills for prompt
-        cv_skills_formatted = "\n".join([f"- {skill}" for skill in cv_skills])
-        db_skills_formatted = "\n".join([
-            f"- {skill['skill_name']} ({skill.get('category', 'General')})"
-            for skill in db_skills[:100]  # Limit to avoid token overflow
-        ])
-        
-        # Prepare prompt
-        prompt = SKILL_MATCHING_PROMPT.format(
-            cv_skills=cv_skills_formatted,
-            db_skills=db_skills_formatted
+        cv_id: UUID,
+        track_id: Optional[int] = None,
+        job_description: Optional[str] = None
+    ) -> HybridAnalysisResult:
+        cv_data = await self.repo.get_cv_by_id(cv_id)
+        if not cv_data:
+            raise ValueError(f"CV not found: {cv_id}")
+
+        cv_text = cv_data.get('text_content', '')
+        cv_skills_result = await self.skill_extractor.extract_skills_from_cv(
+            cv_text=cv_text,
+            parsed_cv_data=cv_data.get('parsed_content', {})
         )
-        
-        # Call LLM
-        logger.info("Calling LLM for skill matching...")
-        response = self.llm.get_response(
-            prompt=prompt,
-            need_json_output=True,
-            schema=SkillMatchingResponse
-        )
-        
-        if isinstance(response, SkillMatchingResponse):
-            return response.matches
-        elif isinstance(response, dict) and 'matches' in response:
-            return [SkillMatchResult(**m) for m in response['matches']]
-        
-        logger.warning("LLM returned unexpected format")
-        return []
-    
-    def _convert_to_skill_matches(
+        cv_skills = cv_skills_result.get('normalized_skills', [])
+        logger.debug(f"🔍 Extracted {len(cv_skills)} CV skills")
+
+        if track_id:
+            return await self._analyze_with_database(cv_text, cv_skills, track_id)
+        elif job_description:
+            return await self._analyze_dynamic(cv_text, cv_skills, job_description)
+        else:
+            raise ValueError("Must provide track_id or job_description")
+
+    # =====================================================
+    # التحليل من قاعدة البيانات
+    # =====================================================
+    async def _analyze_with_database(
         self,
-        llm_matches: List[SkillMatchResult],
-        db_skills: List[Dict],
-        threshold: float
-    ) -> List[SkillMatch]:
-        """Convert LLM results to SkillMatch objects"""
-        
-        # Create lookup map
-        db_skill_map = {
-            skill['skill_name'].lower(): skill
-            for skill in db_skills
-        }
-        
-        matches = []
-        
-        for llm_match in llm_matches:
-            # Skip low confidence matches
-            if llm_match.confidence < threshold:
-                continue
-            
-            # Find matching database skill
-            db_skill_name_lower = llm_match.matched_db_skill.lower()
-            db_skill = db_skill_map.get(db_skill_name_lower)
-            
-            if not db_skill:
-                # Try fuzzy lookup
-                db_skill = self._fuzzy_db_lookup(
-                    llm_match.matched_db_skill,
-                    db_skills
-                )
-            
-            if db_skill:
-                matches.append(SkillMatch(
-                    cv_skill=llm_match.cv_skill,
-                    db_skill_id=db_skill['skill_id'],
-                    db_skill_name=db_skill['skill_name'],
-                    category=db_skill.get('category', 'General'),
-                    confidence=llm_match.confidence,
-                    match_type='llm',
-                    reasoning=llm_match.reasoning
-                ))
-        
-        return matches
-    
-    def _fuzzy_db_lookup(
-        self,
-        skill_name: str,
-        db_skills: List[Dict]
-    ) -> Optional[Dict]:
-        """Fuzzy lookup in database skills"""
-        skill_lower = skill_name.lower()
-        
-        for db_skill in db_skills:
-            db_name_lower = db_skill['skill_name'].lower()
-            
-            # Check if one contains the other
-            if skill_lower in db_name_lower or db_name_lower in skill_lower:
-                return db_skill
-        
-        return None
-    
-    def _fallback_exact_matching(
-        self,
+        cv_text: str,
         cv_skills: List[str],
-        db_skills: List[Dict],
-        threshold: float
-    ) -> List[SkillMatch]:
-        """Simple exact matching fallback when LLM fails"""
-        
-        logger.info("Using fallback exact matching")
-        
-        matches = []
-        cv_skills_lower = {s.lower(): s for s in cv_skills}
-        
-        for db_skill in db_skills:
-            db_name = db_skill['skill_name']
-            db_name_lower = db_name.lower()
-            
-            # Check for exact match
-            if db_name_lower in cv_skills_lower:
-                matches.append(SkillMatch(
-                    cv_skill=cv_skills_lower[db_name_lower],
-                    db_skill_id=db_skill['skill_id'],
-                    db_skill_name=db_name,
-                    category=db_skill.get('category', 'General'),
-                    confidence=1.0,
-                    match_type='exact',
-                    reasoning='Exact name match'
-                ))
-        
-        return matches
-    
-    def _get_cache_key(
-        self,
-        cv_skills: List[str],
-        db_skills: List[Dict]
-    ) -> str:
-        """Generate cache key for this matching request"""
-        cv_key = '|'.join(sorted(cv_skills))
-        db_key = '|'.join(sorted([s['skill_name'] for s in db_skills[:20]]))
-        return f"{cv_key}::{db_key}"
-    
-    def get_unmatched_skills(
-        self,
-        cv_skills: List[str],
-        matches: List[SkillMatch]
-    ) -> List[str]:
-        """Get CV skills that didn't match any database skill"""
-        matched_cv = {m.cv_skill.lower() for m in matches}
-        return [
-            skill for skill in cv_skills
-            if skill.lower() not in matched_cv
+        track_id: int
+    ) -> HybridAnalysisResult:
+        track_skills = await self.repo.get_skills_by_track(track_id)
+        if not track_skills:
+            logger.warning("⚠️ No track skills, falling back to dynamic")
+            return await self._analyze_dynamic(
+                cv_text, cv_skills, "General technical position (fallback)"
+            )
+
+        required_names = [
+            s['skill_name'] if isinstance(s, dict) else s
+            for s in track_skills
         ]
-    
-    def get_match_quality_report(
+
+        matched_names, missing_names, method = await self._match_with_llm_or_fallback(
+            cv_skills=cv_skills,
+            required_skills=required_names
+        )
+
+        matched_skills, missing_skills = self._build_skill_details(
+            matched_names, missing_names, track_skills
+        )
+
+        total     = len(required_names)
+        match_pct = (len(matched_names) / total * 100) if total else 0
+        est_weeks = sum(s.get('duration_weeks', 4) for s in missing_skills)
+
+        return HybridAnalysisResult(
+            source='database',
+            matching_method=method,
+            cv_skills=cv_skills,
+            required_skills=required_names,
+            matched_skills=matched_skills,
+            missing_skills=missing_skills,
+            match_percentage=round(match_pct, 1),
+            estimated_weeks=est_weeks
+        )
+
+    # =====================================================
+    # التحليل الديناميكي
+    # =====================================================
+    async def _analyze_dynamic(
         self,
-        matches: List[SkillMatch]
-    ) -> Dict[str, any]:
-        """
-        Generate quality report for matches
-        Useful for debugging and transparency
-        """
-        if not matches:
-            return {
-                'total_matches': 0,
-                'average_confidence': 0.0,
-                'quality': 'no_matches'
-            }
-        
-        total = len(matches)
-        avg_confidence = sum(m.confidence for m in matches) / total
-        
-        high_confidence = sum(1 for m in matches if m.confidence >= 0.9)
-        medium_confidence = sum(1 for m in matches if 0.7 <= m.confidence < 0.9)
-        low_confidence = sum(1 for m in matches if m.confidence < 0.7)
-        
+        cv_text: str,
+        cv_skills: List[str],
+        job_description: str
+    ) -> HybridAnalysisResult:
+        required_skills = await self._extract_required_skills_from_jd(job_description)
+        if not required_skills:
+            return HybridAnalysisResult(
+                source='dynamic', matching_method='failed',
+                cv_skills=cv_skills, required_skills=[],
+                matched_skills=[], missing_skills=[],
+                match_percentage=0.0, estimated_weeks=0
+            )
+
+        matched_names, missing_names, method = await self._match_with_llm_or_fallback(
+            cv_skills=cv_skills,
+            required_skills=required_skills
+        )
+
+        matched_skills = [{'skill_name': s} for s in matched_names]
+        missing_skills = [{'skill_name': s, 'duration_weeks': 4} for s in missing_names]
+        total          = len(required_skills)
+
+        return HybridAnalysisResult(
+            source='dynamic',
+            matching_method=method,
+            cv_skills=cv_skills,
+            required_skills=required_skills,
+            matched_skills=matched_skills,
+            missing_skills=missing_skills,
+            match_percentage=round(len(matched_names) / total * 100, 1) if total else 0,
+            estimated_weeks=len(missing_skills) * 4
+        )
+
+    # =====================================================
+    # LLM-First مع Compound Fallback
+    # =====================================================
+    async def _match_with_llm_or_fallback(
+        self,
+        cv_skills: List[str],
+        required_skills: List[str]
+    ) -> Tuple[List[str], List[str], str]:
+        try:
+            matched, missing = await self._llm_match_skills(cv_skills, required_skills)
+
+            if not matched and not missing:
+                raise ValueError("LLM returned empty results")
+
+            unknown = set(matched + missing) - set(required_skills)
+            if unknown:
+                logger.warning(f"⚠️ LLM hallucinated: {unknown}")
+                raise ValueError("Hallucinated skills detected")
+
+            returned              = set(matched + missing)
+            expected              = set(required_skills)
+            missing_from_response = expected - returned
+            if missing_from_response:
+                logger.warning(f"⚠️ LLM skipped {len(missing_from_response)} skills")
+                missing = missing + list(missing_from_response)
+
+            logger.info(f"✅ LLM matched: {len(matched)}, missing: {len(missing)}")
+            return matched, missing, 'llm'
+
+        except Exception as e:
+            logger.warning(f"⚠️ LLM failed ({e}), using compound fallback")
+            matched, missing = self._compound_skill_fallback(cv_skills, required_skills)
+            return matched, missing, 'compound_fallback'
+
+    async def _llm_match_skills(
+        self,
+        cv_skills: List[str],
+        required_skills: List[str]
+    ) -> Tuple[List[str], List[str]]:
+        prompt = f"""
+You are a technical skill matching expert.
+
+The database stores skills as COMPOUND entries, for example:
+- "JavaScript & Frameworks (React/Angular)" — covered if candidate knows React OR Angular OR JavaScript
+- "Cloud Platforms (AWS/Azure/GCP)" — covered if candidate knows AWS OR Azure OR GCP
+- "Backend Frameworks (Django/Express)" — covered if candidate knows Django OR Express
+- "Containerization (Docker/Kubernetes)" — covered if candidate knows Docker OR Kubernetes
+
+Your task: determine which REQUIRED skills are covered by the candidate's CV skills.
+
+RULES:
+1. A required skill is "matched" if ANY of the technologies it mentions appear in the CV skills
+2. Consider reasonable synonyms (e.g. "Node.js" = "NodeJS", "Postgres" = "PostgreSQL")
+3. Return ONLY skills from the Required list — never invent new skill names
+4. Every required skill must appear in either "matched" or "missing"
+5. Return pure JSON only — no explanation, no markdown
+
+CV Skills:
+{json.dumps(cv_skills, ensure_ascii=False)}
+
+Required Skills:
+{json.dumps(required_skills, ensure_ascii=False)}
+
+Return exactly this JSON:
+{{
+  "matched": ["...skills from Required that CV covers..."],
+  "missing": ["...skills from Required that CV does NOT cover..."]
+}}
+"""
+        response = await self.llm.get_response(prompt, need_json_output=True)
+        parsed   = self._safe_parse_llm_json(response)
+        matched  = parsed.get('matched', [])
+        missing  = parsed.get('missing', [])
+
+        if not isinstance(matched, list) or not isinstance(missing, list):
+            raise ValueError("LLM response has wrong structure")
+
+        return matched, missing
+
+    # =====================================================
+    # Compound Skill Fallback
+    # =====================================================
+    def _compound_skill_fallback(
+        self,
+        cv_skills: List[str],
+        required_skills: List[str]
+    ) -> Tuple[List[str], List[str]]:
+        matched        = []
+        missing        = []
+        cv_normalized  = [self._normalize(s) for s in cv_skills]
+
+        for req_skill in required_skills:
+            req_norm   = self._normalize(req_skill)
+            is_matched = any(
+                self._word_boundary_match(cv_norm, req_norm)
+                for cv_norm in cv_normalized
+            )
+            if is_matched:
+                matched.append(req_skill)
+            else:
+                missing.append(req_skill)
+
+        logger.debug(f"🔍 Compound fallback: {len(matched)} matched, {len(missing)} missing")
+        return matched, missing
+
+    def _word_boundary_match(self, cv_norm: str, db_skill_norm: str) -> bool:
+        if not cv_norm:
+            return False
+        pattern = r'\b' + re.escape(cv_norm) + r'\b'
+        return bool(re.search(pattern, db_skill_norm))
+
+    # =====================================================
+    # استخراج المهارات من JD
+    # =====================================================
+    async def _extract_required_skills_from_jd(
+        self, job_description: str
+    ) -> List[str]:
+        prompt = f"""
+Extract all technical and soft skills from this job description.
+Return ONLY a JSON array of skill name strings.
+No explanation, no markdown — pure JSON only.
+
+Job Description:
+{job_description}
+
+Example: ["Python", "SQL", "Docker", "Teamwork"]
+"""
+        try:
+            response = await self.llm.get_response(prompt, need_json_output=True)
+            parsed   = self._safe_parse_llm_json(response)
+            if isinstance(parsed, list):
+                return [s for s in parsed if isinstance(s, str)]
+            if isinstance(parsed, dict):
+                return [s for s in parsed.get('skills', []) if isinstance(s, str)]
+            return []
+        except Exception as e:
+            logger.error(f"❌ JD skill extraction failed: {e}")
+            return []
+
+    # =====================================================
+    # Helpers
+    # =====================================================
+    def _normalize(self, skill: str) -> str:
+        if not isinstance(skill, str):
+            skill = str(skill)
+        normalized = skill.lower().strip()
+        special_cases = [
+            (r'\bc\+\+',       'cpp'),
+            (r'\bc#',          'csharp'),
+            (r'\basp\.net\b',  'aspnet'),
+            (r'\.net\b',       'dotnet'),
+            (r'\bnode\.js\b',  'nodejs'),
+            (r'\breact\.js\b', 'reactjs'),
+            (r'\bvue\.js\b',   'vuejs'),
+            (r'\bnext\.js\b',  'nextjs'),
+            (r'\bnuxt\.js\b',  'nuxtjs'),
+        ]
+        for pattern, replacement in special_cases:
+            normalized = re.sub(pattern, replacement, normalized)
+        normalized = re.sub(r'[^a-z0-9\s]', ' ', normalized)
+        normalized = ' '.join(normalized.split())
+        return normalized
+
+    def _safe_parse_llm_json(self, response: Any) -> Any:
+        if isinstance(response, (dict, list)):
+            return response
+        if isinstance(response, str):
+            cleaned = re.sub(r'```(?:json)?', '', response).strip()
+            match   = re.search(r'(\{.*\}|\[.*\])', cleaned, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+        raise ValueError(f"Cannot parse LLM response: {type(response)}")
+
+    def _build_skill_details(
+        self,
+        matched_names: List[str],
+        missing_names: List[str],
+        track_skills:  List[Any]
+    ) -> Tuple[List[Dict], List[Dict]]:
+        matched_skills = []
+        for name in matched_names:
+            db = self._find_skill_in_list(name, track_skills)
+            matched_skills.append({
+                'skill_name': name,
+                'skill_id':   db.get('skill_id')          if db else None,
+                'category':   db.get('category', 'General') if db else 'General',
+                'importance': db.get('importance', 3)      if db else 3,
+            })
+
+        missing_skills = []
+        for name in missing_names:
+            db = self._find_skill_in_list(name, track_skills)
+            missing_skills.append({
+                'skill_name':     name,
+                'skill_id':       db.get('skill_id')            if db else None,
+                'category':       db.get('category', 'General') if db else 'General',
+                'importance':     db.get('importance', 3)       if db else 3,
+                'duration_weeks': db.get('duration_weeks', 4)   if db else 4,
+            })
+
+        return matched_skills, missing_skills
+
+    def _find_skill_in_list(
+        self, skill_name: str, skill_list: List[Any]
+    ) -> Optional[Dict]:
+        norm = self._normalize(skill_name)
+        for s in skill_list:
+            if isinstance(s, dict):
+                if self._normalize(s.get('skill_name', '')) == norm:
+                    return s
+        return None
+
+    # =====================================================
+    # Endpoint للاختبار
+    # =====================================================
+    async def match_skills(
+        self, cv_skills: List[str], track_id: int
+    ) -> Dict[str, Any]:
+        track_skills = await self.repo.get_skills_by_track(track_id)
+        if not track_skills:
+            return {"status": "error", "message": f"No skills for track {track_id}"}
+
+        required_names = [
+            s['skill_name'] if isinstance(s, dict) else s
+            for s in track_skills
+        ]
+
+        matched, missing, method = await self._match_with_llm_or_fallback(
+            cv_skills, required_names
+        )
+
+        matched_details = []
+        for name in matched:
+            skill = self._find_skill_in_list(name, track_skills)
+            matched_details.append({
+                'skill_name': name,
+                'skill_id':   skill.get('skill_id')            if skill else None,
+                'category':   skill.get('category', 'General') if skill else 'General',
+                'confidence': 1.0 if method == 'llm' else 0.75,
+            })
+
+        total = len(required_names)
         return {
-            'total_matches': total,
-            'average_confidence': round(avg_confidence, 3),
-            'high_confidence_count': high_confidence,
-            'medium_confidence_count': medium_confidence,
-            'low_confidence_count': low_confidence,
-            'quality': 'excellent' if avg_confidence >= 0.9 else
-                      'good' if avg_confidence >= 0.75 else
-                      'fair' if avg_confidence >= 0.65 else 'poor'
+            "status":          "success",
+            "matching_method": method,
+            "cv_skills":       cv_skills,
+            "track_id":        track_id,
+            "matched_count":   len(matched),
+            "missing_count":   len(missing),
+            "match_percentage": round(len(matched) / total * 100, 1) if total else 0,
+            "matched_skills":  matched_details,
+            "missing_skills":  missing,
         }
+
+
+SkillMatcher = HybridCareerAnalyzer

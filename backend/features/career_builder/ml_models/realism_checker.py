@@ -1,114 +1,96 @@
 """
-Time Realism Checker
-Validates if requested learning duration is achievable
+Time Realism Checker ✅
 """
-from typing import Dict, Any
+from dataclasses import dataclass
+from typing import List, Dict, Any
+
+
+@dataclass
+class RealismResult:
+    requested_weeks: int
+    safe_min_weeks: int
+    recommended_weeks: int
+    is_below_safe: bool
+    adjustment: str        # 'ok' | 'too_short' | 'too_long'
+    warning: str           # empty if no issue
+
+
+LEVEL_MULTIPLIER = {
+    'beginner':     1.3,
+    'intermediate': 1.0,
+    'advanced':     0.75,
+}
+
+MAX_WEEKS_MULTIPLIER = 2.5
 
 
 class RealismChecker:
-    """Checks if requested learning duration is realistic"""
-    
-    # Compression limits per level (how much can we compress the timeline?)
-    COMPRESSION_LIMITS = {
-        'beginner': 0.80,      # Can't go below 80% of minimum (needs more time)
-        'intermediate': 0.85,  # Can't go below 85% (some foundation exists)
-        'advanced': 0.90       # Can't go below 90% (has strong foundation)
-    }
-    
+
     def check_realism(
         self,
-        track_id: int,
-        level: str,
         requested_weeks: int,
-        min_weeks: int
-    ) -> Dict[str, Any]:
-        """
-        Check if requested duration is realistic
-        
-        Args:
-            track_id: Career track ID
-            level: User's level (beginner, intermediate, advanced)
-            requested_weeks: Weeks user wants to complete in
-            min_weeks: Calculated minimum weeks for this track/level
-        
-        Returns:
-            {
-                'is_realistic': bool,
-                'min_weeks_required': int,
-                'suggested_min_weeks': int,
-                'requested_weeks': int,
-                'compression_ratio': float,
-                'compression_limit': float,
-                'message': str
-            }
-        
-        Examples:
-            >>> checker = RealismChecker()
-            >>> result = checker.check_realism(1, 'beginner', 12, 24)
-            >>> result['is_realistic']
-            False
-            >>> result['suggested_min_weeks']
-            19  # 80% of 24
-        """
-        # Get compression limit for this level
-        compression_limit = self.COMPRESSION_LIMITS.get(level, 0.85)
-        
-        # Calculate absolute minimum (can't go below this)
-        absolute_minimum = int(min_weeks * compression_limit)
-        
-        # Check if request is realistic
-        is_realistic = requested_weeks >= absolute_minimum
-        
-        # Calculate actual compression ratio
-        compression_ratio = requested_weeks / min_weeks if min_weeks > 0 else 1.0
-        
-        # Generate message
-        if is_realistic:
-            message = f"Duration is realistic ({compression_ratio:.0%} of minimum)"
-        else:
-            message = (
-                f"Duration too short. Minimum {absolute_minimum} weeks required "
-                f"({compression_limit:.0%} compression limit)."
-            )
-        
-        return {
-            'is_realistic': is_realistic,
-            'min_weeks_required': min_weeks,
-            'suggested_min_weeks': absolute_minimum,
-            'requested_weeks': requested_weeks,
-            'compression_ratio': round(compression_ratio, 2),
-            'compression_limit': compression_limit,
-            'message': message
-        }
-    
-    def calculate_smart_duration(
-        self,
-        min_weeks: int,
-        skill_gaps: list,
+        missing_skills: List[Dict],
         level: str
-    ) -> int:
+    ) -> RealismResult:
         """
-        Calculate smart duration based on skill gaps
-        
-        Args:
-            min_weeks: Base minimum weeks
-            skill_gaps: List of skill gaps with scores
-            level: User level
-        
-        Returns:
-            Estimated realistic duration in weeks
+        Calculates safe minimum and recommended duration from missing skills.
+        The user is free to choose — but if they go below the safe minimum,
+        we show a warning.
+
+        Examples:
+            >>> missing = [{"duration_weeks": 4}, {"duration_weeks": 6}, {"duration_weeks": 3}]
+            >>> checker.check_realism(8, missing, 'beginner')
+            # min=13, safe_min=17 (13*1.3), is_below_safe=True
+
+            >>> checker.check_realism(20, missing, 'beginner')
+            # min=13, safe_min=17, is_below_safe=False
         """
-        # Calculate total learning weight from gaps
-        total_weight = sum(
-            gap.get('importance_weight', 3) * gap.get('gap_score', 1.0)
-            for gap in skill_gaps
+        min_weeks         = self._calc_min_weeks(missing_skills)
+        multiplier        = LEVEL_MULTIPLIER.get(level, 1.0)
+        safe_min_weeks    = max(1, round(min_weeks * multiplier))
+        recommended_weeks = safe_min_weeks
+        max_weeks         = round(min_weeks * MAX_WEEKS_MULTIPLIER)
+
+        if requested_weeks < safe_min_weeks:
+            return RealismResult(
+                requested_weeks=requested_weeks,
+                safe_min_weeks=safe_min_weeks,
+                recommended_weeks=recommended_weeks,
+                is_below_safe=True,
+                adjustment='too_short',
+                warning=(
+                    f"The chosen duration ({requested_weeks} weeks) is below the safe minimum "
+                    f"({safe_min_weeks} weeks for {level} level). "
+                    f"It might be difficult to cover all required skills."
+                )
+            )
+
+        if requested_weeks > max_weeks:
+            return RealismResult(
+                requested_weeks=requested_weeks,
+                safe_min_weeks=safe_min_weeks,
+                recommended_weeks=recommended_weeks,
+                is_below_safe=False,
+                adjustment='too_long',
+                warning=(
+                    f"The chosen duration ({requested_weeks} weeks) exceeds the reasonable maximum "
+                    f"({max_weeks} weeks)."
+                )
+            )
+
+        return RealismResult(
+            requested_weeks=requested_weeks,
+            safe_min_weeks=safe_min_weeks,
+            recommended_weeks=recommended_weeks,
+            is_below_safe=False,
+            adjustment='ok',
+            warning=""
         )
-        
-        # Smart formula: base time + gap-based adjustment
-        estimated_weeks = int(min_weeks * 0.7 + total_weight * 1.5)
-        
-        # Ensure it's at least the minimum
-        compression_limit = self.COMPRESSION_LIMITS.get(level, 0.85)
-        absolute_min = int(min_weeks * compression_limit)
-        
-        return max(estimated_weeks, absolute_min)
+
+    def _calc_min_weeks(self, missing_skills: List[Dict]) -> int:
+        if not missing_skills:
+            return 0
+        return sum(
+            skill.get('duration_weeks', 4)
+            for skill in missing_skills
+        )

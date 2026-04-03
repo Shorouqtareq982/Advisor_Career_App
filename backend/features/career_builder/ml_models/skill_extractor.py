@@ -144,7 +144,7 @@ class SkillExtractor:
     def __init__(self, llm: LLMProvider = None):
         self.llm = llm or create_llm_provider()
     
-    def extract_skills_from_cv(
+    async def extract_skills_from_cv(
         self, 
         cv_text: str,
         parsed_cv_data: Dict[str, Any]
@@ -170,7 +170,7 @@ class SkillExtractor:
         explicit_skills = self._extract_from_parsed_data(parsed_cv_data)
         
         # Method 2: Use LLM for comprehensive extraction
-        llm_skills = self._extract_with_llm(cv_text)
+        llm_skills = await self._extract_with_llm(cv_text)
         
         # Combine and deduplicate
         all_skills = self._merge_skills(explicit_skills, llm_skills)
@@ -226,12 +226,12 @@ class SkillExtractor:
         
         return skills
     
-    def _extract_with_llm(self, cv_text: str) -> Dict[str, List[str]]:
+    async def _extract_with_llm(self, cv_text: str) -> Dict[str, List[str]]:
         """Use LLM to extract skills"""
         try:
             logger.info("Calling LLM for skill extraction...")
             
-            response = self.llm.get_response(
+            response = await self.llm.get_response(
                 prompt=SKILL_EXTRACTION_PROMPT.format(cv_text=cv_text[:4000]),  # Limit text
                 need_json_output=True,
                 schema=ExtractedSkills
