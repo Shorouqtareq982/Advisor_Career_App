@@ -71,9 +71,11 @@ class Media(BaseModel):
 
 class CVData(BaseModel):
     name: str = Field(...,description="The full name of the candidate.")
+    title: str = Field(...,description="The professional title or headline that summarizes the candidate's expertise and career focus.")
     summary: Optional[str] = Field(None,description="A brief summary or objective statement highlighting key skills, experience, and career goals.")
     phone: str = Field(...,description="The contact phone number of the candidate.")
     email: str = Field(...,description="The contact email address of the candidate.")
+    location: Optional[str] = Field(None,description="The candidate's location, such as city and country. e.g. San Francisco, USA.")
     media: Media = Field(...,description="Links to professional social media profiles, such as LinkedIn, GitHub, or personal website.")
     work_experience: List[Experience] = Field(...,description="Work experiences, including job title, company, location, dates, and description.")
     education: List[Education] = Field(...,description="Educational qualifications, including degree, institution, dates, and relevant courses.")
@@ -81,3 +83,4 @@ class CVData(BaseModel):
     projects: List[Project] = Field(...,description="Project experiences, including project name, type, link, resources, dates, and description.")
     certifications: List[Certification] = Field(...,description="job relevant certifications that you have earned, including the name, issuing organization, and a link to verify the certification.")
     achievements: List[str] = Field(...,description="job relevant key accomplishments, awards, or recognitions that demonstrate your skills and abilities.")
+    all_sections_order: List[str] = Field(...,description="A list of all section names in the order they appear in the CV and as they are, used for layout analysis and optimization.")

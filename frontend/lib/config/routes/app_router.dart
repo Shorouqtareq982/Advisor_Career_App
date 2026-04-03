@@ -39,6 +39,8 @@ import '../../features/settings/presentation/screens/change_password_screen.dart
 import '../../features/settings/presentation/screens/delete_account_screen.dart';
 
 import '../../features/resume_optimization/presentation/screens/resume_optimization_screen.dart';
+import '../../features/resume_optimization/presentation/screens/report_details_screen.dart';
+import '../../features/resume_optimization/presentation/screens/start_optimization_screen.dart';
 import '../../features/career_build/presentation/screens/career_builder_screen.dart';
 import '../../features/mock_interview/presentation/screens/mock_interview_screen.dart';
 import '../../features/market_insight/presentation/screens/market_insights_screen.dart';
@@ -46,15 +48,12 @@ import '../../features/ai_portfolio/presentation/screens/ai_portfolio_screen.dar
 
 import '../../features/auth/presentation/providers/auth_provider.dart';
 
-/// ✅ Auth Theme: لو التطبيق Dark ما نكسرش الثيم.
-/// لو التطبيق Light -> نجبر Light Theme على شاشات الـ Auth
 Widget _withAuthTheme(BuildContext context, Widget child) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
   if (isDark) return child;
   return Theme(data: AppTheme.lightTheme, child: child);
 }
 
-/// ✅ NEW: إجبار لايت مهما كان ثيم التطبيق (لـ flow قبل الوصول للهوم)
 Widget _forceLightTheme(Widget child) {
   return Theme(data: AppTheme.lightTheme, child: child);
 }
@@ -63,13 +62,10 @@ class AppRouter {
   static final GoRouter router = GoRouter(
     initialLocation: '/splash',
     debugLogDiagnostics: true,
-
-    /// ✅ redirect هنا للحماية ومنع onboarding بعد أول مرة
-    /// و "مش" بيحوّل /splash — لأن SplashScreen هو اللي بيقرر الوجهة
     redirect: (context, state) async {
       final currentPath = state.uri.path;
 
-      // سيب /splash
+      // splash
       if (currentPath == '/splash') return null;
 
       final prefs = await SharedPreferences.getInstance();
@@ -99,25 +95,20 @@ class AppRouter {
       final isPublicRoute = publicRoutes.contains(currentPath);
       final isPasswordResetRoute = passwordResetRoutes.contains(currentPath);
 
-      // ✅✅✅ [التعديل الوحيد] أول مرة: أي Route غير onboarding/splash -> onboarding
-      // ده يخلي context.go('/') من Splash يودّي فعلاً للـ onboarding أول مرة
       if (!hasSeenOnboarding &&
           currentPath != '/onboarding' &&
           currentPath != '/splash') {
         return '/onboarding';
       }
 
-      // ✅ منع onboarding بعد أول مرة
       if (currentPath == '/onboarding' && hasSeenOnboarding) {
         return isAuthenticated ? '/home' : '/';
       }
 
-      // ✅ حماية routes الخاصة
       if (!isAuthenticated && !isPublicRoute && !isPasswordResetRoute) {
         return '/splash';
       }
 
-      // ✅ لو مسجل ودخل صفحة auth رجّعه
       if (isAuthenticated &&
           isPublicRoute &&
           currentPath != '/onboarding' &&
@@ -134,7 +125,6 @@ class AppRouter {
 
       return null;
     },
-
     routes: [
       // ── Splash & Onboarding ───────────────────────────────
       GoRoute(
@@ -281,9 +271,6 @@ class AppRouter {
             _withAuthTheme(context, const ProfileUsernameScreen()),
       ),
 
-      /// ✅✅✅ هنا التعديل المهم
-      /// - لو جاي من الهوم -> يرث الثيم (دارك/لايت)
-      /// - لو مش من الهوم (قبل الهوم / أول مرة) -> لايت إجباري
       GoRoute(
         path: '/profile-information',
         name: 'profile-information',
@@ -315,8 +302,6 @@ class AppRouter {
         builder: (context, state) => const SettingsAccountScreen(),
       ),
 
-      /// ✅ Security: يودّي Change Password مباشرة
-      /// ومش محتاجين SettingsSecurityScreen نهائي
       GoRoute(
         path: '/settings-security',
         name: 'settings-security',
@@ -338,7 +323,7 @@ class AppRouter {
       GoRoute(
         path: '/jobs',
         name: 'jobs',
-        builder: (context, state) => Scaffold(
+        builder: (context, state) => const Scaffold(
           backgroundColor: AppColors.blue500,
           body: SafeArea(
             child: Center(
@@ -352,7 +337,7 @@ class AppRouter {
               ),
             ),
           ),
-          bottomNavigationBar: const HomeBottomNav(currentRoute: '/jobs'),
+          bottomNavigationBar: HomeBottomNav(currentRoute: '/jobs'),
         ),
       ),
 
@@ -392,6 +377,19 @@ class AppRouter {
         builder: (context, state) => const ResumeOptimizationScreen(),
       ),
       GoRoute(
+        path: '/start-optimization',
+        name: 'start-optimization',
+        builder: (context, state) => const StartOptimizationScreen(),
+      ),
+      GoRoute(
+        path: '/report-details/:reportId',
+        name: 'report-details',
+        builder: (context, state) {
+          final reportId = state.pathParameters['reportId']!;
+          return ReportDetailsScreen(reportId: reportId);
+        },
+      ),
+      GoRoute(
         path: '/career-builder',
         name: 'career-builder',
         builder: (context, state) => const CareerBuilderScreen(),
@@ -412,7 +410,6 @@ class AppRouter {
         builder: (context, state) => const AIPortfolioScreen(),
       ),
     ],
-
     errorBuilder: (context, state) => Scaffold(
       backgroundColor: AppColors.blue500,
       body: Center(

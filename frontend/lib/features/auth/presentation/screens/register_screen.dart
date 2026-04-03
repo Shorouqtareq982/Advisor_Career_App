@@ -55,30 +55,37 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   void _setupListeners() {
     _usernameController.addListener(() {
-      if (_serverUsernameError != null)
+      if (_serverUsernameError != null) {
         setState(() => _serverUsernameError = null);
-      if (_serverGeneralError != null)
+      }
+      if (_serverGeneralError != null) {
         setState(() => _serverGeneralError = null);
+      }
     });
     _emailController.addListener(() {
       if (_serverEmailError != null) setState(() => _serverEmailError = null);
-      if (_serverGeneralError != null)
+      if (_serverGeneralError != null) {
         setState(() => _serverGeneralError = null);
+      }
     });
     _phoneController.addListener(() {
       if (_serverPhoneError != null) setState(() => _serverPhoneError = null);
-      if (_serverGeneralError != null)
+      if (_serverGeneralError != null) {
         setState(() => _serverGeneralError = null);
+      }
     });
     _passwordController.addListener(() {
-      if (_serverPasswordError != null)
+      if (_serverPasswordError != null) {
         setState(() => _serverPasswordError = null);
-      if (_serverGeneralError != null)
+      }
+      if (_serverGeneralError != null) {
         setState(() => _serverGeneralError = null);
+      }
     });
     _confirmPasswordController.addListener(() {
-      if (_serverGeneralError != null)
+      if (_serverGeneralError != null) {
         setState(() => _serverGeneralError = null);
+      }
     });
   }
 
@@ -88,10 +95,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final u = value.trim();
     if (u.length < 3) return 'Username must be at least 3 characters';
     if (u.length > 20) return 'Username must be less than 20 characters';
-    if (!RegExp(r'^[a-zA-Z]').hasMatch(u[0]))
+    if (!RegExp(r'^[a-zA-Z]').hasMatch(u[0])) {
       return 'Username must start with a letter';
-    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(u))
+    }
+    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(u)) {
       return 'Only letters, numbers, and underscores';
+    }
     if (u.contains('__')) return 'No consecutive underscores';
     if (u.endsWith('_')) return 'Username cannot end with underscore';
     return null;
@@ -106,10 +115,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     if (_serverPasswordError != null) return _serverPasswordError;
     if (value == null || value.isEmpty) return 'Password is required';
     if (value.length < 6) return 'Password must be at least 6 characters';
-    if (!RegExp(r'[a-zA-Z]').hasMatch(value))
+    if (!RegExp(r'[a-zA-Z]').hasMatch(value)) {
       return 'Password must contain at least one letter';
-    if (!RegExp(r'\d').hasMatch(value))
+    }
+    if (!RegExp(r'\d').hasMatch(value)) {
       return 'Password must contain at least one number';
+    }
     return null;
   }
 
@@ -147,9 +158,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     } catch (e) {
       if (mounted) {
         final error = e.toString().replaceAll('Exception: ', '');
-        if (error.toLowerCase().contains('email'))
+        if (error.toLowerCase().contains('email')) {
           setState(() => _serverEmailError = error);
-        else if (error.toLowerCase().contains('phone'))
+        } else if (error.toLowerCase().contains('phone'))
           setState(() => _serverPhoneError = error);
         else if (error.toLowerCase().contains('username'))
           setState(() => _serverUsernameError = error);
@@ -265,8 +276,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         prefixIcon: Icons.person_outline,
                         validator: _validateUsername,
                         onChanged: (_) {
-                          if (_serverUsernameError != null)
+                          if (_serverUsernameError != null) {
                             setState(() => _serverUsernameError = null);
+                          }
                         },
                         textInputAction: TextInputAction.next,
                         useTheme: false,
@@ -283,8 +295,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         keyboardType: TextInputType.emailAddress,
                         validator: _validateEmail,
                         onChanged: (_) {
-                          if (_serverEmailError != null)
+                          if (_serverEmailError != null) {
                             setState(() => _serverEmailError = null);
+                          }
                         },
                         textInputAction: TextInputAction.next,
                         useTheme: false,
@@ -303,17 +316,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         }),
                         label: 'Phone Number',
                         validator: (value) {
-                          if (_serverPhoneError != null)
+                          if (_serverPhoneError != null) {
                             return _serverPhoneError;
-                          if (value == null || value.trim().isEmpty)
+                          }
+                          if (value == null || value.trim().isEmpty) {
                             return 'Phone number is required';
-                          if (value.length != _selectedCountry.phoneLength)
+                          }
+                          if (value.length != _selectedCountry.phoneLength) {
                             return 'Must be exactly ${_selectedCountry.phoneLength} digits';
+                          }
                           return null;
                         },
                         onChanged: (_) {
-                          if (_serverPhoneError != null)
+                          if (_serverPhoneError != null) {
                             setState(() => _serverPhoneError = null);
+                          }
                         },
                         textInputAction: TextInputAction.next,
                         useTheme: false,
@@ -330,8 +347,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         obscureText: _obscurePassword,
                         validator: _validatePassword,
                         onChanged: (_) {
-                          if (_serverPasswordError != null)
+                          if (_serverPasswordError != null) {
                             setState(() => _serverPasswordError = null);
+                          }
                         },
                         textInputAction: TextInputAction.next,
                         useTheme: false,

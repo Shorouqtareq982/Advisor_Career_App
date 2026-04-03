@@ -45,7 +45,7 @@ class OtpInputField extends StatelessWidget {
       return isDark ? AppColors.blue400 : AppColors.grey600;
     }
 
-    // Active/focused: lightBlue500 دارك / lightBlue700 لايت
+    // Active/focused
     Color getActiveBorderColor() {
       if (errorText != null) return AppColors.red600;
       return isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;

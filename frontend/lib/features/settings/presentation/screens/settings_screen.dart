@@ -9,6 +9,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/notification_service.dart';
 import '../widgets/settings_switch.dart';
+import '../../../../core/extensions/responsive_extension.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -261,10 +262,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                         SizedBox(
-                          width: logoSize,
-                          height: logoSize,
+                          width: context.w(105),
+                          height: context.h(40),
                           child: Image.asset(
-                            'assets/images/branding/logo.png',
+                            'assets/images/branding/growza_logo.png',
                             fit: BoxFit.contain,
                             errorBuilder: (_, __, ___) => Icon(
                               Icons.person,
@@ -300,8 +301,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           subtitle: 'personal information & Career Preferences',
                           onTap: _navigateToProfile,
                         ),
-
-                        // ✅✅✅ Security -> Change Password مباشرة
                         _buildSettingsItem(
                           context,
                           maxContentWidth: contentWidth,
@@ -310,7 +309,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           subtitle: 'Password & authentication',
                           onTap: () => context.push('/change-password'),
                         ),
-
                         _buildSettingsItem(
                           context,
                           maxContentWidth: contentWidth,

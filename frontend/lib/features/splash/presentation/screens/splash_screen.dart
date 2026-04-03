@@ -70,13 +70,11 @@ class _SplashScreenState extends State<SplashScreen>
     final session = Supabase.instance.client.auth.currentSession;
     final isAuthenticated = session != null;
 
-    // ✅ أول مرة → Onboarding
     if (!hasSeenOnboarding) {
       context.go('/onboarding');
       return;
     }
 
-    // ✅ لو مسجل → روح حسب authProvider (لو عنده redirectPath)
     if (isAuthenticated) {
       try {
         final container = ProviderScope.containerOf(context, listen: false);
@@ -90,7 +88,6 @@ class _SplashScreenState extends State<SplashScreen>
       }
     }
 
-    // ✅ غير مسجل → Welcome
     context.go('/');
   }
 
@@ -157,7 +154,7 @@ class _SplashScreenState extends State<SplashScreen>
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Image.asset(
-                              'assets/images/branding/growza_logo.png',
+                              'assets/images/branding/logo.png',
                               width: 110,
                               height: 110,
                               fit: BoxFit.contain,
@@ -170,7 +167,7 @@ class _SplashScreenState extends State<SplashScreen>
                                         AppColors.lightBlue500.withOpacity(0.2),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: Icon(
+                                  child: const Icon(
                                     Icons.rocket_launch,
                                     size: 60,
                                     color: AppColors.lightBlue500,

@@ -75,10 +75,9 @@ class FileValidator:
         return FileValidator.validate_file(
             file,
             max_size=10 * 1024 * 1024,
-            allowed_extensions={"pdf", "doc", "docx", "txt"},
+            allowed_extensions={"pdf", "docx", "txt"},
             allowed_content_types={
                 "application/pdf",
-                "application/msword",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "text/plain",
             },

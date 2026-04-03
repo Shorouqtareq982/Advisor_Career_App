@@ -133,15 +133,12 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
       body: Stack(
         children: [
           const Positioned.fill(child: BackgroundCurves()),
-
           Positioned(
             top: context.h(60),
             left: 0,
             right: 0,
             child: const Center(child: AppLogo()),
           ),
-
-          // ✅ الكارد لازق تحت وقد المحتوى
           Positioned(
             left: 0,
             right: 0,
@@ -326,8 +323,6 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                         ),
                       ),
                     ),
-
-                    // ✅ زرار ثابت تحت
                     Padding(
                       padding: EdgeInsets.fromLTRB(
                         horizontalPad,

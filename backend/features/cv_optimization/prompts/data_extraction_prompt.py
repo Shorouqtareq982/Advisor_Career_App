@@ -7,7 +7,7 @@ Identify the key details from a job description and company overview to create a
 {job_description}
 </job_description>
 
-Note: The "keywords", "job_duties_and_responsibilities", and "required_qualifications" sections are particularly important for resume tailoring. Ensure these are as comprehensive and accurate as possible.
+Note: The "keywords", "job_duties_and_responsibilities", and "skills" sections are particularly important for cv optimization. Ensure these are as comprehensive and accurate as possible.
 
 """
 

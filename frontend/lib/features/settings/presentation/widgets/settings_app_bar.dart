@@ -14,7 +14,7 @@ class SettingsAppBar extends StatelessWidget implements PreferredSizeWidget {
     super.key,
     this.title,
     this.centerLogo = false,
-    this.logoAsset = 'assets/images/branding/logo.png',
+    this.logoAsset = 'assets/images/branding/growza_logo.png',
     this.showBackButton = true,
     this.onBack,
     this.actions,

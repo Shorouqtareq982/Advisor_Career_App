@@ -60,8 +60,6 @@ class OnboardingTopBar extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // ✅✅✅ Skip يظهر/يختفي حسب الصفحة
               if (showSkip)
                 Positioned(
                   right: (w * 0.04).clamp(12.0, 18.0),

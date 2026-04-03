@@ -32,7 +32,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   Future<void> _handleSignIn() async {
     if (_usernameOrEmailController.text.trim().isEmpty ||
-        _passwordController.text.isEmpty) return;
+        _passwordController.text.isEmpty) {
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     ref.read(authProvider.notifier).clearError();
     final success = await ref.read(authProvider.notifier).signIn(
@@ -51,8 +53,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     final success = await ref.read(authProvider.notifier).signInWithGoogle();
     if (success) {
       await Future.delayed(const Duration(milliseconds: 1500));
-      if (mounted && ref.read(authProvider).isAuthenticated)
+      if (mounted && ref.read(authProvider).isAuthenticated) {
         context.go('/home');
+      }
     }
   }
 
@@ -139,14 +142,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         errorText:
                             authState.usernameError ?? authState.emailError,
                         validator: (value) {
-                          if (value == null || value.trim().isEmpty)
+                          if (value == null || value.trim().isEmpty) {
                             return 'Please enter your username or email';
+                          }
                           return null;
                         },
                         onChanged: (_) {
                           if (authState.usernameError != null ||
-                              authState.emailError != null)
+                              authState.emailError != null) {
                             ref.read(authProvider.notifier).clearError();
+                          }
                         },
                         textInputAction: TextInputAction.next,
                         useTheme: false,
@@ -160,13 +165,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         obscureText: _obscurePassword,
                         errorText: authState.passwordError,
                         validator: (value) {
-                          if (value == null || value.isEmpty)
+                          if (value == null || value.isEmpty) {
                             return 'Please enter your password';
+                          }
                           return null;
                         },
                         onChanged: (_) {
-                          if (authState.passwordError != null)
+                          if (authState.passwordError != null) {
                             ref.read(authProvider.notifier).clearError();
+                          }
                         },
                         textInputAction: TextInputAction.done,
                         onFieldSubmitted: (_) => _handleSignIn(),
@@ -195,7 +202,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                   value: _rememberMe,
                                   onChanged: (value) => setState(
                                       () => _rememberMe = value ?? false),
-                                  fillColor: MaterialStateProperty.all(
+                                  fillColor: WidgetStateProperty.all(
                                       AppColors.lightBlue700),
                                   shape: RoundedRectangleBorder(
                                       borderRadius:

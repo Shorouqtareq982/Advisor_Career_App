@@ -34,7 +34,6 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
 
     _initDeepLinks();
 
-    // استماع لتغيرات الـ auth state
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
       (data) {
         print(' [AUTH] State changed: ${data.event}');
@@ -148,7 +147,6 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
 
       if (accessToken != null) {
         print('    [DEEP LINK] OAuth tokens found in fragment!');
-        // ✅ الأصح: متعملش حاجة، خلي Supabase يتولى
         if (mounted) {
           setState(() {
             _isProcessingOAuth = true;
@@ -216,7 +214,6 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
       // Handle direct tokens
       if (accessToken != null && refreshToken != null) {
         print(' [DEEP LINK] OAuth tokens received!');
-        // ✅ الأصح: متعملش حاجة، خلي Supabase يتولى
         if (mounted) {
           setState(() {
             _isProcessingOAuth = true;
@@ -400,7 +397,7 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
                                       ],
                                     ),
                                     child: Image.asset(
-                                      'assets/images/branding/growza_logo.png',
+                                      'assets/images/branding/logo.png',
                                       width: logoSize,
                                       height: logoSize,
                                     ),

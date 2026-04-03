@@ -1,5 +1,3 @@
-// lib/core/network/api_client.dart
-
 import 'package:dio/dio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/api_constants.dart';
@@ -16,8 +14,9 @@ class ApiClient {
   void init() {
     dio = Dio(BaseOptions(
       baseUrl: ApiConstants.baseUrl,
-      connectTimeout: ApiConstants.connectionTimeout,
-      receiveTimeout: ApiConstants.receiveTimeout,
+      connectTimeout: const Duration(seconds: 30),
+      sendTimeout: const Duration(minutes: 2),
+      receiveTimeout: const Duration(minutes: 2),
       headers: {
         'Content-Type': ApiConstants.contentType,
         'Accept': ApiConstants.accept,

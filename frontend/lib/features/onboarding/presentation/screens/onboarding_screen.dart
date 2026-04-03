@@ -62,7 +62,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         curve: Curves.easeOutCubic,
       );
     } else {
-      _finishOnboarding(); // صفحة 3 => Start
+      _finishOnboarding();
     }
   }
 
@@ -75,10 +75,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  // ✅ Skip في الصفحة 1 و 2: يودّي للصفحة الثالثة مباشرة
   void _skipToLast() {
     final lastIndex = _pages.length - 1;
-    if (_index == lastIndex) return; // ✅ ممنوع في الصفحة الأخيرة
+    if (_index == lastIndex) return;
     _controller.animateToPage(
       lastIndex,
       duration: const Duration(milliseconds: 280),
@@ -89,7 +88,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _finishOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('has_seen_onboarding', true);
-    if (mounted) context.go('/'); // ✅ يسلّم القرار للـ Splash/Router
+    if (mounted) context.go('/');
   }
 
   @override
@@ -147,7 +146,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   width: double.infinity,
                   child: OnboardingTopBar(
                     onSkip: _skipToLast,
-                    showSkip: !isLast, // ✅ اخفاء Skip في الصفحة 3
+                    showSkip: !isLast,
                   ),
                 ),
                 SizedBox(height: afterTopBar),

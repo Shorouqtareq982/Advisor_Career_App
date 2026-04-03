@@ -27,7 +27,6 @@ class OnboardingNavButtons extends StatelessWidget {
         final halfW = ((w - 16) / 2).clamp(120.0, 220.0);
         final font = (w * 0.035).clamp(12.0, 14.0);
 
-        // ✅ الصفحة الأولى: نفس زرار Next القديم (#35B7D7) من غير CustomButton
         if (index == 0) {
           return Center(
             child: SizedBox(
@@ -36,7 +35,7 @@ class OnboardingNavButtons extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: onPrimary,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.lightBlue500, // ✅ ثابت
+                  backgroundColor: AppColors.lightBlue500,
                   foregroundColor: AppColors.grey50,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -65,9 +64,8 @@ class OnboardingNavButtons extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: onBack,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      AppColors.lightBlue500.withOpacity(0.1), // ✨ Light bg
-                  foregroundColor: AppColors.lightBlue500, // ✨
+                  backgroundColor: AppColors.lightBlue500.withOpacity(0.1),
+                  foregroundColor: AppColors.lightBlue500,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(50),
@@ -79,7 +77,7 @@ class OnboardingNavButtons extends StatelessWidget {
                     fontFamily: 'Inter',
                     fontSize: font,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.lightBlue500, // ✨
+                    color: AppColors.lightBlue500,
                   ),
                 ),
               ),
@@ -91,7 +89,7 @@ class OnboardingNavButtons extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: onPrimary,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.lightBlue500, // ✨ #35B7D7
+                  backgroundColor: AppColors.lightBlue500,
                   foregroundColor: AppColors.grey50,
                   elevation: 0,
                   shape: RoundedRectangleBorder(

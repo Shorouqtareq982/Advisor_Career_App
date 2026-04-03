@@ -23,7 +23,6 @@ class OnboardingPageContent extends StatelessWidget {
 
         final isShort = h < 520;
 
-        // ✅ FIX: image size depends on BOTH width & height
         final imgFromW = w * 0.72;
         final imgFromH = h * (isShort ? 0.42 : 0.48);
         final imgSize = math.min(imgFromW, imgFromH).clamp(160.0, 320.0);

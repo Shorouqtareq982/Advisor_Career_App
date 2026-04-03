@@ -168,15 +168,18 @@ class _PhoneSignUpScreenState extends ConsumerState<PhoneSignUpScreen> {
                               }),
                           validator: (value) {
                             if (_phoneError != null) return _phoneError;
-                            if (value == null || value.trim().isEmpty)
+                            if (value == null || value.trim().isEmpty) {
                               return 'Phone number is required';
-                            if (value.length != _selectedCountry.phoneLength)
+                            }
+                            if (value.length != _selectedCountry.phoneLength) {
                               return 'Must be exactly ${_selectedCountry.phoneLength} digits';
+                            }
                             return null;
                           },
                           onChanged: (_) {
-                            if (_phoneError != null)
+                            if (_phoneError != null) {
                               setState(() => _phoneError = null);
+                            }
                           },
                           textInputAction: TextInputAction.done,
                           onFieldSubmitted: (_) => _handlePhoneSignUp(),

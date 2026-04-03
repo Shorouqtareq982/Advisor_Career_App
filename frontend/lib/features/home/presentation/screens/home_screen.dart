@@ -6,6 +6,7 @@ import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../core/theme/app_text_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../widgets/home_bottom_nav.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -190,7 +191,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           image: user?.avatarUrl != null
               ? DecorationImage(
-                  image: NetworkImage(user!.avatarUrl!),
+                  image: CachedNetworkImageProvider(user!.avatarUrl!),
                   fit: BoxFit.cover,
                 )
               : null,
@@ -222,92 +223,117 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildAIRecommendationCard(
       BuildContext context, bool isDark, AppTextTheme textTheme) {
-    final tealColor = isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
     final cardColor = isDark ? AppColors.blue700 : AppColors.grey50;
     final borderColor =
         isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
+
+    // Responsive dimensions based on design size 348x111 on iPhone 13 mini
+    final cardHeight = context.h(111);
+
+    // Button: 110x32 on iPhone 13 mini
+    final buttonWidth = context.w(110);
+    final buttonHeight = context.h(32);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final totalWidth = constraints.maxWidth;
         final leftOffset = totalWidth * (28.0 / 348.0);
 
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(context.r(8)),
-                child: Container(color: tealColor),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.only(left: leftOffset),
-              child: Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(context.w(12)),
-                decoration: BoxDecoration(
-                  color: cardColor,
+        return SizedBox(
+          height: cardHeight,
+          child: Stack(
+            children: [
+              // Background image (full card area)
+              Positioned.fill(
+                child: ClipRRect(
                   borderRadius: BorderRadius.circular(context.r(8)),
-                  border: Border.all(color: borderColor, width: 1),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x40000000),
-                      blurRadius: 4,
-                      spreadRadius: 0,
-                      offset: Offset(4, 4),
-                    ),
-                  ],
+                  child: Image.asset(
+                    isDark
+                        ? 'assets/images/home_dark.png'
+                        : 'assets/images/home_light.png',
+                    fit: BoxFit.cover,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    context.text(
-                      'AI Recommendation',
-                      style: textTheme.title2Bold.copyWith(
-                        color: isDark ? AppColors.grey100 : AppColors.blue900,
+              ),
+              // Foreground card
+              Positioned(
+                left: leftOffset,
+                top: 0,
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: context.w(12),
+                    vertical: context.h(12),
+                  ),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(context.r(8)),
+                    border: Border.all(color: borderColor, width: 1),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x40000000),
+                        blurRadius: 4,
+                        spreadRadius: 0,
+                        offset: Offset(4, 4),
                       ),
-                    ),
-                    SizedBox(height: context.h(8)),
-                    context.text(
-                      'Complete your profile to get better job matches',
-                      style: textTheme.bodyMedium.copyWith(
-                        color: isDark ? AppColors.blue200 : AppColors.grey800,
-                      ),
-                      maxLines: 2,
-                    ),
-                    SizedBox(height: context.h(12)),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: GestureDetector(
-                        onTap: () => context.push(
-                          '/profile-information',
-                          extra: {'fromHome': true},
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Title
+                      context.text(
+                        'AI Recommendation',
+                        style: textTheme.title2Bold.copyWith(
+                          color: isDark ? AppColors.grey100 : AppColors.blue900,
                         ),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: context.w(20),
-                            vertical: context.h(7),
+                      ),
+                      // Subtitle
+                      context.text(
+                        'Complete your profile to get better job matches',
+                        style: textTheme.bodyMedium.copyWith(
+                          color: isDark ? AppColors.blue200 : AppColors.grey800,
+                        ),
+                        maxLines: 2,
+                      ),
+                      // Button aligned right
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: GestureDetector(
+                          onTap: () => context.push(
+                            '/profile-information',
+                            extra: {'fromHome': true},
                           ),
-                          decoration: BoxDecoration(
-                            color: tealColor,
-                            borderRadius: BorderRadius.circular(context.r(50)),
-                          ),
-                          child: context.text(
-                            'Start now',
-                            style: textTheme.bodyBold.copyWith(
-                              color:
-                                  isDark ? AppColors.blue700 : AppColors.grey50,
+                          child: Container(
+                            width: buttonWidth,
+                            height: buttonHeight,
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? AppColors.lightBlue500
+                                  : AppColors.lightBlue700,
+                              borderRadius:
+                                  BorderRadius.circular(context.r(50)),
+                            ),
+                            alignment: Alignment.center,
+                            child: context.text(
+                              'Start now',
+                              style: textTheme.bodyBold.copyWith(
+                                color: isDark
+                                    ? AppColors.blue700
+                                    : AppColors.grey50,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -360,7 +386,7 @@ class _QuickActionCard extends StatelessWidget {
           color: isDark ? AppColors.blue700 : AppColors.grey50,
           borderRadius: BorderRadius.circular(radius),
           border: Border.all(
-            color: isDark ? AppColors.grey300 : AppColors.grey900,
+            color: isDark ? AppColors.grey300 : AppColors.grey50,
             width: isDark ? 0.5 : 1,
           ),
           boxShadow: [
@@ -376,7 +402,6 @@ class _QuickActionCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Image بدل الـ Icon Container
             SizedBox(
               width: imageSize,
               height: imageSize,

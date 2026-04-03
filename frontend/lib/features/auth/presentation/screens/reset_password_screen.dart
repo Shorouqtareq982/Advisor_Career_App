@@ -114,19 +114,21 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
         });
       } else if (mounted) {
         setState(() {
-          if (widget.method == 'email')
+          if (widget.method == 'email') {
             _emailError = 'Failed to send code. Please try again.';
-          else
+          } else {
             _phoneError = 'Failed to send code. Please try again.';
+          }
           _isLoading = false;
         });
       }
     } catch (e) {
       setState(() {
-        if (widget.method == 'email')
+        if (widget.method == 'email') {
           _emailError = 'An error occurred. Please try again.';
-        else
+        } else {
           _phoneError = 'An error occurred. Please try again.';
+        }
         _isLoading = false;
       });
     }
@@ -257,8 +259,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                           validator: (value) =>
                               AuthValidators.validateEmail(value),
                           onChanged: (_) {
-                            if (_emailError != null)
+                            if (_emailError != null) {
                               setState(() => _emailError = null);
+                            }
                           },
                           textInputAction: TextInputAction.done,
                           onFieldSubmitted: (_) => _handleSubmit(),
@@ -275,15 +278,18 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                             _phoneError = null;
                           }),
                           validator: (value) {
-                            if (value == null || value.isEmpty)
+                            if (value == null || value.isEmpty) {
                               return 'Phone number is required';
-                            if (value.length != _selectedCountry.phoneLength)
+                            }
+                            if (value.length != _selectedCountry.phoneLength) {
                               return 'Must be exactly ${_selectedCountry.phoneLength} digits';
+                            }
                             return null;
                           },
                           onChanged: (_) {
-                            if (_phoneError != null)
+                            if (_phoneError != null) {
                               setState(() => _phoneError = null);
+                            }
                           },
                           textInputAction: TextInputAction.done,
                           onFieldSubmitted: (_) => _handleSubmit(),

@@ -415,12 +415,12 @@ class AuthNotifier extends StateNotifier<AuthProviderState> {
     }
   }
 
-  /// Sign out — امسح الـ cache
+  /// Sign out
   Future<void> signOut() async {
     try {
       state = state.copyWith(isLoading: true);
       await _authService.signOut();
-      await _cache.clearUser(); // ← امسح
+      await _cache.clearUser();
       state = const AuthProviderState();
     } catch (e) {
       final errors = _parseError(e);
@@ -942,7 +942,7 @@ class AuthNotifier extends StateNotifier<AuthProviderState> {
     return user.topSkills == null || user.topSkills!.isEmpty;
   }
 
-  /// Refresh user data من Supabase وحفظ في الـ cache
+  /// Refresh user data
   Future<void> refreshUser() async {
     if (state.user == null) return;
 
@@ -955,7 +955,6 @@ class AuthNotifier extends StateNotifier<AuthProviderState> {
       }
     } catch (e) {
       print('   Error refreshing user (offline?): $e');
-      // مشكلة، الـ cache موجود
     }
   }
 
@@ -991,7 +990,7 @@ class AuthNotifier extends StateNotifier<AuthProviderState> {
       );
 
       if (success) {
-        await _cache.clearUser(); // ← امسح
+        await _cache.clearUser();
         state = const AuthProviderState();
       } else {
         state = state.copyWith(isLoading: false);
@@ -1016,7 +1015,7 @@ class AuthNotifier extends StateNotifier<AuthProviderState> {
       );
 
       if (success) {
-        await _cache.clearUser(); // ← امسح
+        await _cache.clearUser();
         state = const AuthProviderState();
       } else {
         state = state.copyWith(isLoading: false);

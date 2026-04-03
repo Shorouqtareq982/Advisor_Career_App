@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../core/utils/auth_validators.dart';
-import '../../../../shared/widgets/app_logo.dart';
 import '../../../../shared/widgets/custom_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/phone_input_field.dart';
@@ -72,7 +73,7 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen>
     });
   }
 
-  void _loadUserData() {
+  void _loadUserData() async {
     final user = ref.read(authProvider).user;
     if (user != null) {
       _usernameController.text = user.username ?? '';
@@ -92,13 +93,25 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen>
         }
       }
 
-      _avatarUrl = user.avatarUrl;
+      String? resolvedAvatarUrl = user.avatarUrl;
+      if (resolvedAvatarUrl == null || resolvedAvatarUrl.isEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        resolvedAvatarUrl = prefs.getString('avatar_url_${user.id}');
+      } else {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('avatar_url_${user.id}', resolvedAvatarUrl);
+      }
 
-      _originalUsername = user.username;
-      _originalEmail = user.email;
-      _originalPhone = user.phone;
-      _originalCountry = _selectedCountry;
-      _originalAvatarUrl = user.avatarUrl;
+      if (mounted) {
+        setState(() {
+          _avatarUrl = resolvedAvatarUrl;
+          _originalUsername = user.username;
+          _originalEmail = user.email;
+          _originalPhone = user.phone;
+          _originalCountry = _selectedCountry;
+          _originalAvatarUrl = resolvedAvatarUrl;
+        });
+      }
     }
   }
 
@@ -176,9 +189,9 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen>
         if (avatarUrl != null && mounted) {
           setState(() {
             _avatarUrl = avatarUrl;
-            _originalAvatarUrl = avatarUrl;
           });
-          _showSnackBar('Profile picture updated!', isError: false);
+          _showSnackBar('Profile picture uploaded! Press Save to confirm.',
+              isError: false);
         } else if (mounted) {
           _showSnackBar(
             'Failed to upload image. Please check storage permissions.',
@@ -212,7 +225,14 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen>
   }
 
   Future<void> _handleSave() async {
-    final fullPhone = _phoneInputKey.currentState?.getFullPhoneNumber();
+    String? fullPhone;
+    final phoneText = _phoneController.text.trim();
+    if (phoneText.isNotEmpty) {
+      final cleanPhone = phoneText.replaceFirst(RegExp(r'^0+'), '');
+      fullPhone = '${_selectedCountry.dialCode}$cleanPhone';
+    } else {
+      fullPhone = _originalPhone;
+    }
 
     if (!_hasChanges(fullPhone)) {
       _showSnackBar('No changes to save.', isError: false);
@@ -225,8 +245,43 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen>
       return;
     }
 
-    // ── فاليديشن الفورم قبل ما نبعت للـ API ──
-    if (!_formKey.currentState!.validate()) return;
+    final provider = ref.read(authProvider).user?.provider;
+
+    if (provider == 'email') {
+      if (_emailController.text.trim().isEmpty) {
+        setState(() => _emailError = 'Email is required for your account');
+        return;
+      }
+    }
+
+    if (provider == 'phone') {
+      if ((fullPhone ?? '').trim().isEmpty) {
+        setState(
+            () => _phoneError = 'Phone number is required for your account');
+        return;
+      }
+    }
+
+    final usernameValid = AuthValidators.validateUsername(
+            _usernameController.text.trim().isEmpty
+                ? null
+                : _usernameController.text.trim()) ==
+        null;
+    final emailValue = _emailController.text.trim();
+    final emailValid =
+        emailValue.isEmpty || AuthValidators.validateEmail(emailValue) == null;
+
+    if (!usernameValid) {
+      setState(() => _usernameError = AuthValidators.validateUsername(
+          _usernameController.text.trim().isEmpty
+              ? null
+              : _usernameController.text.trim()));
+      return;
+    }
+    if (!emailValid) {
+      setState(() => _emailError = AuthValidators.validateEmail(emailValue));
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -251,6 +306,12 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen>
     setState(() => _isLoading = false);
 
     if (success) {
+      final user = ref.read(authProvider).user;
+      if (user != null && _avatarUrl != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('avatar_url_${user.id}', _avatarUrl!);
+      }
+
       setState(() {
         _isEditing = false;
         _originalUsername = _usernameController.text.trim().isEmpty
@@ -329,7 +390,7 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen>
         isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
 
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: LayoutBuilder(
@@ -357,7 +418,12 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen>
                         ),
                       ),
                       const Spacer(),
-                      const AppLogo(),
+                      Image.asset(
+                        'assets/images/branding/growza_logo.png',
+                        width: context.w(105),
+                        height: context.h(40),
+                        fit: BoxFit.contain,
+                      ),
                       const Spacer(),
                       SizedBox(width: context.icon(20)),
                     ],
@@ -469,7 +535,9 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen>
                                   color: AppColors.grey300,
                                   image: _avatarUrl != null
                                       ? DecorationImage(
-                                          image: NetworkImage(_avatarUrl!),
+                                          image: CachedNetworkImageProvider(
+                                            _avatarUrl!,
+                                          ),
                                           fit: BoxFit.cover,
                                         )
                                       : null,
