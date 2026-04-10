@@ -2,8 +2,9 @@
 Career Planning Schemas
 Pydantic models for request/response validation
 """
+
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional, Dict, Any, Literal
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
 from enum import Enum
@@ -32,6 +33,12 @@ class CurrentLevel(str, Enum):
     ADVANCED = "advanced"
 
 
+class FitStatus(str, Enum):
+    GOOD_FIT = "good_fit"
+    MODERATE_FIT = "moderate_fit"
+    POOR_FIT = "poor_fit"
+
+
 # =====================================================
 # SKILL SCHEMAS
 # =====================================================
@@ -58,6 +65,47 @@ class SkillGap(BaseModel):
     gap_score: float = Field(..., ge=0.0, le=1.0)
     importance_weight: int
     required_weeks: int
+    is_core: Optional[bool] = True
+
+
+class FitAnalysis(BaseModel):
+    fit_status: FitStatus
+    fit_score: float = Field(..., ge=0.0, le=100.0)
+    missing_core_skills: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    can_generate_plan: bool
+
+
+class SkillOverride(BaseModel):
+    skill_id: int
+    level: CurrentLevel
+
+
+class SkillTarget(BaseModel):
+    skill_id: int
+    target_level: LevelEnum
+
+
+class ReviewableSkill(BaseModel):
+    skill_id: int
+    skill_name: str
+    status: SkillStatus
+    detected_level: Optional[CurrentLevel] = None
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    needs_user_input: bool
+    required_level: LevelEnum
+    selected_by_default: bool
+
+
+class LearningTarget(BaseModel):
+    skill_id: int
+    skill_name: str
+    current_level: CurrentLevel
+    target_level: LevelEnum
+    required_level: LevelEnum
+    required_weeks: int
+    importance_weight: int
+    learning_mode: str  # learn_from_scratch | level_up
 
 
 # =====================================================
@@ -82,6 +130,17 @@ class TrackWithSkills(TrackBase):
     skills: List[SkillDetail]
 
 
+class TrackDropdownItem(BaseModel):
+    track_id: int
+    track_name: str
+    description: Optional[str] = None
+
+
+class TrackListResponse(BaseModel):
+    tracks: List[TrackDropdownItem]
+    total: int
+
+
 # =====================================================
 # CV ANALYSIS REQUEST/RESPONSE
 # =====================================================
@@ -89,7 +148,7 @@ class TrackWithSkills(TrackBase):
 class CVAnalysisRequest(BaseModel):
     cv_id: UUID
     track_id: int
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -114,46 +173,57 @@ class CVAnalysisResponse(BaseModel):
     matched_skills_count: int
     skill_gaps: List[SkillGap]
     realism_check: Dict[str, Any]
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "cv_id": "123e4567-e89b-12d3-a456-426614174000",
-                "track_id": 1,
-                "track_name": "Backend Development",
-                "detected_level": "intermediate",
-                "extracted_skills": [
-                    {"skill_name": "Python", "confidence": 0.95, "matched_skill_id": 1},
-                    {"skill_name": "SQL", "confidence": 0.88, "matched_skill_id": 2}
-                ],
-                "matched_skills_count": 3,
-                "skill_gaps": [],
-                "realism_check": {
-                    "is_realistic": True,
-                    "min_weeks_required": 20,
-                    "compression_ratio": 0.85
-                }
-            }
-        }
+    reviewable_skills: List[ReviewableSkill] = Field(default_factory=list)
+    fit_analysis: Optional[FitAnalysis] = None
+
+
+# =====================================================
+# CONFIRM FLOW
+# =====================================================
+
+class ConfirmRequest(BaseModel):
+    cv_id: UUID
+    track_id: int
+    requested_weeks: int = Field(..., ge=1, le=104)
+    available_hours_per_week: int = Field(..., ge=1, le=80)
+    user_level: Optional[LevelEnum] = None
+
+    selected_skill_ids: List[int] = Field(default_factory=list)
+    skill_overrides: List[SkillOverride] = Field(default_factory=list)
+    skill_targets: List[SkillTarget] = Field(default_factory=list)
 
 
 # =====================================================
 # PLAN GENERATION
 # =====================================================
 
-class PlanGenerationRequest(BaseModel):
-    user_id: UUID
+class PlanGenerateRequest(BaseModel):
     cv_id: UUID
     track_id: int
-    confirmed_level: LevelEnum
-    duration_weeks: int
-    selected_skill_ids: Optional[List[int]] = None  # If user wants to focus on specific skills
-    
-    @validator('duration_weeks')
-    def validate_duration(cls, v):
-        if v < 4 or v > 104:  # 1 month to 2 years
-            raise ValueError('Duration must be between 4 and 104 weeks')
+    duration_weeks: int = Field(..., ge=1, le=104)
+    available_hours_per_week: Optional[int] = Field(default=None, ge=1, le=80)
+    user_level: Optional[str] = None
+
+    selected_skill_ids: Optional[List[int]] = None
+    skill_targets: List[SkillTarget] = Field(default_factory=list)
+
+    @validator("user_level")
+    def validate_user_level(cls, v):
+        if v is not None and v not in ("beginner", "intermediate", "advanced"):
+            raise ValueError("user_level must be beginner, intermediate, or advanced")
         return v
+
+
+class PlanRegenerateRequest(BaseModel):
+    previous_plan: Dict[str, Any]
+    feedback: str
+    regeneration_mode: str = "full"
+
+
+class ResourceItem(BaseModel):
+    title: str
+    url: str
+    type: str
 
 
 class WeeklyContent(BaseModel):
@@ -162,7 +232,7 @@ class WeeklyContent(BaseModel):
     skill_name: str
     topic: str
     description: str
-    resources: List[str]
+    resources: List[Any]
 
 
 class GeneratedPlan(BaseModel):
@@ -191,6 +261,7 @@ class SavePlanRequest(BaseModel):
     detected_level: LevelEnum
     confirmed_level: LevelEnum
     duration_weeks: int
+    available_hours_per_week: Optional[int] = Field(default=None, ge=1, le=80)
     skill_gaps: List[SkillGap]
     weekly_content: List[WeeklyContent]
 
@@ -238,18 +309,6 @@ class RealismCheckResponse(BaseModel):
     requested_weeks: int
     compression_ratio: float
     message: str
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "is_realistic": False,
-                "min_weeks_required": 24,
-                "suggested_min_weeks": 20,
-                "requested_weeks": 12,
-                "compression_ratio": 0.50,
-                "message": "Duration too short. Minimum 20 weeks required (80% compression)."
-            }
-        }
 
 
 # =====================================================
@@ -266,7 +325,7 @@ class MatchedSkill(BaseModel):
     skill_name: str
     category: str
     confidence: float
-    track_relevance: List[str]  # Which tracks use this skill
+    track_relevance: List[str]
 
 
 class SkillMatchResponse(BaseModel):

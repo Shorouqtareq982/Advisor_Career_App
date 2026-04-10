@@ -1,59 +1,67 @@
-from fastapi import Depends, UploadFile
-from starlette.datastructures import UploadFile as StarletteUploadFile
+from fastapi import UploadFile
 import io
-from typing import BinaryIO, Union
-import pdfplumber
-from docx import Document
-from PIL import Image
-import pytesseract
+from typing import BinaryIO, Union, Tuple, Dict, Any
 
 from shared.helpers.text_extractor import TextExtractor
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
-from features.cv_optimization.prompts.data_extraction_prompt import CV_DATA_EXTRACTOR, JOB_DATA_EXTRACTOR#from ...features.cv_optimization.prompts import CV_DATA_EXTRACTOR, JOB_DATA_EXTRACTOR
+from features.cv_optimization.prompts.data_extraction_prompt import (
+    CV_DATA_EXTRACTOR,
+    JOB_DATA_EXTRACTOR,
+)
 from features.cv_optimization.schemas import CVData, JobData
+
 
 class DocumentParser:
     def __init__(self, llm: LLMProvider = None):
         self.llm = llm or create_llm_provider()
         self.textExtractor = TextExtractor()
 
-    async def _extract_text(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> str:
+    async def _extract_text(
+        self,
+        file: Union[str, io.BytesIO, BinaryIO, UploadFile]
+    ) -> str:
         """
         Extract text from PDF, DOCX, TXT, or images.
-        Automatically falls back to OCR for scanned PDFs/images.
-        Supports Arabic (requires tesseract Arabic language pack).
+        Falls back to OCR if needed (depending on TextExtractor implementation).
         """
         text = ""
-        
+
         try:
             text = await TextExtractor.extract_text(file)
-
         except Exception as e:
             print(f"Error extracting text: {e}")
 
-        return text
+        return text or ""
 
-    async def parse_cv(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> tuple[str, CVData]:
+    async def parse_cv(
+        self,
+        file: Union[str, io.BytesIO, BinaryIO, UploadFile]
+    ) -> Tuple[str, Dict[str, Any]]:
         """
-        Parses a CV file into structured data using LLM.
-        Returns a dictionary with extracted information.
+        Parse a CV file into:
+        - extracted raw text
+        - structured parsed content dict
         """
         try:
             text = await self._extract_text(file)
+
             if not text:
                 print("No text extracted from CV.")
-                return "", None
-            # Send text to LLM for structured extraction
+                return "", {}
+
             parsed_content = await self.parse_cv_text(text)
             return text, parsed_content
+
         except Exception as e:
             print(f"Error parsing CV: {e}")
-            return "", None
-        
-    async def parse_cv_text(self, cv_text: str) -> CVData:
+            return "", {}
+
+    async def parse_cv_text(self, cv_text: str) -> Dict[str, Any]:
         """
-        Parses CV text into structured data using LLM.
-        Returns a dictionary with extracted information.
+        Parse CV text into structured data using LLM.
+
+        Always returns a dict.
+        If parsing fails or response is invalid, returns {} instead of crashing.
         """
         try:
             parsed_content = await self.llm.get_response(
@@ -64,29 +72,52 @@ class DocumentParser:
 
             if not parsed_content:
                 print("LLM returned empty response for CV text parsing.")
-                return None
-            
-            return parsed_content.dict() if isinstance(parsed_content, CVData) else parsed_content
+                return {}
+
+            # Pydantic model
+            if isinstance(parsed_content, CVData):
+                return parsed_content.model_dump()
+
+            # Already dict
+            if isinstance(parsed_content, dict):
+                return parsed_content
+
+            # Unexpected type مثل string/raw content
+            print(f"Unexpected parsed_content type in parse_cv_text: {type(parsed_content)}")
+            return {}
+
         except Exception as e:
             print(f"Error parsing CV text: {e}")
-            return None
+            return {}
 
-    async def parse_job_description(self, jd_text: str) -> JobData:
+    async def parse_job_description(self, jd_text: str) -> Dict[str, Any]:
         """
-        Parses a job description text into structured data using LLM.
-        Returns a dictionary with extracted information.
+        Parse job description text into structured data using LLM.
+
+        Always returns a dict.
         """
         try:
             parsed_content = await self.llm.get_response(
                 prompt=JOB_DATA_EXTRACTOR.format(job_description=jd_text),
                 need_json_output=True,
-                schema= JobData
+                schema=JobData
             )
+
             if not parsed_content:
                 print("LLM returned empty response for job description parsing.")
                 return {}
-            
-            return parsed_content.dict() if isinstance(parsed_content, JobData) else parsed_content
+
+            # Pydantic model
+            if isinstance(parsed_content, JobData):
+                return parsed_content.model_dump()
+
+            # Already dict
+            if isinstance(parsed_content, dict):
+                return parsed_content
+
+            print(f"Unexpected parsed_content type in parse_job_description: {type(parsed_content)}")
+            return {}
+
         except Exception as e:
             print(f"Error parsing job description: {e}")
             return {}
