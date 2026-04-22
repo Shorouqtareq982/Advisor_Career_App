@@ -76,10 +76,10 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
-@lru_cache()
 def get_settings() -> Settings:
-    """Cached settings instance."""
+    """Get settings instance (fresh read from .env each time)."""
     return Settings()
 
 
+# Don't cache settings - reload from .env on each call
 settings = get_settings()

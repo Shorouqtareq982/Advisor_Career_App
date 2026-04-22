@@ -58,13 +58,6 @@ class CareerRepository:
         track_id: int,
         level: str = "beginner"
     ) -> List[Dict[str, Any]]:
-        """
-        Get all skills for a given track, including aliases and duration.
-        
-        Note: DB currently has 'required_weeks' only.
-        If beginner_weeks/intermediate_weeks/advanced_weeks are added later,
-        they will be used automatically.
-        """
         try:
             result = (
                 self.client.table("track_skills")
@@ -89,16 +82,13 @@ class CareerRepository:
 
             for row in rows:
                 skill_data = row.get("career_skills") or {}
-                
-                # Use required_weeks from database
-                # Future: if beginner_weeks/intermediate_weeks/advanced_weeks are added,
-                # selector logic can be enhanced
+
                 required_weeks = row.get("required_weeks")
                 if not required_weeks or required_weeks <= 0:
                     logger.warning(
                         f"Skill {skill_data.get('skill_name')} has invalid required_weeks: {required_weeks}"
                     )
-                    required_weeks = 4  # Fallback
+                    required_weeks = 4
 
                 aliases = skill_data.get("aliases") or []
                 if not isinstance(aliases, list):
@@ -182,15 +172,10 @@ class CareerRepository:
         self,
         cv_id: UUID,
         track_id: int,
-        analysis_data: dict
+        analysis_data: dict,
+        state_version: Optional[int] = None
     ) -> None:
         try:
-            payload = {
-                "cv_id": str(cv_id),
-                "track_id": track_id,
-                "analysis_data": analysis_data
-            }
-
             existing = (
                 self.client.table("analysis_cache")
                 .select("*")
@@ -200,14 +185,28 @@ class CareerRepository:
             )
 
             if existing.data:
+                current = existing.data[0]
+                previous_version = int(current.get("state_version") or 1)
+                next_version = state_version if state_version is not None else previous_version + 1
+
                 (
                     self.client.table("analysis_cache")
-                    .update({"analysis_data": analysis_data})
+                    .update({
+                        "analysis_data": analysis_data,
+                        "updated_at": "now()",
+                        "state_version": next_version,
+                    })
                     .eq("cv_id", str(cv_id))
                     .eq("track_id", track_id)
                     .execute()
                 )
             else:
+                payload = {
+                    "cv_id": str(cv_id),
+                    "track_id": track_id,
+                    "analysis_data": analysis_data,
+                    "state_version": state_version or 1,
+                }
                 self.client.table("analysis_cache").insert(payload).execute()
 
         except Exception as e:
@@ -242,6 +241,24 @@ class CareerRepository:
         except Exception as e:
             logger.error(f"Error getting analysis cache: {e}", exc_info=True)
             return None
+
+    async def get_analysis_cache_record(
+        self,
+        cv_id: UUID,
+        track_id: int
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("analysis_cache")
+                .select("*")
+                .eq("cv_id", str(cv_id))
+                .eq("track_id", track_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error(f"Error getting analysis cache record: {e}", exc_info=True)
+            raise
 
     async def delete_analysis_cache(self, cv_id: UUID, track_id: int) -> None:
         try:
@@ -295,42 +312,136 @@ class CareerRepository:
             logger.error(f"Error creating plan: {e}", exc_info=True)
             raise
 
-    async def insert_plan_content(self, weekly_data: List[Dict[str, Any]]) -> None:
-        """
-        Expects each item to contain:
-        - plan_id
-        - week_number
-        - skill_id
-        - topic
-        - description
-        - resources
-        """
+    async def upsert_plan_info(
+        self,
+        *,
+        user_id: UUID,
+        cv_id: UUID,
+        track_id: int,
+        detected_level: str,
+        confirmed_level: str,
+        duration_weeks: int,
+        realism_flag: bool = False,
+        suggested_min_weeks: Optional[int] = None,
+        available_hours_per_week: Optional[int] = None,
+        requested_weeks: Optional[int] = None,
+        realism_zone: Optional[str] = None,
+        confirmed_learning_targets: Optional[List[Dict[str, Any]]] = None,
+        detected_skill_levels: Optional[Dict[str, Any]] = None,
+        selected_skill_ids: Optional[List[int]] = None,
+        generation_mode: Optional[str] = None,
+        state_version: int = 1,
+    ) -> Optional[int]:
         try:
+            existing = (
+                self.client.table("career_plan_info")
+                .select("*")
+                .eq("user_id", str(user_id))
+                .eq("cv_id", str(cv_id))
+                .eq("track_id", track_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            payload = {
+                "user_id": str(user_id),
+                "cv_id": str(cv_id),
+                "track_id": track_id,
+                "detected_level": detected_level,
+                "confirmed_level": confirmed_level,
+                "duration_weeks": duration_weeks,
+                "realism_flag": realism_flag,
+                "suggested_min_weeks": suggested_min_weeks,
+                "available_hours_per_week": available_hours_per_week,
+                "requested_weeks": requested_weeks,
+                "realism_zone": realism_zone,
+                "confirmed_learning_targets": confirmed_learning_targets or [],
+                "detected_skill_levels": detected_skill_levels or {},
+                "selected_skill_ids": selected_skill_ids or [],
+                "generation_mode": generation_mode,
+                "state_version": state_version,
+            }
+
+            if existing.data:
+                plan_id = existing.data[0]["plan_id"]
+                (
+                    self.client.table("career_plan_info")
+                    .update(payload)
+                    .eq("plan_id", plan_id)
+                    .execute()
+                )
+                return plan_id
+
+            result = (
+                self.client.table("career_plan_info")
+                .insert(payload)
+                .execute()
+            )
+            return result.data[0]["plan_id"] if result.data else None
+
+        except Exception as e:
+            logger.error(f"Error upserting plan info: {e}", exc_info=True)
+            raise
+
+    async def replace_plan_user_skills(
+        self,
+        plan_id: int,
+        skills_data: List[Dict[str, Any]]
+    ) -> None:
+        try:
+            (
+                self.client.table("career_user_skills")
+                .delete()
+                .eq("plan_id", plan_id)
+                .execute()
+            )
+
+            if not skills_data:
+                return
+
+            self.client.table("career_user_skills").insert(skills_data).execute()
+
+        except Exception as e:
+            logger.error(f"Error replacing plan user skills: {e}", exc_info=True)
+            raise
+
+    async def replace_plan_content(
+        self,
+        plan_id: int,
+        weekly_data: List[Dict[str, Any]]
+    ) -> None:
+        try:
+            (
+                self.client.table("career_plan_content")
+                .delete()
+                .eq("plan_id", plan_id)
+                .execute()
+            )
+
             if not weekly_data:
                 return
 
             self.client.table("career_plan_content").insert(weekly_data).execute()
 
         except Exception as e:
+            logger.error(f"Error replacing plan content: {e}", exc_info=True)
+            raise
+
+    async def insert_plan_content(self, weekly_data: List[Dict[str, Any]]) -> None:
+        try:
+            if not weekly_data:
+                return
+            self.client.table("career_plan_content").insert(weekly_data).execute()
+        except Exception as e:
             logger.error(f"Error inserting plan content: {e}", exc_info=True)
             raise
 
     async def insert_user_skills(self, skills_data: List[Dict[str, Any]]) -> None:
-        """
-        Expects each item to contain:
-        - plan_id
-        - skill_id
-        - status
-        - current_level
-        - required_level
-        - gap_score
-        """
         try:
             if not skills_data:
                 return
-
             self.client.table("career_user_skills").insert(skills_data).execute()
-
         except Exception as e:
             logger.error(f"Error inserting user skills: {e}", exc_info=True)
             raise

@@ -32,11 +32,12 @@ def create_llm_provider(
     system_prompt: Optional[str] = None
 ) -> LLMProvider:
     settings = settings or get_settings()
-    provider = (settings.LLM_PROVIDER or "gemini").strip().lower()
+    provider = (settings.LLM_PROVIDER or "openrouter-with-fallback").strip().lower()  # Default to OpenRouter with fallback
 
-    if provider == "gemini":
-        from .gemini import Gemini
-        return Gemini(settings, system_prompt=system_prompt)
+    # Log which provider is being used
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔌 LLM Provider: {provider}")
 
     if provider == "mistral":
         from .mistral_provider import MistralProvider
@@ -50,9 +51,7 @@ def create_llm_provider(
         from .fallback_provider import FallbackLLMProvider
         return FallbackLLMProvider(
             settings,
-            primary="gemini",
-            fallbacks=["mistral", "openrouter"],
             system_prompt=system_prompt
         )
 
-    raise ValueError(f"Unsupported LLM provider: {settings.LLM_PROVIDER}")
+    raise ValueError(f"Unsupported LLM provider: {provider}. Use: mistral, openrouter, or openrouter-with-fallback")

@@ -1,12 +1,12 @@
 """
 Career Builder Router
-Final version:
+Draft-first version:
 - analyze
 - confirm-skills
 - confirm-time
-- generate-plan
-- regenerate-plan
-- save-plan
+- generate-plan (draft only)
+- regenerate-plan (draft only)
+- save-plan (final persistence only)
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
@@ -83,60 +83,6 @@ def _recalculate_reviewable_skill(skill: dict) -> dict:
     return skill
 
 
-def _classify_study_intensity(hours: int) -> str:
-    if hours <= 5:
-        return "light"
-    elif hours <= 10:
-        return "moderate"
-    return "intensive"
-
-
-def _suggest_target_level(
-    current_level: str,
-    required_level: str,
-    requested_weeks: int,
-    available_hours_per_week: int
-) -> tuple[str, str]:
-    """
-    Rule-based target decision.
-    The backend decides the target level, not the user.
-    """
-
-    current_level = (current_level or "none").lower()
-    required_level = (required_level or "beginner").lower()
-
-    current_value = LEVEL_VALUES.get(current_level, 0)
-    required_value = LEVEL_VALUES.get(required_level, 1)
-    intensity = _classify_study_intensity(available_hours_per_week)
-
-    # Missing skill
-    if current_value == 0:
-        if requested_weeks >= 12 and available_hours_per_week >= 10:
-            return "intermediate", "Enough time is available to move beyond fundamentals."
-        if requested_weeks >= 6:
-            return "beginner", "This skill is missing, so starting with fundamentals is the best path."
-        return "beginner", "Limited time makes a foundation-first target more realistic."
-
-    # Below required level
-    if current_value < required_value:
-        if required_level == "advanced" and intensity == "light" and requested_weeks < 10:
-            return "intermediate", "Time is limited, so reaching intermediate first is more realistic."
-        return required_level, "This target is needed to meet the track requirement."
-
-    # Already at or above required level -> optional level-up
-    if current_level == "beginner":
-        if requested_weeks >= 8 and available_hours_per_week >= 6:
-            return "intermediate", "There is enough time to strengthen this skill to intermediate."
-        return "beginner", "Your current level is enough for the available time."
-
-    if current_level == "intermediate":
-        if requested_weeks >= 10 and available_hours_per_week >= 8:
-            return "advanced", "There is enough time to push this skill toward advanced."
-        return "intermediate", "Your current level is already strong for the available time."
-
-    return "advanced", "Your current level is already sufficient."
-
-
 def get_repository() -> CareerRepository:
     return CareerRepository(supabase_db)
 
@@ -144,16 +90,6 @@ def get_repository() -> CareerRepository:
 def get_analysis_service() -> CareerAnalysisService:
     repo = get_repository()
     return CareerAnalysisService(repository=repo)
-
-
-def get_plan_generation_service() -> PlanGenerationService:
-    repo = get_repository()
-    analysis_service = CareerAnalysisService(repository=repo)
-    return PlanGenerationService(repository=repo, analysis_service=analysis_service)
-
-
-def get_plan_regeneration_service() -> PlanRegenerationService:
-    return PlanRegenerationService()
 
 
 def get_plan_persistence_service() -> PlanPersistenceService:
@@ -194,10 +130,8 @@ async def get_tracks(repo: CareerRepository = Depends(get_repository)):
 
 @router.get("/regeneration-intents")
 async def get_regeneration_intents():
-    """Get available plan regeneration intents/feedback types for the UI"""
     try:
         from features.career_builder.services.plan_feedback_mapper import PlanFeedbackMapper
-        
         intents = PlanFeedbackMapper.get_all_intents_for_ui()
         return {
             "status": "success",
@@ -365,6 +299,12 @@ async def confirm_skills(
                 gap["current_level"] = override_map[skill_id]
                 _recalculate_gap_fields(gap)
 
+        updated_detected_skill_levels = {
+            gap.get("skill_name"): (gap.get("current_level") or "none").lower()
+            for gap in skill_gaps
+            if gap.get("skill_name")
+        }
+
         selected_skill_ids = request.selected_skill_ids or [
             gap.get("skill_id")
             for gap in skill_gaps
@@ -383,6 +323,7 @@ async def confirm_skills(
             ],
             "reviewable_skills": reviewable_skills,
             "skill_gaps": skill_gaps,
+            "detected_skill_levels": updated_detected_skill_levels,
             "skills_confirmed": True,
         }
 
@@ -401,6 +342,7 @@ async def confirm_skills(
             "selected_skill_ids": selected_skill_ids,
             "reviewable_skills": reviewable_skills,
             "skill_gaps": skill_gaps,
+            "detected_skill_levels": updated_detected_skill_levels,
             "fit_analysis": cached.get("fit_analysis", {}),
             "metadata": {
                 "match_percentage": cached.get("match_percentage", 0),
@@ -423,11 +365,6 @@ async def confirm_time_preview(
     service: TimeGuidanceService = Depends(get_time_guidance_service),
     repo: CareerRepository = Depends(get_repository),
 ):
-    """
-    Preview time guidance BEFORE user enters hours/weeks.
-    This is a guide showing min/suitable/max weeks based on selected skills.
-    Uses default 6 hours/week as baseline for the guidance.
-    """
     try:
         cached = await repo.get_analysis_cache(cv_id=cv_id, track_id=track_id)
 
@@ -451,10 +388,8 @@ async def confirm_time_preview(
                 detail="No skills selected. Please confirm skills first."
             )
 
-        # Use default 6 hours/week for preview guidance
         default_hours = 6
 
-        # Get time guidance
         guidance = await service.get_time_guidance(
             cv_id=cv_id,
             track_id=track_id,
@@ -463,7 +398,6 @@ async def confirm_time_preview(
             available_hours_per_week=default_hours
         )
 
-        # Build guidance message
         guidance_message = (
             f"Based on {default_hours} hours/week study commitment:\n"
             f"• Minimum: {guidance.minimum_weeks} weeks (focus on essentials)\n"
@@ -484,11 +418,9 @@ async def confirm_time_preview(
                 "suitable_weeks": guidance.suitable_weeks,
                 "maximum_weeks": guidance.maximum_weeks,
                 "study_intensity": guidance.study_intensity,
-                "breakdown": {
-                    "minimum": guidance.minimum_weeks_breakdown,
-                    "suitable": guidance.suitable_weeks_breakdown,
-                    "maximum": guidance.maximum_weeks_breakdown,
-                }
+                "minimum_weeks_breakdown": guidance.minimum_weeks_breakdown,
+                "suitable_weeks_breakdown": guidance.suitable_weeks_breakdown,
+                "maximum_weeks_breakdown": guidance.maximum_weeks_breakdown,
             },
             "guidance_message": guidance_message,
             "note": "This is a preview based on default 6 hours/week. Adjust your hours/weeks in the next step for accurate validation."
@@ -534,15 +466,12 @@ async def confirm_time(
                 detail="No skills selected. Please confirm skills first."
             )
 
-        detected_skill_levels = cached.get("detected_skill_levels", {}) or {}
-        if not detected_skill_levels:
-            detected_skill_levels = {
-                gap.get("skill_name"): (gap.get("current_level") or "none").lower()
-                for gap in skill_gaps
-                if gap.get("skill_name")
-            }
+        detected_skill_levels = {
+            gap.get("skill_name"): (gap.get("current_level") or "none").lower()
+            for gap in skill_gaps
+            if gap.get("skill_name")
+        }
 
-        # 1) نفس حسبة الـ preview لكن بعدد ساعات اليوزر
         guidance = await service.get_time_guidance(
             cv_id=request.cv_id,
             track_id=request.track_id,
@@ -556,7 +485,6 @@ async def confirm_time(
         maximum_weeks = guidance.maximum_weeks
         requested_weeks = request.requested_weeks
 
-        # 2) classification
         warnings = []
         suggestions = []
         is_realistic = True
@@ -573,7 +501,6 @@ async def confirm_time(
             suggestions.append(
                 f"Increase to at least {minimum_weeks} weeks, or accept a lighter target scope."
             )
-
         elif requested_weeks < suitable_weeks:
             adjustment = "very_tight"
             zone = "minimum"
@@ -583,14 +510,12 @@ async def confirm_time(
             suggestions.append(
                 "This falls in the minimum band. Focus should stay on the selected skills first."
             )
-
         elif requested_weeks <= maximum_weeks:
             adjustment = "ok"
             zone = "suitable"
             suggestions.append(
                 "This falls in the suitable band and should support a balanced plan."
             )
-
         else:
             adjustment = "excessive"
             zone = "above_maximum"
@@ -603,9 +528,10 @@ async def confirm_time(
                 f"Only {request.available_hours_per_week} hours/week is light. Make sure these hours are focused."
             )
 
-        # 3) بعد الـ check فقط غيّر targets
         suggested_targets = []
         confirmed_learning_targets = []
+
+        selected_skill_ids_set = set(selected_skill_ids)
 
         for gap in skill_gaps:
             skill_id = gap.get("skill_id")
@@ -624,7 +550,7 @@ async def confirm_time(
             learning_mode = "level_up"
 
             if zone in ("below_minimum", "minimum"):
-                if skill_id not in selected_skill_ids:
+                if skill_id not in selected_skill_ids_set:
                     continue
 
                 if current_level == "none":
@@ -634,39 +560,51 @@ async def confirm_time(
                 elif current_level == "beginner":
                     target_level = "intermediate"
                     reason = "Minimum scope: selected beginner skill should reach intermediate."
-                    learning_mode = "level_up"
                 else:
                     target_level = current_level
                     reason = "Current level is already enough for the minimum scope."
-                    learning_mode = "level_up"
 
             elif zone == "suitable":
-                include = (skill_id in selected_skill_ids) or (
+                include = (skill_id in selected_skill_ids_set) or (
                     status in ("has", "partial") and is_core
                 )
                 if not include:
                     continue
 
-                target_level = "intermediate"
-                learning_mode = "learn_from_scratch" if current_level == "none" else "level_up"
-
-                if skill_id in selected_skill_ids:
-                    reason = "Suitable scope: selected skills progress toward intermediate."
+                if current_level == "none":
+                    target_level = "beginner" if requested_weeks < suitable_weeks else "intermediate"
+                    learning_mode = "learn_from_scratch"
+                elif current_level == "beginner":
+                    target_level = "intermediate"
+                elif current_level == "intermediate":
+                    target_level = "advanced" if requested_weeks > suitable_weeks + 4 else "intermediate"
                 else:
-                    reason = "Suitable scope: current core skills are reinforced to intermediate."
+                    target_level = "advanced"
 
-            else:  # above_maximum
-                include = (skill_id in selected_skill_ids) or (LEVEL_VALUES.get(current_level, 0) >= 1)
+                if skill_id in selected_skill_ids_set:
+                    reason = "Suitable scope: selected skills progress realistically."
+                else:
+                    reason = "Suitable scope: current core skills are reinforced."
+
+            else:
+                include = (skill_id in selected_skill_ids_set) or (LEVEL_VALUES.get(current_level, 0) >= 1)
                 if not include:
                     continue
 
-                target_level = "advanced"
-                learning_mode = "learn_from_scratch" if current_level == "none" else "level_up"
-
-                if skill_id in selected_skill_ids:
-                    reason = "Extended scope: selected skills can go deeper toward advanced."
+                if current_level == "none":
+                    target_level = "intermediate"
+                    learning_mode = "learn_from_scratch"
+                elif current_level == "beginner":
+                    target_level = "advanced" if request.available_hours_per_week >= 10 else "intermediate"
+                elif current_level == "intermediate":
+                    target_level = "advanced"
                 else:
-                    reason = "Extended scope: current skills can be raised toward advanced."
+                    target_level = "advanced"
+
+                if skill_id in selected_skill_ids_set:
+                    reason = "Extended scope: selected skills can go deeper."
+                else:
+                    reason = "Extended scope: current skills can also be upgraded."
 
             suggested_targets.append({
                 "skill_id": skill_id,
@@ -674,7 +612,10 @@ async def confirm_time(
                 "current_level": current_level,
                 "suggested_target_level": target_level,
                 "target_reason": reason,
-                "learning_mode": learning_mode
+                "learning_mode": learning_mode,
+                "status": status,
+                "is_core": is_core,
+                "selected_by_user": skill_id in selected_skill_ids_set,
             })
 
             current_value = LEVEL_VALUES.get(current_level, 0)
@@ -691,7 +632,10 @@ async def confirm_time(
                 "required_level": required_level,
                 "required_weeks": required_weeks,
                 "importance_weight": importance_weight,
-                "learning_mode": learning_mode
+                "learning_mode": learning_mode,
+                "status": status,
+                "is_core": is_core,
+                "selected_by_user": skill_id in selected_skill_ids_set,
             })
 
         if not confirmed_learning_targets:
@@ -714,12 +658,11 @@ async def confirm_time(
             "suggestions": suggestions,
         }
 
-        # Compute confirmed user's overall level from confirmed learning targets
-        confirmed_level_values = []
-        for target in confirmed_learning_targets:
-            current_level = (target.get("current_level") or "none").lower()
-            confirmed_level_values.append(LEVEL_VALUES.get(current_level, 0))
-        
+        confirmed_level_values = [
+            LEVEL_VALUES.get((target.get("current_level") or "none").lower(), 0)
+            for target in confirmed_learning_targets
+        ]
+
         confirmed_overall_level = "beginner"
         if confirmed_level_values:
             avg_level_value = sum(confirmed_level_values) / len(confirmed_level_values)
@@ -738,6 +681,7 @@ async def confirm_time(
             "confirmed_requested_weeks": requested_weeks,
             "suggested_targets": suggested_targets,
             "confirmed_learning_targets": confirmed_learning_targets,
+            "detected_skill_levels": detected_skill_levels,
             "level_used": confirmed_overall_level,
             "realism": realism,
             "time_confirmed": True,
@@ -767,11 +711,9 @@ async def confirm_time(
                 "suitable_weeks": suitable_weeks,
                 "maximum_weeks": maximum_weeks,
                 "study_intensity": guidance.study_intensity,
-                "breakdown": {
-                    "minimum": guidance.minimum_weeks_breakdown,
-                    "suitable": guidance.suitable_weeks_breakdown,
-                    "maximum": guidance.maximum_weeks_breakdown,
-                }
+                "minimum_weeks_breakdown": guidance.minimum_weeks_breakdown,
+                "suitable_weeks_breakdown": guidance.suitable_weeks_breakdown,
+                "maximum_weeks_breakdown": guidance.maximum_weeks_breakdown,
             },
             "reviewable_skills": reviewable_skills,
             "skill_gaps": skill_gaps,
@@ -793,14 +735,29 @@ async def confirm_time(
 @router.post("/generate-plan")
 async def generate_plan(
     request: PlanGenerateRequest,
-    service: PlanGenerationService = Depends(get_plan_generation_service),
     repo: CareerRepository = Depends(get_repository),
 ):
     try:
-        # Get cached data to retrieve confirmed user level
         cached = await repo.get_analysis_cache(cv_id=request.cv_id, track_id=request.track_id)
-        confirmed_user_level = cached.get("level_used") if cached else None
-        
+
+        if not cached:
+            raise HTTPException(
+                status_code=400,
+                detail="No analysis found. Call /analyze then /confirm-time first."
+            )
+
+        confirmed_learning_targets = cached.get("confirmed_learning_targets", []) or []
+        if not confirmed_learning_targets:
+            raise HTTPException(
+                status_code=400,
+                detail="No confirmed learning targets found. Call /confirm-time first."
+            )
+
+        confirmed_user_level = cached.get("level_used")
+
+        analysis_service = CareerAnalysisService(repository=repo)
+        service = PlanGenerationService(repository=repo, analysis_service=analysis_service)
+
         result = await service.generate_plan(
             cv_id=request.cv_id,
             track_id=request.track_id,
@@ -808,6 +765,19 @@ async def generate_plan(
             available_hours_per_week=request.available_hours_per_week,
             user_level=confirmed_user_level,
             requested_weeks=request.duration_weeks
+        )
+
+        updated_cache = {
+            **cached,
+            "draft_plan": result,
+            "draft_plan_updated_at": str(__import__("datetime").datetime.now()),
+            "draft_generation_mode": result.get("planning_mode"),
+        }
+
+        await repo.save_analysis_cache(
+            cv_id=request.cv_id,
+            track_id=request.track_id,
+            analysis_data=updated_cache
         )
 
         return {
@@ -828,14 +798,31 @@ async def generate_plan(
 @router.post("/regenerate-plan")
 async def regenerate_plan(
     request: PlanRegenerateRequest,
-    service: PlanRegenerationService = Depends(get_plan_regeneration_service),
+    repo: CareerRepository = Depends(get_repository),
 ):
     try:
+        service = PlanRegenerationService()
+
         result = await service.regenerate_plan(
             previous_plan=request.previous_plan,
             feedback_intents=request.feedback_intents,
             regeneration_mode=request.regeneration_mode
         )
+
+        if request.cv_id and request.track_id:
+            cached = await repo.get_analysis_cache(cv_id=request.cv_id, track_id=request.track_id)
+            if cached:
+                updated_cache = {
+                    **cached,
+                    "draft_plan": result,
+                    "draft_plan_updated_at": str(__import__("datetime").datetime.now()),
+                    "draft_generation_mode": result.get("planning_mode", "regenerated_plan"),
+                }
+                await repo.save_analysis_cache(
+                    cv_id=request.cv_id,
+                    track_id=request.track_id,
+                    analysis_data=updated_cache
+                )
 
         return {
             "status": "success",
@@ -856,32 +843,66 @@ async def regenerate_plan(
 async def save_plan(
     request: SavePlanRequest,
     service: PlanPersistenceService = Depends(get_plan_persistence_service),
+    repo: CareerRepository = Depends(get_repository),
 ):
     try:
+        cached = await repo.get_analysis_cache(
+            cv_id=request.cv_id,
+            track_id=request.track_id
+        )
+
+        if not cached:
+            raise HTTPException(
+                status_code=400,
+                detail="No cached analysis found. Call /analyze first."
+            )
+
+        draft_plan = cached.get("draft_plan")
+        if not draft_plan:
+            raise HTTPException(
+                status_code=400,
+                detail="No draft plan found. Call /generate-plan first."
+            )
+
+        detected_level = cached.get("detected_level")
+        confirmed_level = cached.get("level_used") or detected_level
+        skill_gaps = cached.get("skill_gaps", []) or []
+        available_hours_per_week = (
+            draft_plan.get("available_hours_per_week")
+            or cached.get("available_hours_per_week")
+        )
+        duration_weeks = draft_plan.get("duration_weeks")
+
+        if not detected_level:
+            raise HTTPException(status_code=400, detail="Detected level is missing from cache.")
+
+        if not confirmed_level:
+            raise HTTPException(status_code=400, detail="Confirmed level is missing from cache. Call /confirm-time first.")
+
+        if not duration_weeks:
+            raise HTTPException(status_code=400, detail="Draft plan duration is missing.")
+
         result = await service.save_plan(
             user_id=request.user_id,
             cv_id=request.cv_id,
             track_id=request.track_id,
-            detected_level=request.detected_level.value,
-            confirmed_level=request.confirmed_level.value,
-            duration_weeks=request.duration_weeks,
+            detected_level=detected_level,
+            confirmed_level=confirmed_level,
+            duration_weeks=duration_weeks,
             plan_data={
-                "available_hours_per_week": request.available_hours_per_week,
-                "weekly_breakdown": [
-                    {
-                        "week_number": item.week_number,
-                        "focus_skills": item.focus_skills,
-                        "topic": item.topic,
-                        "description": item.description,
-                        "resources": [
-                            r.model_dump() if hasattr(r, "model_dump") else r
-                            for r in item.resources
-                        ],
-                    }
-                    for item in request.weekly_content
-                ]
+                "available_hours_per_week": available_hours_per_week,
+                "weekly_breakdown": draft_plan.get("weekly_breakdown", []),
+                "planning_mode": draft_plan.get("planning_mode"),
+                "study_intensity": draft_plan.get("study_intensity"),
+                "plan_summary": draft_plan.get("plan_summary"),
+                "improvement_summary": draft_plan.get("improvement_summary"),
+                "generation_metadata": draft_plan.get("generation_metadata", {}),
+                "used_learning_targets": draft_plan.get("used_learning_targets", []),
+                "deferred_learning_targets": draft_plan.get("deferred_learning_targets", []),
+                "current_average_level": draft_plan.get("current_average_level"),
+                "final_expected_level": draft_plan.get("final_expected_level"),
             },
-            skill_gaps=[gap.model_dump() for gap in request.skill_gaps]
+            skill_gaps=skill_gaps
         )
 
         return {
@@ -897,225 +918,3 @@ async def save_plan(
     except Exception as e:
         logger.error(f"Save plan failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/diagnostic/health-check")
-async def full_diagnostic():
-    """
-    🏥 Complete diagnostic to test all API dependencies.
-    
-    Tests:
-    - YouTube API
-    - SerpApi
-    - LLM Providers (Gemini, Anthropic, OpenRouter)
-    - Database (Supabase/PostgreSQL)
-    - File Storage (Cloudinary, Azure)
-    """
-    from core.config import settings
-    from features.career_builder.services.resource_search_service import ResourceSearchService
-    from shared.providers.llm_models.llm_provider import create_llm_provider
-    
-    diagnostic_results = {
-        "timestamp": str(__import__("datetime").datetime.now()),
-        "overall_status": "checking...",
-        "apis": {},
-        "warnings": [],
-        "errors": []
-    }
-    
-    # ==========================================
-    # 1️⃣ YouTube API
-    # ==========================================
-    try:
-        service = ResourceSearchService()
-        youtube_key = service.youtube_api_key
-        
-        if not youtube_key:
-            diagnostic_results["apis"]["youtube"] = {
-                "status": "⚠️ NOT CONFIGURED",
-                "configured": False
-            }
-            diagnostic_results["warnings"].append("YouTube API key not set")
-        else:
-            diagnostic_results["apis"]["youtube"] = {
-                "status": "✅ CONFIGURED",
-                "configured": True,
-                "key_preview": youtube_key[:10] + "..." + youtube_key[-5:]
-            }
-    except Exception as e:
-        diagnostic_results["apis"]["youtube"] = {"status": "❌ ERROR", "error": str(e)}
-        diagnostic_results["errors"].append(f"YouTube check failed: {e}")
-    
-    # ==========================================
-    # 2️⃣ SerpApi
-    # ==========================================
-    try:
-        service = ResourceSearchService()
-        serpapi_key = service.serpapi_api_key
-        
-        if not serpapi_key:
-            diagnostic_results["apis"]["serpapi"] = {
-                "status": "⚠️ NOT CONFIGURED",
-                "configured": False
-            }
-            diagnostic_results["warnings"].append("SerpApi key not set (fallback will be used)")
-        else:
-            # Test with a simple query
-            try:
-                test_results = await service._search_serpapi(
-                    query="python",
-                    resource_type="docs",
-                    title="Python Docs"
-                )
-                diagnostic_results["apis"]["serpapi"] = {
-                    "status": "✅ WORKING",
-                    "configured": True,
-                    "test_query": "python docs",
-                    "results_count": len(test_results),
-                    "key_preview": serpapi_key[:10] + "..." + serpapi_key[-5:]
-                }
-            except Exception as api_error:
-                if "429" in str(api_error):
-                    diagnostic_results["apis"]["serpapi"] = {
-                        "status": "⚠️ RATE LIMITED (429)",
-                        "configured": True,
-                        "error": "API quota exceeded - fallback will be used",
-                        "key_preview": serpapi_key[:10] + "..." + serpapi_key[-5:]
-                    }
-                    diagnostic_results["warnings"].append("SerpApi is rate limited - fallback resources will be used")
-                else:
-                    raise
-    except Exception as e:
-        diagnostic_results["apis"]["serpapi"] = {"status": "❌ ERROR", "error": str(e)[:100]}
-        diagnostic_results["errors"].append(f"SerpApi check failed: {e}")
-    
-    # ==========================================
-    # 3️⃣ LLM Providers
-    # ==========================================
-    try:
-        llm_provider = settings.LLM_PROVIDER or "not_set"
-        
-        if llm_provider == "not_set":
-            diagnostic_results["apis"]["llm"] = {
-                "status": "❌ NOT CONFIGURED",
-                "provider": None
-            }
-            diagnostic_results["errors"].append("LLM_PROVIDER not set in .env")
-        else:
-            llm_config = {
-                "status": "✅ CONFIGURED",
-                "provider": llm_provider,
-                "keys_configured": {}
-            }
-            
-            # Check each provider
-            if llm_provider == "gemini":
-                gemini_key = getattr(settings, "GEMINI_API_KEY", None)
-                llm_config["keys_configured"]["gemini"] = bool(gemini_key)
-                if not gemini_key:
-                    diagnostic_results["errors"].append("Gemini API key not configured")
-                
-            elif llm_provider == "anthropic":
-                anthropic_key = getattr(settings, "ANTHROPIC_API_KEY", None)
-                llm_config["keys_configured"]["anthropic"] = bool(anthropic_key)
-                if not anthropic_key:
-                    diagnostic_results["errors"].append("Anthropic API key not configured")
-                    
-            elif llm_provider == "openrouter":
-                openrouter_key = getattr(settings, "OPENROUTER_API_KEY", None)
-                llm_config["keys_configured"]["openrouter"] = bool(openrouter_key)
-                if not openrouter_key:
-                    diagnostic_results["errors"].append("OpenRouter API key not configured")
-            
-            diagnostic_results["apis"]["llm"] = llm_config
-    except Exception as e:
-        diagnostic_results["apis"]["llm"] = {"status": "❌ ERROR", "error": str(e)[:100]}
-        diagnostic_results["errors"].append(f"LLM check failed: {e}")
-    
-    # ==========================================
-    # 4️⃣ Database (Supabase)
-    # ==========================================
-    try:
-        from shared.providers.supabase.database import db as supabase_db
-        
-        supabase_url = settings.SUPABASE_URL
-        supabase_key = settings.SUPABASE_ANON_KEY
-        
-        if not supabase_url or not supabase_key:
-            diagnostic_results["apis"]["database"] = {
-                "status": "⚠️ NOT CONFIGURED",
-                "type": "supabase"
-            }
-            diagnostic_results["warnings"].append("Supabase not configured")
-        else:
-            try:
-                # Try a simple query
-                tables_result = supabase_db.table("tracks").select("track_id", count="exact").limit(1).execute()
-                diagnostic_results["apis"]["database"] = {
-                    "status": "✅ CONNECTED",
-                    "type": "supabase",
-                    "url_preview": supabase_url[:30] + "..."
-                }
-            except Exception as db_error:
-                diagnostic_results["apis"]["database"] = {
-                    "status": "❌ CONNECTION FAILED",
-                    "type": "supabase",
-                    "error": str(db_error)[:100]
-                }
-                diagnostic_results["errors"].append(f"Database connection failed: {db_error}")
-    except Exception as e:
-        diagnostic_results["apis"]["database"] = {"status": "❌ ERROR", "error": str(e)[:100]}
-        diagnostic_results["errors"].append(f"Database check failed: {e}")
-    
-    # ==========================================
-    # 5️⃣ File Storage
-    # ==========================================
-    storage_status = {}
-    
-    # Cloudinary
-    try:
-        cloudinary_cloud = settings.CLOUDINARY_CLOUD_NAME
-        cloudinary_key = settings.CLOUDINARY_API_KEY
-        
-        if not cloudinary_cloud or not cloudinary_key:
-            storage_status["cloudinary"] = {
-                "status": "⚠️ NOT CONFIGURED"
-            }
-        else:
-            storage_status["cloudinary"] = {
-                "status": "✅ CONFIGURED",
-                "cloud": cloudinary_cloud[:20] + "..."
-            }
-    except Exception as e:
-        storage_status["cloudinary"] = {"status": "❌ ERROR", "error": str(e)[:80]}
-    
-    # Azure Storage
-    try:
-        azure_conn = settings.AZURE_STORAGE_CONNECTION_STRING
-        if not azure_conn:
-            storage_status["azure"] = {"status": "⚠️ NOT CONFIGURED"}
-        else:
-            storage_status["azure"] = {"status": "✅ CONFIGURED"}
-    except Exception as e:
-        storage_status["azure"] = {"status": "❌ ERROR", "error": str(e)[:80]}
-    
-    diagnostic_results["apis"]["storage"] = storage_status
-    
-    # ==========================================
-    # Calculate Overall Status
-    # ==========================================
-    error_count = len(diagnostic_results["errors"])
-    critical_missing = any(
-        "not_set" in str(v).lower() or "not configured" in str(v).lower()
-        for apis_dict in diagnostic_results["apis"].values()
-        for v in (apis_dict.values() if isinstance(apis_dict, dict) else [])
-    )
-    
-    if error_count > 2 or critical_missing:
-        diagnostic_results["overall_status"] = "⚠️ DEGRADED"
-    elif error_count > 0:
-        diagnostic_results["overall_status"] = "⚠️ PARTIAL"
-    else:
-        diagnostic_results["overall_status"] = "✅ HEALTHY"
-    
-    return diagnostic_results

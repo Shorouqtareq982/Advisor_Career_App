@@ -1,15 +1,11 @@
 """
-Plan Regeneration Service - IMPROVED VERSION
-Key improvements:
-1. Better regeneration prompt that references skill schedule
-2. Looser validation (trust level guard instead of hard-rejecting)
-3. Feedback-specific resource queries
-4. Consistent with improved generation service
+Plan Regeneration Service - two-stage LLM, cumulative, personalized, resilient version
 """
 
 import json
 import logging
-from typing import Dict, Any, List, Optional, Set
+import re
+from typing import Dict, Any, List, Optional
 
 from shared.providers.llm_models.llm_provider import create_llm_provider
 from features.career_builder.services.resource_search_service import ResourceSearchService
@@ -18,118 +14,124 @@ from features.career_builder.services.plan_feedback_mapper import PlanFeedbackMa
 logger = logging.getLogger(__name__)
 
 
-PLAN_REGENERATION_PROMPT = """
+PLAN_REGENERATION_STRUCTURE_PROMPT = """
 You are a senior software engineering mentor revising a personalized learning plan.
 
-User feedback has been provided and you MUST apply it meaningfully to create a significantly improved plan.
-This is NOT a cosmetic change — the plan should be notably different where feedback applies.
+Apply the user feedback meaningfully.
+This is NOT a cosmetic change.
+
+You must generate ONLY the revised weekly structure.
+DO NOT generate study_guide.
+DO NOT generate resource_queries.
+DO NOT include URLs.
 
 ==============================================================
-FEEDBACK TO APPLY (CRITICAL):
+FEEDBACK TO APPLY
 ==============================================================
 {feedback_instructions}
 
 ==============================================================
-REGENERATION MODE: {regeneration_mode}
+REGENERATION MODE
 ==============================================================
-Modes:
-- "full": Regenerate entire plan with all feedback applied
-- "partial": Focus feedback on first 50% of weeks
-- "focused": Apply feedback only to specific problematic weeks
+{regeneration_mode}
 
 ==============================================================
-MANDATORY CONSTRAINTS:
+MANDATORY CONSTRAINTS
 ==============================================================
-1. Return VALID JSON only (no markdown, no extra text)
-2. Keep EXACT same number of weeks: {duration_weeks} weeks
+1. Return VALID JSON only
+2. Keep EXACT same number of weeks: {duration_weeks}
 3. Keep EXACT same skills (only from used_learning_targets)
 4. Keep week numbering sequential from 1 to {duration_weeks}
-5. NO URLs in anything — use resource_queries only
-6. EVERY week must have exactly 4 resource_queries
-7. Apply feedback VISIBLY and MEANINGFULLY:
-   - Change topics, descriptions, and structure where feedback applies
-   - Do NOT make cosmetic/superficial changes
-   - Do NOT ignore feedback or apply it weakly
+5. Output JSON only
+6. No markdown
+7. Do NOT add extra braces or brackets
+8. Final character must be }}
 
 ==============================================================
-FEEDBACK APPLICATION CHECKLIST:
+FOR EACH WEEK ADD:
 ==============================================================
-BEFORE RETURNING, verify:
-□ Are topics/descriptions noticeably different from original where feedback applies?
-□ Have you changed resource types or emphasis based on feedback?
-□ For "more practical": Are there more project/hands-on elements now?
-□ For "more advanced": Are topics deeper and more sophisticated?
-□ For "less repetition": Does each week cover completely new material?
-□ For "focus selected": Are only selected skills in the plan?
-□ For "faster progress": Do you reach applications faster?
-□ For "simpler basics": Are prerequisites explicitly covered first?
-□ For "more projects": Do you have capstone projects?
-□ For "more theory": Are foundations explained before application?
-□ For "better structure": Do prerequisites come before dependent skills?
+- guide_style
+- resource_focus
+- avoid_topics
 
 ==============================================================
-RESOURCE QUERY RULES (STRICT):
-==============================================================
-EVERY week MUST have 4 DISTINCT resource queries:
-  1. ONE "youtube" query — specific to THIS week's subtopic (NOT generic)
-  2. ONE "docs" OR "article" — deep reference material for subtopic
-  3. ONE "practice" OR "project" — hands-on exercises for subtopic
-  4. ONE additional type (course, article, practice, project) — supplementary
-
-CRITICAL EXAMPLES:
-BAD query: "React tutorial", "Redux beginners guide"
-GOOD query: "React useEffect cleanup patterns memory leaks tutorial"
-GOOD query: "Redux thunk async middleware tutorial"
-
-Resource queries MUST reflect the feedback emphasis:
-- If "more practical": queries use "project", "hands-on", "implementation"
-- If "more advanced": queries mention "advanced", "patterns", "optimization"
-- If "more theory": queries mention "concepts", "architecture", "design"
-
-==============================================================
-TOPIC/DESCRIPTION TRANSFORMATION EXAMPLES:
-==============================================================
-
-Original Topic: "Getting Started with React"
-If more_practical: "Building Your First React Component: DOM Manipulation Project"
-If more_advanced: "React Fiber Architecture & Rendering Optimization"
-If more_theory: "React Fundamentals: Virtual DOM Concepts & Reconciliation"
-
-Original Description: "Learn React basics"
-If more_practical: "Build an interactive component from scratch. Start with JSX syntax, then create state-based UI changes."
-If more_theory: "Understand Virtual DOM reconciliation. Study React's diffing algorithm and lifecycle methods."
-
-==============================================================
-ORIGINAL PLAN REFERENCE:
+ORIGINAL PLAN REFERENCE
 ==============================================================
 {previous_plan_json}
 
 ==============================================================
-OUTPUT MUST BE VALID JSON:
+OUTPUT JSON
 ==============================================================
 {{
-  "plan_summary": "Updated summary reflecting feedback changes (2-3 sentences)",
-  "improvement_summary": "Specific description of how feedback was applied (1-2 sentences)",
+  "plan_summary": "Updated summary reflecting feedback changes",
+  "improvement_summary": "Specific description of how feedback was applied",
   "weekly_breakdown": [
     {{
       "week_number": 1,
       "focus_skills": ["SkillName"],
-      "topic": "Significantly updated topic title reflecting feedback",
-      "description": "Concrete description (2-3 sentences): what user DOES this week, specific tools, concepts, exercises, outputs.",
-      "learning_outcomes": ["Specific, measurable outcome 1", "Specific outcome 2"],
-      "expected_level_after_week": "beginner|intermediate|advanced",
-      "resource_queries": [
-        {{"title": "Specific video title", "query": "skill specific_subtopic tutorial or technique", "type": "youtube"}},
-        {{"title": "Specific docs title", "query": "skill specific_subtopic documentation API reference", "type": "docs"}},
-        {{"title": "Specific practice title", "query": "skill specific_subtopic exercises hands-on challenges", "type": "practice"}},
-        {{"title": "Specific supplementary title", "query": "skill specific_subtopic project case study guide", "type": "project"}}
-      ]
+      "topic": "Updated topic title",
+      "description": "Concrete description",
+      "learning_outcomes": ["Outcome 1", "Outcome 2"],
+      "expected_level_after_week": "beginner",
+      "guide_style": "hands_on",
+      "resource_focus": ["phrase 1", "phrase 2"],
+      "avoid_topics": ["phrase 1"]
     }}
   ]
 }}
+"""
 
-REMEMBER: The plan should feel MEANINGFULLY DIFFERENT from the original when feedback is applied.
-If regenerated plan looks similar to original, you have NOT applied feedback properly.
+
+STUDY_GUIDE_REGEN_PROMPT = """
+You are a senior software engineering mentor.
+
+Generate ONLY a personalized study_guide JSON object for ONE regenerated week.
+
+==============================================================
+CONTEXT
+==============================================================
+Track: __TRACK_NAME__
+Week Number: __WEEK_NUMBER__
+Focus Skill: __FOCUS_SKILL__
+Week Topic: __WEEK_TOPIC__
+Week Description: __WEEK_DESCRIPTION__
+Current Skill Level: __CURRENT_LEVEL__
+Target Skill Level: __TARGET_LEVEL__
+Expected Level After This Week: __EXPECTED_LEVEL_AFTER_WEEK__
+Available Hours This Week: __AVAILABLE_HOURS__
+Guide Style: __GUIDE_STYLE__
+Resource Focus: __RESOURCE_FOCUS__
+Avoid Topics: __AVOID_TOPICS__
+Feedback Intents: __FEEDBACK_INTENTS__
+
+==============================================================
+RULES
+==============================================================
+1. Return VALID JSON only
+2. No markdown
+3. No comments
+4. Apply the feedback meaningfully in how the user studies
+5. Keep the guide realistic for the user's level
+6. Final character must be }
+
+==============================================================
+OUTPUT JSON
+==============================================================
+{
+  "study_guide": {
+    "what_to_study": ["item 1", "item 2", "item 3"],
+    "how_to_study": [
+      "1. ...",
+      "2. ...",
+      "3. ..."
+    ],
+    "time_split": {
+      "reading_study": "25%",
+      "hands_on_coding": "50%",
+      "project_integration": "25%"
+    }
+  }
+}
 """
 
 
@@ -141,15 +143,34 @@ class PlanRegenerationService:
         "advanced": 3,
     }
 
+    TRACK_KEYWORDS = {
+        "frontend": ["ui", "browser", "component", "state management", "responsive"],
+        "backend": ["api", "database", "authentication", "server", "deployment"],
+        "full stack": ["frontend", "backend", "api", "database", "architecture"],
+        "data science": ["data analysis", "machine learning", "statistics", "model evaluation", "notebook"],
+        "data analyst": ["sql", "dashboard", "reporting", "visualization", "analytics"],
+        "devops": ["docker", "kubernetes", "ci/cd", "deployment", "observability"],
+        "mobile": ["android", "ios", "ui", "state", "performance"],
+    }
+
     def __init__(self):
-        self.llm = create_llm_provider()
-        self.resource_search_service = ResourceSearchService()
+        try:
+            self.llm = create_llm_provider()
+        except Exception as e:
+            logger.error("Failed to initialize LLM provider in regeneration: %s", e, exc_info=True)
+            self.llm = None
+
+        try:
+            self.resource_search_service = ResourceSearchService()
+        except Exception as e:
+            logger.error("Failed to initialize ResourceSearchService in regeneration: %s", e, exc_info=True)
+            self.resource_search_service = None
 
     async def regenerate_plan(
         self,
         previous_plan: Dict[str, Any],
         feedback_intents: List[str],
-        regeneration_mode: str = "full"
+        regeneration_mode: str = "full",
     ) -> Dict[str, Any]:
         if not previous_plan:
             raise ValueError("previous_plan is required")
@@ -169,413 +190,432 @@ class PlanRegenerationService:
             raise ValueError(f"Invalid feedback intents: {e}")
 
         feedback_instruction = PlanFeedbackMapper.map_intents_to_instruction(validated_intents)
-
-        # Build compact previous plan context (avoid token bloat)
         compact_context = self._build_compact_context(previous_plan)
 
-        prompt = PLAN_REGENERATION_PROMPT.format(
+        prompt = PLAN_REGENERATION_STRUCTURE_PROMPT.format(
             feedback_instructions=feedback_instruction,
             regeneration_mode=regeneration_mode,
             duration_weeks=duration_weeks,
-            previous_plan_json=json.dumps(compact_context, ensure_ascii=False, indent=2)
+            previous_plan_json=json.dumps(compact_context, ensure_ascii=False, indent=2),
         )
 
         logger.info(
-            "Regenerating plan with feedback... mode=%s intents=%s (%s) duration=%s weeks",
+            "Regenerating plan structure. mode=%s intents=%s duration=%s weeks",
             regeneration_mode,
             feedback_intents_str,
-            ", ".join([f"{intent}" for intent in feedback_intents_str]),
             duration_weeks,
         )
 
+        used_learning_targets = previous_plan.get("used_learning_targets", []) or []
+        available_hours_per_week = previous_plan.get("available_hours_per_week", 6)
+        track_name = previous_plan.get("track_name", "Unknown Track")
+        current_average_level = previous_plan.get("current_average_level", "beginner")
+        final_expected_level = previous_plan.get("final_expected_level", "intermediate")
+
+        # ============================================================
+        # LLM CALL #1 -> revised weekly structure
+        # ============================================================
         try:
+            if not self.llm:
+                raise ValueError("LLM provider is unavailable")
+
             response = await self.llm.get_response(
                 prompt=prompt,
                 need_json_output=True,
-                temperature=0.35
+                temperature=0.3,
             )
 
             if not response:
                 raise ValueError("LLM returned empty response")
 
-            plan_data = response if isinstance(response, dict) else self._safe_parse_json(response)
-            weekly_breakdown = plan_data.get("weekly_breakdown", [])
+            structure_data = response if isinstance(response, dict) else self._safe_parse_json(response)
+            weekly_breakdown = structure_data.get("weekly_breakdown", []) or []
 
-            used_learning_targets = previous_plan.get("used_learning_targets", []) or []
-            available_hours_per_week = previous_plan.get("available_hours_per_week", 6)
-            fallback_target_level = previous_plan.get("final_expected_level", "intermediate")
-
-            # Soft validation — fix issues instead of rejecting
             weekly_breakdown = self._soft_validate_and_fix(
                 weekly_breakdown=weekly_breakdown,
                 duration_weeks=duration_weeks,
                 used_learning_targets=used_learning_targets,
+                available_hours_per_week=available_hours_per_week,
             )
 
             weekly_breakdown = self._reduce_weekly_repetition(weekly_breakdown, duration_weeks)
             weekly_breakdown = self._enforce_weekly_expected_level_guard(
-                weekly_breakdown, used_learning_targets, duration_weeks
+                weekly_breakdown,
+                used_learning_targets,
+                duration_weeks,
             )
 
-            # Rebuild resources with specific queries
-            for week in weekly_breakdown:
-                resource_queries = self._build_specific_resource_queries_for_week(
+            plan_data = {
+                "plan_summary": structure_data.get("plan_summary") or "Updated plan generated from user feedback.",
+                "improvement_summary": structure_data.get("improvement_summary") or (
+                    f"Applied feedback intents: {', '.join(feedback_intents_str)}."
+                ),
+                "weekly_breakdown": weekly_breakdown,
+            }
+
+        except Exception as e:
+            logger.warning("LLM regeneration failed, using fallback. Reason: %s", e)
+            plan_data = self._build_fallback_regenerated_plan(
+                previous_plan=previous_plan,
+                feedback_intents=feedback_intents_str,
+                duration_weeks=duration_weeks,
+            )
+
+        weekly_breakdown = plan_data.get("weekly_breakdown", []) or []
+
+        # ============================================================
+        # LLM CALL #2 -> personalized study guide per week
+        # ============================================================
+        for week in weekly_breakdown:
+            level_info = self._infer_week_levels_from_topic(
+                week=week,
+                used_learning_targets=used_learning_targets,
+            )
+
+            try:
+                study_guide = await self._generate_personalized_study_guide_for_week(
+                    track_name=track_name,
                     week=week,
-                    duration_weeks=duration_weeks,
+                    current_level=level_info.get("current_level", "beginner"),
+                    target_level=level_info.get("target_level", "intermediate"),
                     available_hours_per_week=available_hours_per_week,
                     feedback_intents=feedback_intents_str,
                 )
-
-                # Also use LLM-provided queries if they're specific
-                llm_queries = week.pop("resource_queries", []) or []
-                merged_queries = self._merge_resource_queries(llm_queries, resource_queries)
-
-                level_info = self._infer_week_levels_from_targets(
+            except Exception as e:
+                logger.warning(
+                    "Study guide regeneration failed for week %s, using fallback. Reason: %s",
+                    week.get("week_number"),
+                    e,
+                )
+                study_guide = self._build_fallback_study_guide(
                     week=week,
-                    used_learning_targets=used_learning_targets,
-                    fallback_target_level=fallback_target_level
+                    current_level=level_info.get("current_level", "beginner"),
+                    target_level=level_info.get("target_level", "intermediate"),
+                    feedback_intents=feedback_intents_str,
                 )
 
-                week["resources"] = await self.resource_search_service.search_resources(
-                    resource_queries=merged_queries,
-                    max_per_week=4,
-                    current_level=level_info["current_level"],
-                    target_level=level_info["target_level"],
-                    available_hours_per_week=available_hours_per_week,
-                    week_number=week.get("week_number"),
-                    duration_weeks=duration_weeks,
-                    context_keywords=week.get("focus_skills", []) + [week.get("topic", "")],
+            week["study_guide"] = study_guide
+
+        # ============================================================
+        # Build personalized resource queries in code
+        # ============================================================
+        track_keywords = self._build_track_keywords(track_name)
+
+        for week in weekly_breakdown:
+            level_info = self._infer_week_levels_from_topic(
+                week=week,
+                used_learning_targets=used_learning_targets,
+            )
+
+            generated_queries = self._build_specific_resource_queries_for_week(
+                week=week,
+                duration_weeks=duration_weeks,
+                available_hours_per_week=available_hours_per_week,
+                feedback_intents=feedback_intents_str,
+            )
+
+            resource_queries = self._enrich_resource_queries(
+                resource_queries=generated_queries,
+                week_topic=week.get("topic", ""),
+                focus_skills=week.get("focus_skills", []),
+                current_level=level_info.get("current_level", "beginner"),
+                target_level=level_info.get("target_level", "intermediate"),
+                week_number=int(week.get("week_number", 1) or 1),
+                duration_weeks=duration_weeks,
+                available_hours_per_week=available_hours_per_week,
+                feedback_intents=feedback_intents_str,
+                resource_focus=week.get("resource_focus", []),
+                avoid_topics=week.get("avoid_topics", []),
+            )
+
+            resources = []
+            if self.resource_search_service:
+                try:
+                    resources = await self.resource_search_service.search_resources(
+                        resource_queries=resource_queries,
+                        max_per_week=4,
+                        current_level=level_info.get("current_level"),
+                        target_level=level_info.get("target_level"),
+                        available_hours_per_week=available_hours_per_week,
+                        week_number=week.get("week_number"),
+                        duration_weeks=duration_weeks,
+                        context_keywords=week.get("focus_skills", []) + track_keywords + week.get("resource_focus", []),
+                        track_name=track_name,
+                        week_topic=week.get("topic", ""),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Resource fetching failed in regeneration for week %s: %s",
+                        week.get("week_number"),
+                        e,
+                    )
+                    resources = []
+
+            if not resources:
+                resources = self._build_fallback_resources_for_week(
+                    week=week,
+                    track_name=track_name,
+                    current_level=level_info.get("current_level", "beginner"),
+                    target_level=level_info.get("target_level", "intermediate"),
                 )
 
-            regenerated_plan = {
-                **previous_plan,
-                "plan_summary": plan_data.get("plan_summary", previous_plan.get("plan_summary", "")),
-                "improvement_summary": plan_data.get("improvement_summary", previous_plan.get("improvement_summary", "")),
-                "weekly_breakdown": weekly_breakdown,
-                "regenerated": True,
-                "regeneration_mode": regeneration_mode,
-                "feedback_intents": feedback_intents_str,
+            week["resources"] = resources
+            week["resource_validation_report"] = {
+                "track_name": track_name,
+                "current_level": level_info.get("current_level"),
+                "target_level": level_info.get("target_level"),
+                "resource_count": len(resources),
+                "regeneration_feedback": feedback_intents_str,
             }
 
-            # Validate that feedback was meaningfully applied
-            feedback_validation = self._validate_feedback_application(
-                previous_breakdown=previous_plan.get("weekly_breakdown", []),
-                regenerated_breakdown=weekly_breakdown,
-                feedback_intents=feedback_intents_str,
-            )
-            regenerated_plan["feedback_application_quality"] = feedback_validation
-            
-            logger.info(
-                "Plan regenerated successfully. Feedback applied: %s. Quality: %s%%",
-                ", ".join(feedback_intents_str),
-                feedback_validation.get("quality_score", 0)
-            )
+            week.pop("resource_focus", None)
+            week.pop("avoid_topics", None)
+            week.pop("guide_style", None)
 
-            # Preserve metadata from original plan
-            for field in [
-                "available_hours_per_week", "study_intensity", "planning_mode",
-                "current_average_level", "current_track_score", "final_expected_level",
-                "final_track_score", "final_skill_levels_after_plan", "learning_targets",
-                "merged_learning_targets", "used_learning_targets", "deferred_learning_targets",
-                "analysis_snapshot", "skill_schedule",
-            ]:
-                if field in previous_plan:
-                    regenerated_plan[field] = previous_plan[field]
+        plan_data["weekly_breakdown"] = weekly_breakdown
 
-            return regenerated_plan
+        return {
+            "track_id": previous_plan.get("track_id"),
+            "track_name": track_name,
+            "duration_weeks": duration_weeks,
+            "available_hours_per_week": available_hours_per_week,
+            "planning_mode": previous_plan.get("planning_mode", "regenerated_plan"),
+            "current_average_level": current_average_level,
+            "final_expected_level": final_expected_level,
+            "used_learning_targets": used_learning_targets,
+            "generation_metadata": {
+                "regenerated": True,
+                "feedback_intents": feedback_intents_str,
+                "regeneration_mode": regeneration_mode,
+                "two_stage_llm": True,
+            },
+            **plan_data,
+        }
 
-        except Exception as e:
-            logger.warning("Plan regeneration failed, using fallback. Reason: %s", e)
-            return await self._build_fallback_regenerated_plan(
-                previous_plan=previous_plan,
-                feedback_intents=feedback_intents_str,
-                regeneration_mode=regeneration_mode,
-            )
+    def _normalize_intent(self, intent: str) -> str:
+        return str(intent or "").strip().lower()
+
+    def _normalize_level(self, level: Optional[str]) -> str:
+        normalized = (level or "").strip().lower()
+        return normalized if normalized in self.LEVEL_VALUES else ""
+
+    def _normalize_track_name(self, track_name: Optional[str]) -> str:
+        return " ".join((track_name or "").strip().lower().split())
+
+    def _build_track_keywords(self, track_name: Optional[str]) -> List[str]:
+        normalized = self._normalize_track_name(track_name)
+        for key, values in self.TRACK_KEYWORDS.items():
+            if key in normalized:
+                return values
+        return []
 
     def _build_compact_context(self, previous_plan: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Build compact context for LLM — include what's needed, skip raw resources.
-        """
-        weekly_breakdown_compact = []
-        for week in (previous_plan.get("weekly_breakdown") or []):
-            weekly_breakdown_compact.append({
-                "week_number": week.get("week_number"),
-                "focus_skills": week.get("focus_skills", []),
-                "topic": week.get("topic", ""),
-                "description": week.get("description", ""),
-                "learning_outcomes": week.get("learning_outcomes", []),
-                "expected_level_after_week": week.get("expected_level_after_week", "beginner"),
-                # Omit "resources" to save tokens
-            })
-
         return {
             "track_name": previous_plan.get("track_name"),
             "duration_weeks": previous_plan.get("duration_weeks"),
             "available_hours_per_week": previous_plan.get("available_hours_per_week"),
-            "study_intensity": previous_plan.get("study_intensity"),
             "planning_mode": previous_plan.get("planning_mode"),
             "current_average_level": previous_plan.get("current_average_level"),
             "final_expected_level": previous_plan.get("final_expected_level"),
             "used_learning_targets": previous_plan.get("used_learning_targets", []),
-            "deferred_learning_targets": previous_plan.get("deferred_learning_targets", []),
-            "weekly_breakdown": weekly_breakdown_compact,
+            "weekly_breakdown": [
+                {
+                    "week_number": week.get("week_number"),
+                    "focus_skills": week.get("focus_skills", []),
+                    "topic": week.get("topic"),
+                    "description": week.get("description"),
+                    "expected_level_after_week": week.get("expected_level_after_week"),
+                }
+                for week in (previous_plan.get("weekly_breakdown", []) or [])
+            ],
         }
+
+    def _build_study_guide_prompt(
+        self,
+        track_name: str,
+        week: Dict[str, Any],
+        current_level: str,
+        target_level: str,
+        available_hours_per_week: int,
+        feedback_intents: List[str],
+    ) -> str:
+        prompt = STUDY_GUIDE_REGEN_PROMPT
+        prompt = prompt.replace("__TRACK_NAME__", str(track_name))
+        prompt = prompt.replace("__WEEK_NUMBER__", str(week.get("week_number", 1)))
+        prompt = prompt.replace("__FOCUS_SKILL__", str((week.get("focus_skills") or ["General Skill"])[0]))
+        prompt = prompt.replace("__WEEK_TOPIC__", str(week.get("topic", "")))
+        prompt = prompt.replace("__WEEK_DESCRIPTION__", str(week.get("description", "")))
+        prompt = prompt.replace("__CURRENT_LEVEL__", str(current_level))
+        prompt = prompt.replace("__TARGET_LEVEL__", str(target_level))
+        prompt = prompt.replace("__EXPECTED_LEVEL_AFTER_WEEK__", str(week.get("expected_level_after_week", "beginner")))
+        prompt = prompt.replace("__AVAILABLE_HOURS__", str(available_hours_per_week))
+        prompt = prompt.replace("__GUIDE_STYLE__", str(week.get("guide_style", "hands_on")))
+        prompt = prompt.replace("__RESOURCE_FOCUS__", json.dumps(week.get("resource_focus", []), ensure_ascii=False))
+        prompt = prompt.replace("__AVOID_TOPICS__", json.dumps(week.get("avoid_topics", []), ensure_ascii=False))
+        prompt = prompt.replace("__FEEDBACK_INTENTS__", json.dumps(feedback_intents, ensure_ascii=False))
+        return prompt
+
+    async def _generate_personalized_study_guide_for_week(
+        self,
+        track_name: str,
+        week: Dict[str, Any],
+        current_level: str,
+        target_level: str,
+        available_hours_per_week: int,
+        feedback_intents: List[str],
+    ) -> Dict[str, Any]:
+        if not self.llm:
+            raise ValueError("LLM provider is unavailable")
+
+        prompt = self._build_study_guide_prompt(
+            track_name=track_name,
+            week=week,
+            current_level=current_level,
+            target_level=target_level,
+            available_hours_per_week=available_hours_per_week,
+            feedback_intents=feedback_intents,
+        )
+
+        response = await self.llm.get_response(
+            prompt=prompt,
+            need_json_output=True,
+            temperature=0.25,
+        )
+
+        if not response:
+            raise ValueError("LLM returned empty response for regenerated study guide")
+
+        data = response if isinstance(response, dict) else self._safe_parse_json(response)
+        study_guide = data.get("study_guide")
+        if not isinstance(study_guide, dict):
+            raise ValueError("Invalid regenerated study_guide response from LLM")
+        return study_guide
+
+    def _fix_common_json_issues(self, raw: str) -> str:
+        text = (raw or "").strip()
+        if text.endswith("}}]"):
+            text = text[:-3] + "}]"
+        text = re.sub(r",\s*([}\]])", r"\1", text)
+        return text
+
+    def _safe_parse_json(self, raw: str) -> Dict[str, Any]:
+        if raw is None:
+            raise ValueError("Cannot parse JSON from None response")
+
+        raw = self._fix_common_json_issues(raw)
+
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+
+        fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
+        if fenced:
+            candidate = self._fix_common_json_issues(fenced.group(1))
+            return json.loads(candidate)
+
+        brace_match = re.search(r"(\{.*\})", raw, re.DOTALL)
+        if brace_match:
+            candidate = self._fix_common_json_issues(brace_match.group(1))
+            return json.loads(candidate)
+
+        raise ValueError("Failed to parse regeneration JSON from model response")
 
     def _soft_validate_and_fix(
         self,
         weekly_breakdown: List[Dict[str, Any]],
         duration_weeks: int,
         used_learning_targets: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
-        """
-        Soft validation: fix issues instead of raising exceptions.
-        Only raise for truly unrecoverable problems.
-        """
-        if not isinstance(weekly_breakdown, list) or not weekly_breakdown:
-            raise ValueError("Regenerated plan is missing weekly breakdown")
-
-        # Fix week count mismatch
-        if len(weekly_breakdown) != duration_weeks:
-            if len(weekly_breakdown) > duration_weeks:
-                logger.warning("Trimming regenerated plan from %s to %s weeks", len(weekly_breakdown), duration_weeks)
-                weekly_breakdown = weekly_breakdown[:duration_weeks]
-            else:
-                # Pad with last week copy
-                logger.warning("Padding regenerated plan from %s to %s weeks", len(weekly_breakdown), duration_weeks)
-                while len(weekly_breakdown) < duration_weeks:
-                    last = dict(weekly_breakdown[-1])
-                    last["week_number"] = len(weekly_breakdown) + 1
-                    last["topic"] = f"Review & Consolidation: {last.get('focus_skills', ['Skills'])[0]}"
-                    weekly_breakdown.append(last)
-
-        # Fix week numbers
-        for i, week in enumerate(weekly_breakdown, start=1):
-            if not isinstance(week, dict):
-                weekly_breakdown[i - 1] = {"week_number": i, "focus_skills": [], "topic": "TBD", "description": "TBD", "learning_outcomes": [], "expected_level_after_week": "beginner", "resource_queries": []}
-                continue
-            week["week_number"] = i
-
-            # Ensure required fields
-            if not week.get("focus_skills"):
-                week["focus_skills"] = [used_learning_targets[0].get("skill_name", "Core Skill")] if used_learning_targets else ["Core Skill"]
-            if not week.get("topic"):
-                week["topic"] = f"Week {i}: {week['focus_skills'][0]}"
-            if not week.get("description"):
-                week["description"] = f"This week focuses on {week['focus_skills'][0]}."
-            if not week.get("learning_outcomes"):
-                week["learning_outcomes"] = [f"Progress in {week['focus_skills'][0]}"]
-            if "expected_level_after_week" not in week:
-                week["expected_level_after_week"] = "beginner"
-
-        return weekly_breakdown
-
-    def _build_specific_resource_queries_for_week(
-        self,
-        week: Dict[str, Any],
-        duration_weeks: int,
         available_hours_per_week: int,
-        feedback_intents: List[str] = None,
     ) -> List[Dict[str, Any]]:
-        """
-        Build hyper-specific resource queries using the week's actual topic.
-        STRONGLY adjusted based on feedback intents to ensure meaningful application.
-        """
-        topic = (week.get("topic") or "").strip()
-        focus_skills = week.get("focus_skills", []) or []
-        primary_skill = focus_skills[0] if focus_skills else topic
-        week_number = int(week.get("week_number", 1) or 1)
-        stage_ratio = week_number / max(duration_weeks, 1)
+        if not weekly_breakdown:
+            return self._build_fallback_regenerated_plan(
+                previous_plan={
+                    "duration_weeks": duration_weeks,
+                    "used_learning_targets": used_learning_targets,
+                },
+                feedback_intents=[],
+                duration_weeks=duration_weeks,
+            )["weekly_breakdown"]
 
-        # Extract topic keywords (remove skill name prefix)
-        topic_clean = topic.replace(primary_skill, "").strip(" —:-")
-        topic_kw = " ".join(topic_clean.split()[:5]) if topic_clean else primary_skill
+        skill_names = [t.get("skill_name") for t in used_learning_targets if t.get("skill_name")]
+        if not skill_names:
+            skill_names = ["General Skill"]
 
-        # Difficulty hint (default)
-        if stage_ratio <= 0.33:
-            difficulty = "beginner introduction"
-            practice_type = "practice"
-            extra_type = "course"
-            youtube_type = "tutorial"
-        elif stage_ratio <= 0.75:
-            difficulty = "intermediate"
-            practice_type = "practice"
-            extra_type = "article"
-            youtube_type = "walkthrough"
-        else:
-            difficulty = "advanced"
-            practice_type = "project"
-            extra_type = "project"
-            youtube_type = "advanced patterns"
+        fixed = []
+        seen_week_numbers = set()
 
-        # STRONG adjustment based on feedback
-        feedback_intents = feedback_intents or []
-        
-        if "more_practical" in feedback_intents or "more_projects" in feedback_intents:
-            practice_type = "project"
-            extra_type = "project"
-            youtube_type = "implementation"
-            
-        if "more_advanced" in feedback_intents:
-            difficulty = "advanced" if stage_ratio > 0.2 else "intermediate"
-            youtube_type = "advanced patterns"
-            
-        if "simpler_basics" in feedback_intents:
-            if stage_ratio <= 0.4:
-                difficulty = "beginner fundamentals"
-                youtube_type = "basics introduction"
-            else:
-                difficulty = "beginner intermediate"
-                
-        if "more_theory" in feedback_intents:
-            extra_type = "docs"
-            youtube_type = "concepts explanation"
-            
-        if "more_examples" in feedback_intents:
-            youtube_type = "walkthrough with examples"
-            extra_type = "article"
-            
-        if "faster_progress" in feedback_intents and stage_ratio <= 0.5:
-            difficulty = "intermediate"
-            practice_type = "project"
+        for idx, week in enumerate(weekly_breakdown, start=1):
+            week_number = int(week.get("week_number", idx) or idx)
+            if week_number in seen_week_numbers or week_number < 1 or week_number > duration_weeks:
+                continue
+            seen_week_numbers.add(week_number)
 
-        if available_hours_per_week <= 5:
-            practice_type = "practice"
-            difficulty = difficulty.replace("advanced", "intermediate")
+            focus_skills = week.get("focus_skills") or [skill_names[(idx - 1) % len(skill_names)]]
+            topic = (week.get("topic") or "").strip() or f"{focus_skills[0]} applied practice"
+            description = (week.get("description") or "").strip() or (
+                f"Practice and strengthen {focus_skills[0]} through structured exercises."
+            )
+            learning_outcomes = week.get("learning_outcomes") or [
+                f"Understand the weekly concept in {focus_skills[0]}",
+                f"Apply it in practice",
+            ]
+            expected = self._normalize_level(week.get("expected_level_after_week")) or "beginner"
 
-        return [
-            {
-                "title": f"{primary_skill}: {topic_kw} — {youtube_type.title()}",
-                "query": f"{primary_skill} {topic_kw} {difficulty} {youtube_type} step-by-step",
-                "type": "youtube",
-            },
-            {
-                "title": f"{primary_skill}: {topic_kw} — Official Reference",
-                "query": f"{primary_skill} {topic_kw} official documentation API reference guide",
-                "type": "docs",
-            },
-            {
-                "title": f"{primary_skill}: {topic_kw} — Hands-on Implementation",
-                "query": f"{primary_skill} {topic_kw} {practice_type} hands-on challenges exercises",
-                "type": practice_type,
-            },
-            {
-                "title": f"{primary_skill}: {topic_kw} — Supplementary",
-                "query": f"{primary_skill} {topic_kw} {extra_type} best practices case study",
-                "type": extra_type,
-            },
-        ]
+            guide_style = (week.get("guide_style") or "").strip() or "hands_on"
 
-    def _merge_resource_queries(
-        self,
-        llm_queries: List[Dict[str, Any]],
-        fallback_queries: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
-        """
-        Prefer LLM queries if they're specific enough (>3 words), 
-        otherwise use fallback queries.
-        """
-        merged = []
-        used_types = set()
+            resource_focus = week.get("resource_focus")
+            if not isinstance(resource_focus, list) or not resource_focus:
+                resource_focus = [focus_skills[0], topic]
 
-        # First, take good LLM queries
-        for q in llm_queries:
-            query = (q.get("query") or "").strip()
-            q_type = (q.get("type") or "article").lower()
-            # Consider specific if query has >3 meaningful words
-            is_specific = len(query.split()) > 3
-            if is_specific and q_type not in used_types:
-                merged.append(q)
-                used_types.add(q_type)
+            avoid_topics = week.get("avoid_topics")
+            if not isinstance(avoid_topics, list):
+                avoid_topics = []
 
-        # Fill remaining with fallback
-        for q in fallback_queries:
-            q_type = (q.get("type") or "article").lower()
-            if q_type not in used_types:
-                merged.append(q)
-                used_types.add(q_type)
+            fixed.append({
+                "week_number": week_number,
+                "focus_skills": focus_skills,
+                "topic": topic,
+                "description": description,
+                "learning_outcomes": learning_outcomes[:2],
+                "expected_level_after_week": expected,
+                "guide_style": guide_style,
+                "resource_focus": resource_focus[:4],
+                "avoid_topics": avoid_topics[:3],
+            })
 
-        return merged[:4]
+        for week_number in range(1, duration_weeks + 1):
+            if week_number not in seen_week_numbers:
+                focus_skill = skill_names[(week_number - 1) % len(skill_names)]
+                fixed.append({
+                    "week_number": week_number,
+                    "focus_skills": [focus_skill],
+                    "topic": f"{focus_skill} applied progression",
+                    "description": f"Continue improving {focus_skill} with targeted practice and implementation.",
+                    "learning_outcomes": [
+                        f"Understand a deeper part of {focus_skill}",
+                        f"Apply it in a realistic task",
+                    ],
+                    "expected_level_after_week": "intermediate",
+                    "guide_style": "project_based",
+                    "resource_focus": [focus_skill, "real-world usage"],
+                    "avoid_topics": [],
+                })
 
-    # ============================================================
-    # HELPERS (kept from original with minor improvements)
-    # ============================================================
-
-    def _normalize_intent(self, intent: Any) -> str:
-        if hasattr(intent, "value"):
-            return str(intent.value).strip().lower()
-        return str(intent).split(".")[-1].strip().lower()
-
-    def _infer_week_levels_from_targets(
-        self,
-        week: Dict[str, Any],
-        used_learning_targets: List[Dict[str, Any]],
-        fallback_target_level: str = "intermediate"
-    ) -> Dict[str, str]:
-        focus_skills = week.get("focus_skills", []) or []
-        primary_skill = focus_skills[0].strip().lower() if focus_skills else ""
-        for target in used_learning_targets or []:
-            if (target.get("skill_name") or "").strip().lower() == primary_skill:
-                return {
-                    "current_level": self._normalize_level(target.get("current_level")),
-                    "target_level": self._normalize_level(target.get("target_level")),
-                }
-        return {
-            "current_level": "beginner",
-            "target_level": self._normalize_level(
-                fallback_target_level if fallback_target_level in ("beginner", "intermediate") else "intermediate"
-            ),
-        }
-
-    def _normalize_level(self, level: Any) -> str:
-        value = str(level or "beginner").strip().lower()
-        return value if value in self.LEVEL_VALUES else "beginner"
-
-    def _safe_parse_json(self, raw_response: Any) -> Dict[str, Any]:
-        if isinstance(raw_response, dict):
-            return raw_response
-        if not raw_response:
-            return {}
-        cleaned = str(raw_response).strip().replace("```json", "").replace("```", "").strip()
-        try:
-            return json.loads(cleaned)
-        except Exception:
-            start = cleaned.find("{")
-            end = cleaned.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                try:
-                    return json.loads(cleaned[start:end + 1])
-                except Exception:
-                    pass
-        raise ValueError("Failed to parse regenerated plan JSON")
+        fixed.sort(key=lambda x: x["week_number"])
+        return fixed
 
     def _reduce_weekly_repetition(
         self,
         weekly_breakdown: List[Dict[str, Any]],
         duration_weeks: int,
     ) -> List[Dict[str, Any]]:
-        if not weekly_breakdown:
-            return weekly_breakdown
-        seen = set()
-        for week in weekly_breakdown:
-            focus_skills = week.get("focus_skills", []) or []
-            main_skill = focus_skills[0] if focus_skills else "Core Skill"
+        seen_topics = set()
+        for idx, week in enumerate(weekly_breakdown, 1):
             topic = (week.get("topic") or "").strip()
-            key = (tuple(sorted(s.lower() for s in focus_skills)), topic.lower())
-            if key in seen:
-                week_number = int(week.get("week_number", 1) or 1)
-                if week_number <= max(1, duration_weeks // 3):
-                    week["topic"] = f"Concept Deepening: {main_skill}"
-                elif week_number <= max(2, (duration_weeks * 2) // 3):
-                    week["topic"] = f"Practical Workflow: {main_skill}"
-                else:
-                    week["topic"] = f"Project Milestone: {main_skill}"
-                desc = (week.get("description") or "").strip()
-                if desc:
-                    week["description"] = f"{desc} This week builds on prior learning with a distinct milestone."
-            seen.add((
-                tuple(sorted(s.lower() for s in focus_skills)),
-                (week.get("topic") or "").strip().lower(),
-            ))
+            if topic.lower() in seen_topics:
+                week["topic"] = f"{topic} — variation {idx}"
+            seen_topics.add(week["topic"].strip().lower())
         return weekly_breakdown
 
     def _enforce_weekly_expected_level_guard(
@@ -584,343 +624,281 @@ class PlanRegenerationService:
         used_learning_targets: List[Dict[str, Any]],
         duration_weeks: int,
     ) -> List[Dict[str, Any]]:
-        skill_map = {}
-        for target in used_learning_targets or []:
-            skill_name = (target.get("skill_name") or "").strip().lower()
-            skill_map[skill_name] = {
-                "current_level": self._normalize_level(target.get("current_level")),
-                "target_level": self._normalize_level(target.get("target_level")),
-            }
-        for week in weekly_breakdown or []:
-            focus_skills = week.get("focus_skills", []) or []
-            if not focus_skills:
-                continue
-            primary_skill = (focus_skills[0] or "").strip().lower()
-            target_info = skill_map.get(primary_skill)
-            if not target_info:
-                continue
-            current_level = target_info["current_level"]
-            target_level = target_info["target_level"]
-            declared_level = self._normalize_level(week.get("expected_level_after_week"))
-            week_number = int(week.get("week_number", 1) or 1)
-            if current_level == "none":
-                allowed = "beginner" if week_number <= max(2, duration_weeks // 3) else (
-                    "intermediate" if week_number <= max(4, (duration_weeks * 2) // 3) else "advanced"
-                )
-            elif current_level == "beginner":
-                allowed = "intermediate" if week_number <= 2 else "advanced"
-            else:
-                allowed = "advanced"
-            if self.LEVEL_VALUES.get(allowed, 0) > self.LEVEL_VALUES.get(target_level, 0):
-                allowed = target_level
-            if self.LEVEL_VALUES.get(declared_level, 0) > self.LEVEL_VALUES.get(allowed, 0):
-                logger.warning("Week %s (%s): level '%s' → '%s'", week_number, primary_skill, declared_level, allowed)
-                week["expected_level_after_week"] = allowed
-        return weekly_breakdown
+        target_map = {t.get("skill_name"): t for t in used_learning_targets}
 
-    def _validate_feedback_application(
-        self,
-        previous_breakdown: List[Dict[str, Any]],
-        regenerated_breakdown: List[Dict[str, Any]],
-        feedback_intents: List[str],
-    ) -> Dict[str, Any]:
-        """
-        Validate that feedback was meaningfully applied to the plan.
-        Returns quality assessment.
-        """
-        if not feedback_intents:
-            return {"quality_score": 0, "is_meaningful": False, "issues": ["No feedback intents provided"]}
-
-        quality_metrics = {
-            "topics_changed": 0,
-            "descriptions_changed": 0,
-            "resources_changed": 0,
-            "total_changes": 0,
-            "issues": [],
-        }
-
-        min_changes_required = {
-            "more_advanced": 0.6,  # At least 60% of weeks should change
-            "more_practical": 0.7,  # Higher threshold for practical
-            "less_repetition": 0.5,
-            "focus_selected_skills": 0.4,
-            "faster_progress": 0.5,
-            "simpler_basics": 0.6,
-            "more_projects": 0.7,
-            "more_theory": 0.6,
-            "better_structure": 0.8,  # Highest threshold
-            "more_examples": 0.4,
-        }
-
-        prev_map = {w.get("week_number"): w for w in (previous_breakdown or [])}
-        
-        for regen_week in regenerated_breakdown or []:
-            week_num = regen_week.get("week_number", 0)
-            prev_week = prev_map.get(week_num, {})
-            
-            if not prev_week:
+        for week in weekly_breakdown:
+            focus_skill = (week.get("focus_skills") or [None])[0]
+            if not focus_skill or focus_skill not in target_map:
                 continue
 
-            # Check topic change
-            if (prev_week.get("topic") or "").strip().lower() != (regen_week.get("topic") or "").strip().lower():
-                quality_metrics["topics_changed"] += 1
-
-            # Check description change
-            if (prev_week.get("description") or "").strip()[:50] != (regen_week.get("description") or "").strip()[:50]:
-                quality_metrics["descriptions_changed"] += 1
-
-            # Check resource queries change
-            prev_resources = prev_week.get("resource_queries", []) or []
-            regen_resources = regen_week.get("resource_queries", []) or []
-            
-            if len(prev_resources) != len(regen_resources):
-                quality_metrics["resources_changed"] += 1
-            else:
-                prev_queries = [r.get("query", "") for r in prev_resources]
-                regen_queries = [r.get("query", "") for r in regen_resources]
-                if prev_queries != regen_queries:
-                    quality_metrics["resources_changed"] += 1
-
-        total_weeks = len(regenerated_breakdown) or 1
-        quality_metrics["total_changes"] = quality_metrics["topics_changed"] + quality_metrics["descriptions_changed"] + quality_metrics["resources_changed"]
-
-        # Calculate quality score based on feedback intent
-        change_ratio = (quality_metrics["topics_changed"] + quality_metrics["descriptions_changed"]) / total_weeks
-        
-        # Determine minimum required change ratio
-        min_ratio = 0.5  # Default 50%
-        for intent in feedback_intents:
-            intent_min = min_changes_required.get(intent, 0.5)
-            if intent_min > min_ratio:
-                min_ratio = intent_min
-
-        is_meaningful = change_ratio >= min_ratio
-        
-        if not is_meaningful:
-            quality_metrics["issues"].append(
-                f"Insufficient changes detected. {change_ratio*100:.0f}% weeks changed, required ≥{min_ratio*100:.0f}%"
+            target = target_map[focus_skill]
+            current_value = self.LEVEL_VALUES.get(
+                self._normalize_level(target.get("current_level")) or "none",
+                0,
+            )
+            target_value = self.LEVEL_VALUES.get(
+                self._normalize_level(target.get("target_level")) or "beginner",
+                1,
+            )
+            week_value = self.LEVEL_VALUES.get(
+                self._normalize_level(week.get("expected_level_after_week")) or "beginner",
+                1,
             )
 
-        # Bonus: check if resources were adjusted for feedback
-        if "more_practical" in feedback_intents:
-            project_count = sum(1 for w in regenerated_breakdown for r in w.get("resource_queries", []) if r.get("type") in ("project", "practice"))
-            if project_count < len(regenerated_breakdown) * 0.4:
-                quality_metrics["issues"].append("More practical feedback: insufficient project/practice resources")
+            if week_value < current_value:
+                week["expected_level_after_week"] = target.get("current_level", "beginner")
+            if week_value > target_value:
+                week["expected_level_after_week"] = target.get("target_level", "intermediate")
 
-        quality_metrics["is_meaningful"] = is_meaningful
-        quality_metrics["quality_score"] = int(min(100, change_ratio * 100 + (25 if is_meaningful else -25)))
+        return weekly_breakdown
 
-        return quality_metrics
+    def _build_specific_resource_queries_for_week(
+        self,
+        week: Dict[str, Any],
+        duration_weeks: int,
+        available_hours_per_week: int,
+        feedback_intents: List[str],
+    ) -> List[Dict[str, Any]]:
+        focus_skill = (week.get("focus_skills") or ["General Skill"])[0]
+        topic = week.get("topic", focus_skill)
+        expected_level = self._normalize_level(week.get("expected_level_after_week")) or "intermediate"
 
+        emphasis = []
+        if "more_practical" in feedback_intents or "more_projects" in feedback_intents:
+            emphasis.append("hands-on implementation")
+        if "more_advanced" in feedback_intents:
+            emphasis.append("advanced patterns")
+        if "more_theory" in feedback_intents:
+            emphasis.append("concepts architecture")
+        if "simpler_basics" in feedback_intents:
+            emphasis.append("fundamentals explained")
+        if "faster_progress" in feedback_intents:
+            emphasis.append("direct practical path")
 
-    def _fallback_week_level(self, current_level, target_level, week_number, duration_weeks):
-        current_level = self._normalize_level(current_level)
-        target_level = self._normalize_level(target_level)
-        current_val = self.LEVEL_VALUES.get(current_level, 0)
-        target_val = self.LEVEL_VALUES.get(target_level, 1)
-        if current_level == "none":
-            if week_number == 1:
-                level = "beginner"
-            elif week_number <= max(2, duration_weeks // 3):
-                level = "beginner"
-            elif week_number <= max(4, (duration_weeks * 2) // 3):
-                level = "intermediate"
+        resource_focus = week.get("resource_focus", []) or []
+        avoid_topics = week.get("avoid_topics", []) or []
+
+        emphasis_text = " ".join(emphasis + resource_focus[:2]).strip()
+        avoid_text = ""
+        if avoid_topics:
+            avoid_text = " avoid " + " ".join(avoid_topics[:2])
+
+        return [
+            {
+                "title": f"{focus_skill} video",
+                "query": f"{focus_skill} {topic} {expected_level} tutorial {emphasis_text}{avoid_text}".strip(),
+                "type": "youtube",
+            },
+            {
+                "title": f"{focus_skill} docs",
+                "query": f"{focus_skill} {topic} documentation api reference {emphasis_text}{avoid_text}".strip(),
+                "type": "docs",
+            },
+            {
+                "title": f"{focus_skill} practice",
+                "query": f"{focus_skill} {topic} hands-on exercises {emphasis_text}{avoid_text}".strip(),
+                "type": "practice",
+            },
+            {
+                "title": f"{focus_skill} project",
+                "query": f"{focus_skill} {topic} real project case study {emphasis_text}{avoid_text}".strip(),
+                "type": "project",
+            },
+        ]
+
+    def _infer_week_levels_from_topic(
+        self,
+        week: Dict[str, Any],
+        used_learning_targets: List[Dict[str, Any]],
+    ) -> Dict[str, str]:
+        focus_skill = (week.get("focus_skills") or [None])[0]
+        target_map = {t.get("skill_name"): t for t in used_learning_targets}
+
+        if focus_skill and focus_skill in target_map:
+            target = target_map[focus_skill]
+            return {
+                "current_level": target.get("current_level", "none"),
+                "target_level": target.get("target_level", "beginner"),
+            }
+
+        expected = self._normalize_level(week.get("expected_level_after_week")) or "beginner"
+        fallback_current = "beginner" if expected in ("intermediate", "advanced") else "none"
+        return {
+            "current_level": fallback_current,
+            "target_level": expected,
+        }
+
+    def _enrich_resource_queries(
+        self,
+        resource_queries: List[Dict[str, Any]],
+        week_topic: str,
+        focus_skills: List[str],
+        current_level: str,
+        target_level: str,
+        week_number: int,
+        duration_weeks: int,
+        available_hours_per_week: int,
+        feedback_intents: List[str],
+        resource_focus: Optional[List[str]] = None,
+        avoid_topics: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        primary_skill = focus_skills[0] if focus_skills else ""
+        level_desc = target_level or current_level or "beginner"
+
+        emphasis = []
+        if "more_practical" in feedback_intents or "more_projects" in feedback_intents:
+            emphasis.append("hands-on implementation")
+        if "more_advanced" in feedback_intents:
+            emphasis.append("advanced patterns")
+        if "more_theory" in feedback_intents:
+            emphasis.append("concepts architecture")
+
+        resource_focus = resource_focus or []
+        avoid_topics = avoid_topics or []
+
+        emphasis_text = " ".join(emphasis + resource_focus[:2]).strip()
+        avoid_text = ""
+        if avoid_topics:
+            avoid_text = " avoid " + " ".join(avoid_topics[:2])
+
+        enriched = []
+        for item in resource_queries or []:
+            item = dict(item)
+            query = (item.get("query") or "").strip()
+            q_type = (item.get("type") or "article").lower()
+
+            if q_type == "youtube":
+                item["query"] = f"{query} {week_topic} {level_desc} tutorial {emphasis_text}{avoid_text}".strip()
+            elif q_type == "docs":
+                item["query"] = f"{query} {week_topic} documentation api reference {emphasis_text}{avoid_text}".strip()
+            elif q_type == "practice":
+                item["query"] = f"{query} {week_topic} hands-on exercises {emphasis_text}{avoid_text}".strip()
+            elif q_type == "project":
+                item["query"] = f"{query} {week_topic} real project {emphasis_text}{avoid_text}".strip()
             else:
-                level = "advanced"
-        elif current_level == "beginner":
-            level = "intermediate" if week_number <= 2 else "advanced"
-        else:
-            level = "advanced"
-        level_val = self.LEVEL_VALUES.get(level, 1)
-        if level_val > target_val:
-            return target_level
-        return level
+                item["query"] = f"{query} {week_topic} {emphasis_text}{avoid_text}".strip()
 
-    async def _build_fallback_regenerated_plan(
+            enriched.append(item)
+
+        return enriched[:4]
+
+    def _build_fallback_resources_for_week(
+        self,
+        week: Dict[str, Any],
+        track_name: str,
+        current_level: str,
+        target_level: str,
+    ) -> List[Dict[str, Any]]:
+        topic = week.get("topic", "Weekly Topic")
+        skill = (week.get("focus_skills") or ["General Skill"])[0]
+
+        return [
+            {
+                "title": f"{topic} official docs",
+                "url": "https://docs.python.org/3/",
+                "type": "docs",
+                "snippet": f"Fallback official documentation for {skill}",
+                "duration": "30 min",
+            },
+            {
+                "title": f"{topic} practice",
+                "url": "https://github.com/",
+                "type": "practice",
+                "snippet": f"Fallback practice resource for {skill}",
+                "duration": "2 hours",
+            },
+            {
+                "title": f"{topic} project example",
+                "url": "https://github.com/",
+                "type": "project",
+                "snippet": f"Fallback project resource for {skill}",
+                "duration": "full course",
+            },
+            {
+                "title": f"{topic} article",
+                "url": "https://realpython.com/",
+                "type": "article",
+                "snippet": f"Fallback article resource for {skill}",
+                "duration": "30 min",
+            },
+        ]
+
+    def _build_fallback_study_guide(
+        self,
+        week: Dict[str, Any],
+        current_level: str,
+        target_level: str,
+        feedback_intents: List[str],
+    ) -> Dict[str, Any]:
+        focus_skill = (week.get("focus_skills") or ["General Skill"])[0]
+        topic = week.get("topic", focus_skill)
+
+        emphasis = []
+        if "more_practical" in feedback_intents:
+            emphasis.append("hands-on implementation")
+        if "more_advanced" in feedback_intents:
+            emphasis.append("deeper patterns")
+        if "less_repetition" in feedback_intents:
+            emphasis.append("fresh examples")
+
+        return {
+            "what_to_study": [
+                topic,
+                f"{focus_skill} practical usage",
+                ", ".join(emphasis) if emphasis else f"{focus_skill} applied progression",
+            ],
+            "how_to_study": [
+                f"1. Review the main idea behind {topic}",
+                f"2. Practice one realistic task using {focus_skill}",
+                f"3. Refine your solution and note what improved after feedback",
+            ],
+            "time_split": {
+                "reading_study": "25%",
+                "hands_on_coding": "50%",
+                "project_integration": "25%",
+            },
+        }
+
+    def _build_fallback_regenerated_plan(
         self,
         previous_plan: Dict[str, Any],
         feedback_intents: List[str],
-        regeneration_mode: str,
+        duration_weeks: int,
     ) -> Dict[str, Any]:
-        duration_weeks = int(previous_plan.get("duration_weeks", 1) or 1)
-        used_learning_targets = previous_plan.get("used_learning_targets", []) or []
-        available_hours_per_week = int(previous_plan.get("available_hours_per_week", 6) or 6)
+        old_weeks = previous_plan.get("weekly_breakdown", []) or []
+        rebuilt_weeks = []
 
-        if not used_learning_targets:
-            raise ValueError("Cannot build fallback regenerated plan without used_learning_targets")
+        for idx in range(1, duration_weeks + 1):
+            source = old_weeks[idx - 1] if idx - 1 < len(old_weeks) else {}
+            focus_skills = source.get("focus_skills", ["General Skill"])
+            topic = source.get("topic", f"{focus_skills[0]} progression")
 
-        # Try to reuse skill_schedule if available
-        skill_schedule = previous_plan.get("skill_schedule")
+            if "more_practical" in feedback_intents:
+                topic = f"{topic} — implementation focused"
+            elif "more_advanced" in feedback_intents:
+                topic = f"{topic} — deeper patterns"
+            elif "less_repetition" in feedback_intents:
+                topic = f"{topic} — fresh variation {idx}"
 
-        if skill_schedule:
-            weeks = self._build_weeks_from_schedule(
-                skill_schedule=skill_schedule,
-                duration_weeks=duration_weeks,
-                feedback_intents=feedback_intents,
-            )
-        else:
-            weeks = self._build_weeks_from_targets(
-                used_learning_targets=used_learning_targets,
-                duration_weeks=duration_weeks,
-                feedback_intents=feedback_intents,
-            )
-
-        weeks = self._reduce_weekly_repetition(weeks, duration_weeks)
-        weeks = self._enforce_weekly_expected_level_guard(weeks, used_learning_targets, duration_weeks)
-
-        for week in weeks:
-            resource_queries = self._build_specific_resource_queries_for_week(
-                week=week,
-                duration_weeks=duration_weeks,
-                available_hours_per_week=available_hours_per_week,
-                feedback_intents=feedback_intents,
-            )
-
-            level_info = self._infer_week_levels_from_targets(
-                week=week,
-                used_learning_targets=used_learning_targets,
-                fallback_target_level=previous_plan.get("final_expected_level", "intermediate"),
-            )
-
-            week["resources"] = await self.resource_search_service.search_resources(
-                resource_queries=resource_queries,
-                max_per_week=4,
-                current_level=level_info["current_level"],
-                target_level=level_info["target_level"],
-                available_hours_per_week=available_hours_per_week,
-                week_number=week.get("week_number"),
-                duration_weeks=duration_weeks,
-                context_keywords=week.get("focus_skills", []) + [week.get("topic", "")],
-            )
-
-        return {
-            **previous_plan,
-            "plan_summary": previous_plan.get("plan_summary", ""),
-            "improvement_summary": previous_plan.get("improvement_summary", ""),
-            "weekly_breakdown": weeks,
-            "regenerated": True,
-            "regeneration_mode": regeneration_mode,
-            "feedback_intents": feedback_intents,
-        }
-
-    def _build_weeks_from_schedule(
-        self,
-        skill_schedule: List[Dict[str, Any]],
-        duration_weeks: int,
-        feedback_intents: List[str],
-    ) -> List[Dict[str, Any]]:
-        """Rebuild weeks from pre-computed skill_schedule (if available in previous_plan)."""
-        weeks = []
-        is_practical = "more_practical" in feedback_intents
-        is_advanced = "more_advanced" in feedback_intents
-
-        for entry in skill_schedule:
-            skill_name = entry["skill_name"]
-            current_level = entry.get("current_level", "none")
-            target_level = entry.get("target_level", "beginner")
-            learning_mode = entry.get("learning_mode", "learn_from_scratch")
-
-            for guide in entry.get("subtopic_guide", []):
-                week_number = entry["week_numbers"][guide["week_offset"] - 1]
-                subtopic = guide["subtopic_focus"]
-                expected_level = guide["expected_level"]
-
-                # Apply feedback to topic/description
-                if is_practical:
-                    subtopic_enhanced = f"{subtopic} — hands-on project"
-                    description_suffix = " Emphasizes real-world implementation and practical exercises."
-                elif is_advanced:
-                    subtopic_enhanced = f"{subtopic} — advanced patterns"
-                    description_suffix = f" Focuses on {target_level}-level depth and production scenarios."
-                else:
-                    subtopic_enhanced = subtopic
-                    description_suffix = ""
-
-                if learning_mode == "level_up":
-                    topic = f"{skill_name}: {subtopic_enhanced} ({current_level} → {target_level})"
-                    description = (
-                        f"This week deepens {skill_name} toward {target_level}: {subtopic}. "
-                        f"Skip fundamentals — focus on {target_level} patterns and real-world usage.{description_suffix}"
-                    )
-                else:
-                    topic = f"{skill_name}: {subtopic_enhanced}"
-                    description = (
-                        f"This week covers {skill_name}: {subtopic}. "
-                        f"Build from {current_level} toward {expected_level} through structured practice.{description_suffix}"
-                    )
-
-                subtopic_kw = " ".join(subtopic.replace("&", "and").split()[:4])
-                weeks.append({
-                    "week_number": week_number,
-                    "focus_skills": [skill_name],
-                    "topic": topic,
-                    "description": description,
-                    "learning_outcomes": [
-                        f"Apply {skill_name}: {subtopic} at {expected_level} level",
-                        f"Complete hands-on practice for {subtopic_kw}"
-                    ],
-                    "expected_level_after_week": expected_level,
-                    "resources": [],
-                })
-
-        weeks.sort(key=lambda w: w["week_number"])
-        return weeks
-
-    def _build_weeks_from_targets(
-        self,
-        used_learning_targets: List[Dict[str, Any]],
-        duration_weeks: int,
-        feedback_intents: List[str],
-    ) -> List[Dict[str, Any]]:
-        """Fallback week builder without skill_schedule."""
-        stages = [
-            "Foundations & mental model",
-            "Guided implementation",
-            "Applied practice",
-            "Project integration",
-        ]
-        weeks = []
-        targets_count = len(used_learning_targets)
-        skill_counters: Dict[int, int] = {}
-
-        for i in range(duration_weeks):
-            target = used_learning_targets[i % targets_count]
-            skill_id = target.get("skill_id", i)
-            skill_name = target.get("skill_name", "Skill")
-            current_level = self._normalize_level(target.get("current_level"))
-            target_level = self._normalize_level(target.get("target_level"))
-            learning_mode = target.get("learning_mode", "learn_from_scratch")
-
-            stage_idx = skill_counters.get(skill_id, 0) % len(stages)
-            skill_counters[skill_id] = stage_idx + 1
-            stage = stages[stage_idx]
-
-            if learning_mode == "level_up":
-                topic = f"{skill_name}: {stage} ({current_level} → {target_level})"
-                description = (
-                    f"This week deepens {skill_name} from {current_level} toward {target_level}. "
-                    f"Focus: {stage}."
-                )
-            else:
-                topic = f"{skill_name}: {stage}"
-                description = (
-                    f"This week introduces {skill_name} through {stage}. "
-                    f"Build toward {target_level} level."
-                )
-
-            weeks.append({
-                "week_number": i + 1,
-                "focus_skills": [skill_name],
+            rebuilt_weeks.append({
+                "week_number": idx,
+                "focus_skills": focus_skills,
                 "topic": topic,
-                "description": description,
-                "learning_outcomes": [
-                    f"Progress {skill_name} through {stage}",
-                    f"Reach {self._fallback_week_level(current_level, target_level, i + 1, duration_weeks)} level"
+                "description": source.get("description") or f"Work on {topic} with concrete weekly exercises.",
+                "learning_outcomes": source.get("learning_outcomes") or [
+                    f"Understand the main concept in {topic}",
+                    f"Apply it in a realistic task",
                 ],
-                "expected_level_after_week": self._fallback_week_level(
-                    current_level, target_level, i + 1, duration_weeks
-                ),
-                "resources": [],
+                "expected_level_after_week": source.get("expected_level_after_week", "intermediate"),
+                "guide_style": "project_based" if "more_practical" in feedback_intents else "hands_on",
+                "resource_focus": [focus_skills[0], topic],
+                "avoid_topics": [],
             })
 
-        return weeks
+        return {
+            "plan_summary": "This regenerated plan adapts the original plan based on the selected feedback.",
+            "improvement_summary": (
+                f"Applied feedback intents: {', '.join(feedback_intents) if feedback_intents else 'none'}."
+            ),
+            "weekly_breakdown": rebuilt_weeks,
+        }

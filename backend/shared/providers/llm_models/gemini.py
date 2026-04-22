@@ -16,7 +16,8 @@ class Gemini(LLMProvider):
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         self.system_prompt = system_prompt
         self.model = settings.GEMINI_MODEL
-        logger.info(f"Gemini provider initialized with model: {self.model}")
+        self.quota_exhausted = False  # Track if quota is exhausted
+        logger.info(f"✅ Gemini provider initialized with model: {self.model}")
     
     async def get_response(
         self,
@@ -29,6 +30,8 @@ class Gemini(LLMProvider):
         """
         Get response from Gemini API.
         
+        STEP: Detect quota exhaustion (429) and skip immediately to fallback.
+        
         Args:
             prompt: The prompt to send
             expecting_longer_output: If True, increases max_output_tokens
@@ -39,6 +42,11 @@ class Gemini(LLMProvider):
         Returns:
             Parsed response or raw text, or None if error
         """
+        # STEP: Skip Gemini if quota already exhausted today
+        if self.quota_exhausted:
+            logger.warning("⚠️ Gemini quota exhausted - skipping to fallback")
+            return None
+        
         try:
             logger.debug(f"Calling Gemini API with prompt length: {len(prompt)}")
             
@@ -83,7 +91,7 @@ class Gemini(LLMProvider):
                 logger.warning("Gemini returned empty text response")
                 return None
             
-            logger.debug(f"Gemini response received: {len(response_text)} chars")
+            logger.debug(f"✅ Gemini response received: {len(response_text)} chars")
             
             # If schema provided, validate JSON
             if schema:
@@ -100,7 +108,14 @@ class Gemini(LLMProvider):
             return response_text
 
         except Exception as e:
-            logger.error(f"Gemini API error {type(e).__name__}: {str(e)}", exc_info=True)
+            # STEP: Detect 429 RESOURCE_EXHAUSTED and mark quota as exhausted
+            error_str = str(e)
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                logger.error(f"❌ Gemini quota exhausted (429): {error_str[:100]}")
+                self.quota_exhausted = True  # Mark as exhausted for this session
+                return None
+            
+            logger.error(f"❌ Gemini API error {type(e).__name__}: {str(e)[:100]}")
             return None
 
     async def get_embedding(self, content, model=None, task_type=None):
