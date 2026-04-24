@@ -23,6 +23,9 @@ INPUT
 
 ====================================================================
 SECTION 1 — JOB ALIGNMENT ANALYSIS (MATCH SCORE = 0—100)
+<CRITICAL_INSTRUCTION>
+    only if job description provided, otherwise return null for all fields in this section
+</CRITICAL_INSTRUCTION>
 
 SCORING FORMULA (Total: 100 points max):
 Match_Score = Title_Match(5) + Education_Level_Match(5) + Experience_Level_Match(5) + 
