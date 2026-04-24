@@ -9,5 +9,5 @@ class CVOptimizationReport(BaseModel):
     request_id: Optional[UUID] = None
     cv_id: Optional[UUID] = None
     job_posting_id: Optional[UUID] = None
-    analysis: Optional[ATSAnalysisResponse] = None
+    analysis: Optional[dict] = None
     generated_at: Optional[datetime] = None

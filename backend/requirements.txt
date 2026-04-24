@@ -52,6 +52,14 @@ google-genai
 # ===============================
 python-dateutil
 typing-extensions
+language-tool-python
+nltk
+
+# ===============================
+# PII Masking
+# ===============================
+presidio-analyzer 
+presidio-anonymizer
 
 # ===============================
 # Dev & Testing

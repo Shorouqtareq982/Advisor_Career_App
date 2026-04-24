@@ -269,7 +269,6 @@ class CVLayoutAnalyzer:
         have_columns = CVLayoutAnalyzer._detect_pdf_columns(page)
 
         # Analyze text blocks
-        blocks = page.get_text("rawdict")["blocks"]
         blocks = sorted(
             page.get_text("rawdict")["blocks"],
             key=lambda b: (b["bbox"][1], b["bbox"][0])
@@ -914,12 +913,12 @@ class CVLayoutAnalyzer:
         
         Removes extra whitespace and joins non-empty lines.
         """
-        cleaned = [
-            re.sub(r'\s+', ' ', line).strip()
-            for line in text_lines
-            if line.strip()
-        ]
-        return "\n".join(cleaned)
+        # cleaned = [
+        #     re.sub(r'\s+', ' ', line).strip()
+        #     for line in text_lines
+        #     if line.strip()
+        # ]
+        return "\n".join(text_lines)
 
     # ==================== Utility & Helper Methods ====================
 

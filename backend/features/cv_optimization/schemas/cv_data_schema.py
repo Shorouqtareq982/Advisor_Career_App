@@ -83,4 +83,4 @@ class CVData(BaseModel):
     projects: List[Project] = Field(...,description="Project experiences, including project name, type, link, resources, dates, and description.")
     certifications: List[Certification] = Field(...,description="job relevant certifications that you have earned, including the name, issuing organization, and a link to verify the certification.")
     achievements: List[str] = Field(...,description="job relevant key accomplishments, awards, or recognitions that demonstrate your skills and abilities.")
-    all_sections_order: List[str] = Field(...,description="A list of all section names in the order they appear in the CV and as they are, used for layout analysis and optimization.")
+    all_sections_in_order: List[str] = Field(...,description="An ordered list of every section heading found in the CV, preserving the exact sequence in which the sections appear, including any unstructured or custom sections not covered by the schema. example: [\"contact\", \"summary\", \"experience\", \"education\", \"skills\", \"projects\", \"certifications\", \"achievements\"]")

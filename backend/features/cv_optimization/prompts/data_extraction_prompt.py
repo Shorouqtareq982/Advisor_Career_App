@@ -23,6 +23,19 @@ The following text is the applicant's resume in plain text format:
 {cv_text}
 </input>
 
+<critical_instruction>
+PRESERVE MASKED TOKENS EXACTLY:
+If you see tokens in the format <LABEL_NUMBER> (e.g., <PERSON_0>, <EMAIL_ADDRESS_1>), 
+you MUST preserve them EXACTLY as they appear in the input text. Do NOT:
+- Remove angle brackets
+- Change capitalization
+- Add spaces around or inside tokens
+- Split tokens across lines
+- Modify the token in any way
+
+Keep these tokens unchanged in your output so they can be properly restored later.
+</critical_instruction>
+
 <instructions>
 Follow these steps carefully to extract and structure the resume information:
 

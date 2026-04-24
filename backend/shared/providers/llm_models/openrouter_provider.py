@@ -69,8 +69,19 @@ class OpenRouterProvider(LLMProvider):
                 "max_tokens": max_tokens,
             }
 
-            if need_json_output:
+            if need_json_output and schema is None:
                 payload["response_format"] = {"type": "json_object"}
+            elif need_json_output and schema:
+                raw_schema = schema.model_json_schema()
+                strict_schema = self.enforce_strict_schema(raw_schema)
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": schema.__name__,
+                        "schema": strict_schema,
+                        "strict": True,
+                    },
+                }
 
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
@@ -129,15 +140,34 @@ class OpenRouterProvider(LLMProvider):
 
             response_text = self._extract_json_if_needed(str(response_text), need_json_output)
 
+            parsed_obj = None
+            if need_json_output:
+                try:
+                    parsed_obj = json.loads(response_text)
+
+                    # handle double-encoded JSON (LLM sometimes does this)
+                    if isinstance(parsed_obj, str):
+                        parsed_obj = json.loads(parsed_obj)
+
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON decode failed: {e}, raw: {response_text[:300]}")
+                    return None
+            
             if schema:
                 try:
-                    return schema.model_validate_json(response_text)
+                    if parsed_obj is None:
+                        return schema.model_validate_json(response_text)
+                    return schema.model_validate(parsed_obj)
+
                 except Exception as schema_error:
                     logger.error(
                         f"Schema validation failed: {schema_error}, response text: {response_text[:300]}"
                     )
-                    return response_text
+                    return parsed_obj if parsed_obj else response_text
 
+            if need_json_output:
+                return parsed_obj
+            
             return response_text
 
         except httpx.ReadTimeout:
@@ -226,3 +256,17 @@ class OpenRouterProvider(LLMProvider):
                 return json_str
 
         return cleaned
+    
+    def enforce_strict_schema(self, schema: dict) -> dict:
+        if isinstance(schema, dict):
+            if schema.get("type") == "object":
+                schema["additionalProperties"] = False
+
+            for key, value in schema.items():
+                self.enforce_strict_schema(value)
+
+        elif isinstance(schema, list):
+            for item in schema:
+                self.enforce_strict_schema(item)
+
+        return schema

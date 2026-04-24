@@ -519,14 +519,13 @@ class JobAlignment(BaseModel):
             "Whether the job title in CV matches or closely aligns with JD job title. "
             "True = 5 points, False = 0 points. Strong ATS/recruiter relevance signal. "
             "Consider: exact match, close variations (e.g., 'Software Engineer' vs 'Software Developer'), "
-            "and level alignment (Junior/Mid/Senior)."
         ))
     Experience_Level_Match: bool = Field(
         ...,
         description=(
-            "Whether experience level (entry/mid/senior) in CV matches JD requirements. "
+            "Whether experience level (entry-junior/mid/senior) in CV matches JD requirements. "
             "True = 5 points, False = 0 points. Infer from: years of experience, job titles, responsibilities described. "
-            "Entry-level: 0-2 years, Mid-level: 3-5 years, Senior: 6+ years (adjust by industry)."
+            "Entry-level/Junior-level: 0-2 years, Mid-level: 3-5 years, Senior: 6+ years (adjust by industry)."
         ))
     Education_Level_Match: bool = Field(
         ...,

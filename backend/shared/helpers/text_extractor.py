@@ -43,13 +43,14 @@ class TextExtractor:
                 text = TextExtractor._extract_from_txt(file_obj)
             elif file_name.endswith((".png", ".jpg", ".jpeg", ".bmp", ".tiff")):
                 text = TextExtractor._extract_from_image(file_obj)
+                text = TextExtractor._normalize_ocr_text(text)
             else:
                 raise ValueError(f"Unsupported file type: {file_name}")
         except Exception as e:
             logger.exception("Text extraction failed: %s", e)
             return ""
 
-        return TextExtractor._normalize_ocr_text(text)
+        return text
 
     @staticmethod
     def _prepare_file(file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> Tuple[str, BinaryIO]:
@@ -79,9 +80,35 @@ class TextExtractor:
         try:
             final_text = []
             for page in doc:
-                page_text = page.get_text("text")
-                links = page.get_links()
-                page_text = TextExtractor._replace_links_in_text(page, page_text, links)
+                blocks = sorted(
+                    page.get_text("rawdict").get("blocks", []),
+                    key=lambda b: (b["bbox"][1], b["bbox"][0])
+                )
+                page_lines = []
+
+                for block in blocks:
+                    if block.get("type") != 0:
+                        continue
+
+                    for line in block.get("lines", []):
+                        line_spans = []
+
+                        for span in line.get("spans", []):
+                            chars = span.get("chars", [])
+                            text = "".join(ch.get("c", "") for ch in chars).strip()
+                            if text:
+                                line_spans.append(text)
+
+                        if line_spans:
+                            line_text = " ".join(line_spans)
+
+                            if line_text.startswith(("•", "-", "▪", "●")):
+                                line_text = f"- {line_text.lstrip('•-▪●').strip()}"
+
+                            page_lines.append(line_text)
+
+                page_text = "\n".join(page_lines)
+                page_text = TextExtractor._replace_links_in_text(page, page_text, page.get_links())
                 final_text.append(page_text)
             
             return TextExtractor._clean_text_lines(final_text)
