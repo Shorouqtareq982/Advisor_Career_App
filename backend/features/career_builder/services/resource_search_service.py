@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class ResourceSearchService:
     MIN_YOUTUBE_MINUTES = 5
-    MIN_RESOURCE_SCORE = 8.0
+    MIN_RESOURCE_SCORE = 5.0
     MIN_WEEKLY_RESOURCES = 4  # docs + practice + project + youtube(min 1)
     MAX_SAME_DOMAIN_COUNT = 2
 
@@ -177,6 +177,29 @@ class ResourceSearchService:
     def _is_domain_blacklisted(self, url: str) -> bool:
         domain = self._extract_domain(url)
         return any(item in domain for item in self.BLACKLIST_DOMAINS)
+
+    def _is_github_topics_url(self, url: str) -> bool:
+        return "github.com/topics/" in (url or "").lower()
+
+    def _is_real_youtube_url(self, url: str) -> bool:
+        url = (url or "").lower()
+        return "youtube.com/watch" in url or "youtu.be/" in url
+
+    def _is_bad_resource_url(self, resource: Dict[str, Any]) -> bool:
+        url = (resource.get("url") or "").strip().lower()
+        r_type = (resource.get("type") or "").strip().lower()
+
+        if not url:
+            return True
+        if self._is_domain_blacklisted(url):
+            return True
+        if self._is_github_topics_url(url):
+            return True
+        if r_type == "youtube" and not self._is_real_youtube_url(url):
+            return True
+        if url in self.GENERIC_ROOT_URLS:
+            return True
+        return False
 
     def _compress_query(self, text: str, max_words: int = 16) -> str:
         words = []
@@ -451,10 +474,16 @@ class ResourceSearchService:
             "key": self.youtube_api_key,
         }
 
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(self.youtube_videos_base_url, params=params)
-            response.raise_for_status()
-            data = response.json()
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(self.youtube_videos_base_url, params=params)
+                response.raise_for_status()
+                data = response.json()
+        except Exception as e:
+            # Do NOT fake video duration here. If duration cannot be verified,
+            # YouTube videos will be skipped so we keep the >= 5 min quality rule.
+            logger.warning("YouTube duration fetch failed. Videos will require verified duration. reason=%s", e)
+            return {}
 
         duration_map = {}
         for item in data.get("items", []):
@@ -472,6 +501,7 @@ class ResourceSearchService:
         available_hours_per_week: Optional[int],
     ) -> List[Dict[str, Any]]:
         if not self.youtube_api_key:
+            logger.warning("YouTube API key is missing. Skipping YouTube search.")
             return []
 
         params = {
@@ -481,14 +511,25 @@ class ResourceSearchService:
             "type": "video",
             "maxResults": 10,
             "safeSearch": "strict",
+            # Medium filters out most Shorts and very short clips at the API level.
+            # We still verify exact duration below.
+            "videoDuration": "medium",
         }
 
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(self.youtube_base_url, params=params)
-            response.raise_for_status()
-            data = response.json()
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(self.youtube_base_url, params=params)
+                response.raise_for_status()
+                data = response.json()
+        except Exception as e:
+            logger.warning("YouTube search failed for query='%s': %s", query, e)
+            return []
 
-        raw_items = data.get("items", [])
+        raw_items = data.get("items", []) or []
+        if not raw_items:
+            logger.info("YouTube returned 0 items for query='%s'", query)
+            return []
+
         video_ids = []
         for item in raw_items:
             video_id = (((item.get("id") or {}) or {}).get("videoId"))
@@ -497,33 +538,83 @@ class ResourceSearchService:
 
         durations = await self._fetch_youtube_durations(video_ids)
 
+        min_ok, max_ok = self._ideal_youtube_duration_range(
+            available_hours_per_week=available_hours_per_week,
+            current_level=current_level,
+            target_level=target_level,
+        )
+
         results = []
+        duration_verified = bool(durations)
+
+        if not duration_verified:
+            logger.warning(
+                "YouTube returned videos but durations could not be verified. "
+                "Using smart unverified-duration fallback. query='%s'",
+                query,
+            )
+
         for item in raw_items:
             snippet = item.get("snippet", {}) or {}
             video_id = (((item.get("id") or {}) or {}).get("videoId"))
             if not video_id:
                 continue
 
-            youtube_minutes = int(durations.get(video_id) or 0)
-            if youtube_minutes < self.MIN_YOUTUBE_MINUTES:
+            title_text = snippet.get("title", "") or title
+            desc_text = snippet.get("description", "") or ""
+            channel_title = snippet.get("channelTitle", "")
+
+            if self._is_clickbait_youtube(title_text, desc_text):
                 continue
 
+            if duration_verified:
+                youtube_minutes = int(durations.get(video_id) or 0)
+
+                # Hard quality rule requested: no verified videos under 5 minutes.
+                if youtube_minutes < self.MIN_YOUTUBE_MINUTES:
+                    continue
+
+                # Keep videos that are reasonable for the user's weekly hours.
+                # Don't be too strict: allow up to 20 minutes above ideal max.
+                if youtube_minutes > max_ok + 20:
+                    continue
+
+                duration = self._estimate_duration(
+                    title_text,
+                    desc_text,
+                    "youtube",
+                    youtube_minutes=youtube_minutes,
+                )
+                source_provider = "youtube_api"
+            else:
+                youtube_minutes = None
+                duration = f"{min_ok}-{max_ok} min target (duration unverified)"
+                source_provider = "youtube_api_duration_unverified"
+
             results.append({
-                "title": snippet.get("title") or title,
+                "title": title_text,
                 "url": f"https://www.youtube.com/watch?v={video_id}",
                 "type": "youtube",
-                "snippet": snippet.get("description", ""),
-                "channel_title": snippet.get("channelTitle", ""),
+                "snippet": desc_text,
+                "channel_title": channel_title,
                 "youtube_duration_minutes": youtube_minutes,
-                "duration": self._estimate_duration(
-                    snippet.get("title", ""),
-                    snippet.get("description", ""),
-                    "youtube",
-                    youtube_minutes=youtube_minutes
-                ),
+                "duration": duration,
                 "query_context": query,
+                "source_provider": source_provider,
+                "duration_verified": duration_verified,
             })
 
+            if not duration_verified and len(results) >= 2:
+                break
+
+        logger.info(
+            "YouTube valid results | query='%s' | count=%s | duration_range=%s-%s | duration_verified=%s",
+            query,
+            len(results),
+            min_ok,
+            max_ok,
+            duration_verified,
+        )
         return results
 
     async def _search_tavily(self, query: str, resource_type: str, title: str) -> List[Dict[str, Any]]:
@@ -626,6 +717,120 @@ class ResourceSearchService:
                 "stars": item.get("stargazers_count", 0),
             })
         return results
+
+    # -----------------------------
+    # DB retrieval fallback
+    # -----------------------------
+    def _get_supabase_rest_config(self) -> tuple[str, str]:
+        supabase_url = (getattr(settings, "SUPABASE_URL", "") or "").rstrip("/")
+        supabase_key = (
+            getattr(settings, "SUPABASE_SERVICE_ROLE_KEY", "")
+            or getattr(settings, "SUPABASE_ANON_KEY", "")
+            or ""
+        )
+        return supabase_url, supabase_key
+
+    async def _get_from_db_fallback(
+        self,
+        skill_id: Optional[int] = None,
+        week_topic: Optional[str] = None,
+        current_level: Optional[str] = None,
+        target_level: Optional[str] = None,
+        limit: int = 8,
+        resource_type: Optional[str] = None,
+        strict_level: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieves previously validated dynamic resources from discovered_learning_resources.
+
+        Fallback order should be:
+        APIs -> DB retrieval -> curated/static fallback from WeeklyResourceOrchestrator.
+        """
+        supabase_url, supabase_key = self._get_supabase_rest_config()
+        if not supabase_url or not supabase_key:
+            return []
+
+        clean_topic = self._clean_week_topic_for_matching(week_topic)
+        endpoint = f"{supabase_url}/rest/v1/discovered_learning_resources"
+
+        params: Dict[str, Any] = {
+            "select": (
+                "id,track_id,skill_id,plan_id,week_topic,canonical_topic,current_level,target_level,"
+                "resource_type,title,url,snippet,source_provider,source_domain,"
+                "estimated_duration_minutes,base_score,final_score,is_official,is_practical,was_fallback"
+            ),
+            "is_active": "eq.true",
+            "order": "final_score.desc,updated_at.desc",
+            "limit": str(limit),
+        }
+
+        if skill_id:
+            params["skill_id"] = f"eq.{skill_id}"
+
+        if clean_topic:
+            params["canonical_topic"] = f"ilike.*{clean_topic.lower()}*"
+
+        if resource_type:
+            params["resource_type"] = f"eq.{resource_type}"
+
+        normalized_target = self._normalize_level(target_level)
+        if strict_level and normalized_target:
+            params["target_level"] = f"eq.{normalized_target}"
+
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Accept": "application/json",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(endpoint, params=params, headers=headers)
+                response.raise_for_status()
+                rows = response.json() or []
+        except Exception as e:
+            logger.warning("DB fallback query failed. skill_id=%s topic=%s reason=%s", skill_id, clean_topic, e)
+            return []
+
+        formatted: List[Dict[str, Any]] = []
+        for row in rows:
+            url = row.get("url")
+            title = row.get("title")
+            if not url or not title:
+                continue
+
+            resource_type = (row.get("resource_type") or "docs").strip().lower()
+            if self._is_bad_resource_url({"url": url, "type": resource_type}):
+                continue
+            minutes = row.get("estimated_duration_minutes")
+            duration = f"{minutes} min" if minutes else self._estimate_duration(
+                title,
+                row.get("snippet", ""),
+                resource_type,
+            )
+
+            formatted.append({
+                "title": title,
+                "url": url,
+                "type": resource_type,
+                "snippet": row.get("snippet") or "",
+                "duration": duration,
+                "query_context": clean_topic or row.get("canonical_topic") or row.get("week_topic") or title,
+                "score": float(row.get("final_score") or row.get("base_score") or self.MIN_RESOURCE_SCORE),
+                "source_provider": "db_fallback",
+                "source_domain": row.get("source_domain"),
+                "is_official": bool(row.get("is_official", False)),
+                "is_practical": bool(row.get("is_practical", False)),
+                "was_fallback": bool(row.get("was_fallback", False)),
+            })
+
+        logger.info(
+            "DB fallback returned %s resources | skill_id=%s | topic=%s",
+            len(formatted),
+            skill_id,
+            clean_topic,
+        )
+        return formatted
 
     # -----------------------------
     # Curated bank / fallback
@@ -894,6 +1099,9 @@ class ResourceSearchService:
         difficulty = self._detect_difficulty(text)
         score = 0.0
 
+        if self._is_bad_resource_url(resource):
+            score -= 100
+
         if self._is_domain_blacklisted(url):
             score -= 10
 
@@ -923,20 +1131,32 @@ class ResourceSearchService:
             score -= 4
 
         if source_type == "youtube":
+            if self._is_real_youtube_url(url):
+                score += 8
+            else:
+                score -= 100
+
             if self._is_trusted_channel(channel):
                 score += 3
             if self._is_clickbait_youtube(title, snippet):
                 score -= 6
-            if youtube_minutes < 6:
-                score -= 5
+
+            duration_verified = bool(resource.get("duration_verified", True))
+            if duration_verified:
+                if youtube_minutes < 6:
+                    score -= 5
+                score += self._youtube_duration_score(
+                    minutes=youtube_minutes,
+                    available_hours_per_week=available_hours_per_week,
+                    current_level=current_level,
+                    target_level=target_level,
+                )
+            else:
+                # Duration unknown: keep it usable, but rank below verified videos.
+                score += 0.5
+
             if "what is" in title.lower():
                 score -= 2
-            score += self._youtube_duration_score(
-                minutes=youtube_minutes,
-                available_hours_per_week=available_hours_per_week,
-                current_level=current_level,
-                target_level=target_level,
-            )
 
         if source_type in ("docs", "practice", "project"):
             score += 1.5
@@ -1012,7 +1232,10 @@ Rules:
 4. Reject weak or generic videos.
 5. Prefer official docs for theory.
 6. Prefer practice/project resources that are implementable.
-7. Return JSON only.
+7. Unless impossible, include at least: 1 docs/article, 1 practice, 1 project, 1 youtube.
+8. YouTube must be a real youtube.com/watch or youtu.be video.
+9. Reject github.com/topics pages because they are topic lists, not real projects.
+10. Return JSON only.
 
 Candidates:
 {json.dumps(serialized, ensure_ascii=False, indent=2)}
@@ -1087,6 +1310,372 @@ Return:
 
         return final
 
+    def _resource_type_counts(self, resources: List[Dict[str, Any]]) -> Dict[str, int]:
+        counts = {"docs": 0, "article": 0, "youtube": 0, "practice": 0, "project": 0}
+        for item in resources or []:
+            r_type = (item.get("type") or "").strip().lower()
+            if r_type in counts:
+                counts[r_type] += 1
+        return counts
+
+    async def _fill_missing_types_from_db(
+        self,
+        resources: List[Dict[str, Any]],
+        *,
+        skill_id: Optional[int],
+        week_topic: Optional[str],
+        current_level: Optional[str],
+        target_level: Optional[str],
+        max_items: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fill missing weekly resource types from DB.
+        Missing types are protected so sorting/slicing does not drop youtube/project.
+        """
+        if not skill_id:
+            return [r for r in resources if not self._is_bad_resource_url(r)]
+
+        return await self._enforce_resource_contract_from_db(
+            resources,
+            skill_id=skill_id,
+            week_topic=week_topic,
+            current_level=current_level,
+            target_level=target_level,
+            available_hours_per_week=None,
+            max_items=max_items,
+        )
+
+
+    def _duration_minutes_from_resource(self, resource: Dict[str, Any]) -> Optional[int]:
+        raw_minutes = resource.get("estimated_duration_minutes")
+        if raw_minutes is None:
+            raw_minutes = resource.get("youtube_duration_minutes")
+
+        try:
+            if raw_minutes is not None:
+                return int(raw_minutes)
+        except Exception:
+            pass
+
+        duration_text = str(resource.get("duration") or "").lower()
+        match = re.search(r"(\d+)\s*(min|mins|minute|minutes)", duration_text)
+        if match:
+            return int(match.group(1))
+
+        if "hour" in duration_text:
+            match = re.search(r"(\d+)\s*(hour|hours)", duration_text)
+            if match:
+                return int(match.group(1)) * 60
+
+        return None
+
+    def _resource_level_fit_score(
+        self,
+        resource: Dict[str, Any],
+        current_level: Optional[str],
+        target_level: Optional[str],
+    ) -> float:
+        text = f"{resource.get('title', '')} {resource.get('snippet', '')}".lower()
+        detected = self._detect_difficulty(text)
+        current = self._normalize_level(current_level)
+        target = self._normalize_level(target_level)
+
+        score = 0.0
+
+        if current in {"none", "beginner"}:
+            if detected == "beginner":
+                score += 2.5
+            elif detected == "intermediate":
+                score += 1.0
+            elif detected == "advanced":
+                score -= 4.0
+
+        elif current == "intermediate":
+            if detected == "intermediate":
+                score += 2.5
+            elif detected == "advanced":
+                score += 1.0
+            elif detected == "beginner" and target in {"intermediate", "advanced"}:
+                score -= 2.5
+
+        elif current == "advanced":
+            if detected == "advanced":
+                score += 2.0
+            elif detected == "beginner":
+                score -= 4.0
+
+        return score
+
+    def _resource_time_fit_score(
+        self,
+        resource: Dict[str, Any],
+        available_hours_per_week: Optional[int],
+    ) -> float:
+        minutes = self._duration_minutes_from_resource(resource)
+        if minutes is None:
+            return 0.0
+
+        weekly_minutes = max(int(available_hours_per_week or 6) * 60, 60)
+
+        # One weekly resource should not consume more than roughly 45% of user's weekly time.
+        if minutes > weekly_minutes * 0.45:
+            return -3.0
+
+        if minutes <= weekly_minutes * 0.25:
+            return 1.5
+
+        return 0.5
+
+    def _resource_memory_score(self, resource: Dict[str, Any]) -> float:
+        def as_int(value: Any) -> int:
+            try:
+                return int(value or 0)
+            except Exception:
+                return 0
+
+        selected = as_int(resource.get("times_selected"))
+        validation = as_int(resource.get("times_validation_passed"))
+        used = as_int(resource.get("times_used_in_final_plan"))
+
+        score = 0.0
+        score += min(selected, 10) * 0.15
+        score += min(validation, 10) * 0.25
+        score += min(used, 10) * 0.35
+        return score
+
+    def _db_personalized_score(
+        self,
+        resource: Dict[str, Any],
+        *,
+        week_topic: Optional[str],
+        current_level: Optional[str],
+        target_level: Optional[str],
+        available_hours_per_week: Optional[int],
+    ) -> float:
+        base = float(resource.get("score") or resource.get("final_score") or resource.get("base_score") or 0)
+
+        score = base
+        score += self._resource_level_fit_score(resource, current_level, target_level)
+        score += self._resource_time_fit_score(resource, available_hours_per_week)
+        score += self._resource_memory_score(resource)
+
+        r_type = (resource.get("type") or "").lower()
+        url = (resource.get("url") or "").lower()
+        domain = self._extract_domain(url)
+
+        if r_type == "youtube":
+            if self._is_real_youtube_url(url):
+                score += 4
+                minutes = self._duration_minutes_from_resource(resource)
+                if minutes:
+                    score += self._youtube_duration_score(
+                        minutes=minutes,
+                        available_hours_per_week=available_hours_per_week,
+                        current_level=current_level,
+                        target_level=target_level,
+                    )
+            else:
+                score -= 100
+
+        if r_type == "project":
+            if "github.com/" in url and not self._is_github_topics_url(url):
+                score += 3
+            if self._is_github_topics_url(url):
+                score -= 100
+
+        if r_type == "practice":
+            if domain in {"kaggle.com", "www.kaggle.com"}:
+                score += 3
+            if any(word in f"{resource.get('title', '')} {resource.get('snippet', '')}".lower() for word in ["exercise", "notebook", "hands-on", "practice"]):
+                score += 2
+
+        if r_type in {"docs", "article"}:
+            if bool(resource.get("is_official")):
+                score += 2
+
+        clean_topic = self._clean_week_topic_for_matching(week_topic)
+        if clean_topic:
+            if self._is_relevant_to_topic(resource, clean_topic, None):
+                score += 3
+            else:
+                score -= 2
+
+        if bool(resource.get("was_fallback")):
+            score -= 1
+
+        return round(score, 3)
+
+    async def _get_best_db_resource_of_type(
+        self,
+        *,
+        skill_id: Optional[int],
+        week_topic: Optional[str],
+        current_level: Optional[str],
+        target_level: Optional[str],
+        wanted_type: str,
+        seen_urls: Optional[set] = None,
+        available_hours_per_week: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        if not skill_id:
+            return None
+
+        seen_urls = seen_urls or set()
+        attempts = [(week_topic, wanted_type), (None, wanted_type)]
+
+        if wanted_type == "docs":
+            attempts.extend([(week_topic, "article"), (None, "article")])
+
+        pool: List[Dict[str, Any]] = []
+
+        for attempt_topic, attempt_type in attempts:
+            candidates = await self._get_from_db_fallback(
+                skill_id=skill_id,
+                week_topic=attempt_topic,
+                current_level=current_level,
+                target_level=target_level,
+                limit=15,
+                resource_type=attempt_type,
+                strict_level=False,
+            )
+
+            for candidate in candidates:
+                url = (candidate.get("url") or "").strip().lower()
+                if not url or url in seen_urls:
+                    continue
+                if self._is_bad_resource_url(candidate):
+                    continue
+                if wanted_type == "youtube" and not self._is_real_youtube_url(url):
+                    continue
+
+                candidate["source_provider"] = "db_fallback"
+                candidate["personalized_db_score"] = self._db_personalized_score(
+                    candidate,
+                    week_topic=week_topic,
+                    current_level=current_level,
+                    target_level=target_level,
+                    available_hours_per_week=available_hours_per_week,
+                )
+                pool.append(candidate)
+
+        if not pool:
+            return None
+
+        pool.sort(key=lambda x: float(x.get("personalized_db_score") or x.get("score") or 0), reverse=True)
+        best = pool[0]
+        best["score"] = max(float(best.get("score") or 0), float(best.get("personalized_db_score") or 0))
+        return best
+
+    async def _enforce_resource_contract_from_db(
+        self,
+        resources: List[Dict[str, Any]],
+        *,
+        skill_id: Optional[int],
+        week_topic: Optional[str],
+        current_level: Optional[str],
+        target_level: Optional[str],
+        available_hours_per_week: Optional[int],
+        max_items: int,
+    ) -> List[Dict[str, Any]]:
+        cleaned: List[Dict[str, Any]] = []
+        seen_urls = set()
+
+        for item in resources or []:
+            url = (item.get("url") or "").strip().lower()
+            if not url or url in seen_urls:
+                continue
+            if self._is_bad_resource_url(item):
+                continue
+            seen_urls.add(url)
+            cleaned.append(item)
+
+        counts = self._resource_type_counts(cleaned)
+
+        missing: List[str] = []
+        if counts["docs"] == 0 and counts["article"] == 0:
+            missing.append("docs")
+        if counts["practice"] == 0:
+            missing.append("practice")
+        if counts["project"] == 0:
+            missing.append("project")
+        if counts["youtube"] == 0:
+            missing.append("youtube")
+
+        for wanted_type in missing:
+            candidate = await self._get_best_db_resource_of_type(
+                skill_id=skill_id,
+                week_topic=week_topic,
+                current_level=current_level,
+                target_level=target_level,
+                wanted_type=wanted_type,
+                seen_urls=seen_urls,
+                available_hours_per_week=available_hours_per_week,
+            )
+            if not candidate:
+                continue
+
+            if "score" not in candidate:
+                candidate["score"] = self._score_resource(
+                    resource=candidate,
+                    query=candidate.get("query_context") or week_topic or "",
+                    current_level=current_level,
+                    target_level=target_level,
+                    track_name=None,
+                    available_hours_per_week=available_hours_per_week,
+                    week_topic=week_topic,
+                )
+
+            url = (candidate.get("url") or "").strip().lower()
+            seen_urls.add(url)
+            cleaned.append(candidate)
+
+        required_order = ["docs", "practice", "project", "youtube"]
+        final: List[Dict[str, Any]] = []
+        used_urls = set()
+        for item in cleaned:
+            if item.get("source_provider") == "db_fallback":
+                item["personalized_db_score"] = self._db_personalized_score(
+                    item,
+                    week_topic=week_topic,
+                    current_level=current_level,
+                    target_level=target_level,
+                    available_hours_per_week=available_hours_per_week,
+                )
+                item["score"] = max(float(item.get("score") or 0), float(item.get("personalized_db_score") or 0))
+
+        sorted_cleaned = sorted(
+            cleaned,
+            key=lambda x: float(x.get("personalized_db_score") or x.get("score") or 0),
+            reverse=True,
+        )
+
+        for wanted_type in required_order:
+            for item in sorted_cleaned:
+                r_type = (item.get("type") or "").strip().lower()
+                url = (item.get("url") or "").strip().lower()
+                if not url or url in used_urls:
+                    continue
+
+                if wanted_type == "docs":
+                    type_ok = r_type in {"docs", "article"}
+                else:
+                    type_ok = r_type == wanted_type
+
+                if type_ok:
+                    final.append(item)
+                    used_urls.add(url)
+                    break
+
+        for item in sorted_cleaned:
+            url = (item.get("url") or "").strip().lower()
+            if url and url not in used_urls:
+                final.append(item)
+                used_urls.add(url)
+            if len(final) >= max(max_items, self.MIN_WEEKLY_RESOURCES):
+                break
+
+        return final[:max(max_items, self.MIN_WEEKLY_RESOURCES)]
+
+
     # -----------------------------
     # Main
     # -----------------------------
@@ -1102,6 +1691,7 @@ Return:
         context_keywords: Optional[List[str]] = None,
         track_name: Optional[str] = None,
         week_topic: Optional[str] = None,
+        skill_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         focus_skills = context_keywords or []
         primary_skill_name = focus_skills[0] if focus_skills else None
@@ -1136,6 +1726,28 @@ Return:
             )
 
             if resource_type == "youtube":
+                # YouTube has lots of noise, so we try several query shapes.
+                # We still keep strict duration and clickbait filtering in _search_youtube.
+                youtube_extra_queries = []
+                if primary_skill_name:
+                    youtube_extra_queries.extend([
+                        f"{primary_skill_name} tutorial",
+                        f"{primary_skill_name} practical tutorial",
+                        f"{primary_skill_name} full tutorial",
+                        f"{primary_skill_name} examples",
+                    ])
+                if clean_week_topic:
+                    youtube_extra_queries.extend([
+                        f"{clean_week_topic} tutorial",
+                        f"{clean_week_topic} python tutorial",
+                        f"{clean_week_topic} data science tutorial",
+                    ])
+
+                for q in youtube_extra_queries:
+                    q = self._compress_query(q, max_words=8)
+                    if q and q not in retry_queries:
+                        retry_queries.append(q)
+
                 for retry_query in retry_queries:
                     try:
                         yt = await self._search_youtube(
@@ -1200,6 +1812,9 @@ Return:
         deduped = []
         seen = set()
         for item in all_results:
+            if self._is_bad_resource_url(item):
+                continue
+
             key = (
                 (item.get("url") or "").strip().lower(),
                 (item.get("title") or "").strip().lower()
@@ -1219,22 +1834,66 @@ Return:
             )
             deduped.append(item)
 
-        # filter bad stuff
-        deduped = [
+        # filter bad stuff, but never over-filter into empty results.
+        # Important: short YouTube videos are always removed permanently.
+        no_short_youtube = [
             item for item in deduped
             if not (
-                item.get("type") == "youtube" and int(item.get("youtube_duration_minutes") or 0) < self.MIN_YOUTUBE_MINUTES
+                item.get("type") == "youtube"
+                and item.get("duration_verified", True) is True
+                and int(item.get("youtube_duration_minutes") or 0) < self.MIN_YOUTUBE_MINUTES
             )
         ]
+        deduped = no_short_youtube
+
+        before_topic_score_filter = list(deduped)
 
         if clean_week_topic:
-            deduped = [
+            soft_filtered = [
                 item for item in deduped
                 if self._is_relevant_to_topic(item, clean_week_topic, focus_skills)
             ]
+            if soft_filtered:
+                deduped = soft_filtered
 
-        deduped = [r for r in deduped if float(r.get("score") or 0) >= self.MIN_RESOURCE_SCORE]
+        high_score = [r for r in deduped if float(r.get("score") or 0) >= self.MIN_RESOURCE_SCORE]
+        if high_score:
+            deduped = high_score
+        elif before_topic_score_filter:
+            deduped = before_topic_score_filter
+
         deduped.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        # DB retrieval fallback:
+        # 1) If APIs returned nothing, retrieve a full set from DB.
+        # 2) If APIs returned partial results, fill missing resource types from DB.
+        if not deduped:
+            db_fallback = await self._get_from_db_fallback(
+                skill_id=skill_id,
+                week_topic=clean_week_topic,
+                current_level=current_level,
+                target_level=target_level,
+                limit=max(max_per_week, 8),
+            )
+            if not db_fallback and skill_id:
+                db_fallback = await self._get_from_db_fallback(
+                    skill_id=skill_id,
+                    week_topic=None,
+                    current_level=current_level,
+                    target_level=target_level,
+                    limit=max(max_per_week, 8),
+                )
+            if db_fallback:
+                deduped = db_fallback
+        else:
+            deduped = await self._fill_missing_types_from_db(
+                resources=deduped,
+                skill_id=skill_id,
+                week_topic=clean_week_topic,
+                current_level=current_level,
+                target_level=target_level,
+                max_items=max(max_per_week, 8),
+            )
 
         # rerank candidates
         reranked = await self._llm_rerank_resources(
@@ -1243,111 +1902,27 @@ Return:
             current_level=current_level,
             target_level=target_level,
             available_hours_per_week=available_hours_per_week,
-            max_final=max(self.max_rerank_candidates, 8),
+            max_final=max(self.max_rerank_candidates, max_per_week, 8),
         )
 
-        # fixed structure package
-        packaged = self._build_week_package(
-            ranked_resources=reranked,
-            available_hours_per_week=available_hours_per_week,
-        )
+        # ResourceSearchService returns ranked candidates only.
+        # Weekly packaging / DB recovery is handled by WeeklyResourceOrchestrator.
 
-        validation = self._validate_week_resources(packaged)
-        if validation["passed"]:
-            return packaged
-
-        logger.warning("Week validation failed. Rules=%s", validation["failed_rules"])
-
-        # Retry by merging curated bank
-        curated = await self._load_curated_resources(
-            skill_name=primary_skill_name,
-            canonical_topic=clean_week_topic,
+        final_candidates = await self._enforce_resource_contract_from_db(
+            reranked,
+            skill_id=skill_id,
+            week_topic=clean_week_topic,
             current_level=current_level,
             target_level=target_level,
-        )
-
-        merged = self._merge_resource_sets(packaged, curated)
-
-        # rescore merged if some curated items have no score
-        rescored = []
-        for item in merged:
-            if "score" not in item:
-                item["score"] = self._score_resource(
-                    resource=item,
-                    query=item.get("query_context") or clean_week_topic or "",
-                    current_level=current_level,
-                    target_level=target_level,
-                    track_name=track_name,
-                    available_hours_per_week=available_hours_per_week,
-                    week_topic=clean_week_topic,
-                    focus_skills=focus_skills,
-                )
-            rescored.append(item)
-
-        rescored.sort(key=lambda x: x.get("score", 0), reverse=True)
-
-        packaged_2 = self._build_week_package(
-            ranked_resources=rescored,
             available_hours_per_week=available_hours_per_week,
+            max_items=max(max_per_week, 8),
         )
 
-        validation_2 = self._validate_week_resources(packaged_2)
-        if validation_2["passed"]:
-            return packaged_2
+        logger.info(
+            "ResourceSearch final candidates | skill_id=%s | topic=%s | counts=%s",
+            skill_id,
+            clean_week_topic,
+            self._resource_type_counts(final_candidates),
+        )
 
-        # force-fill by type
-        final = list(packaged_2)
-
-        def add_if_missing(resource_type: str, count: int = 1):
-            existing_count = sum(1 for r in final if r.get("type") == resource_type)
-            needed = max(0, count - existing_count)
-            if needed == 0:
-                return
-
-            pool = [r for r in rescored if r not in final and r.get("type") == resource_type]
-            for item in pool[:needed]:
-                final.append(item)
-
-            while sum(1 for r in final if r.get("type") == resource_type) < count:
-                fallback_item = self._get_fallback_resources(
-                    query=clean_week_topic or "learning resource",
-                    resource_type=resource_type,
-                    title=f"{clean_week_topic or 'Weekly Topic'} {resource_type}",
-                    track_name=track_name,
-                    current_level=current_level,
-                    target_level=target_level,
-                )[0]
-                if all((fallback_item.get("url") or "") != (x.get("url") or "") for x in final):
-                    final.append(fallback_item)
-                else:
-                    break
-
-        add_if_missing("docs", 1)
-        add_if_missing("practice", 1)
-        add_if_missing("project", 1)
-        add_if_missing("youtube", self._youtube_count_for_hours(available_hours_per_week))
-
-        # last cleanup
-        cleaned_final = []
-        seen_urls = set()
-        for item in final:
-            url = (item.get("url") or "").strip().lower()
-            if not url or url in seen_urls:
-                continue
-            if url in {u.lower() for u in self.GENERIC_ROOT_URLS}:
-                continue
-            seen_urls.add(url)
-            cleaned_final.append(item)
-
-        # make sure structure still holds after cleanup
-        if len(cleaned_final) < self.MIN_WEEKLY_RESOURCES:
-            for item in rescored:
-                url = (item.get("url") or "").strip().lower()
-                if not url or url in seen_urls:
-                    continue
-                cleaned_final.append(item)
-                seen_urls.add(url)
-                if len(cleaned_final) >= self.MIN_WEEKLY_RESOURCES:
-                    break
-
-        return cleaned_final[:max(4, 3 + self._youtube_count_for_hours(available_hours_per_week))]
+        return final_candidates[:max(max_per_week, 8)]

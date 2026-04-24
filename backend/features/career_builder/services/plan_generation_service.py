@@ -13,6 +13,7 @@ from uuid import UUID
 from features.career_builder.repositories.career_repository import CareerRepository
 from features.career_builder.services.career_analysis_service import CareerAnalysisService
 from features.career_builder.services.resource_search_service import ResourceSearchService
+from features.career_builder.services.weekly_resource_orchestrator import WeeklyResourceOrchestrator
 from shared.providers.llm_models.llm_provider import create_llm_provider
 
 logger = logging.getLogger(__name__)
@@ -192,6 +193,9 @@ class PlanGenerationService:
         "Pandas": "https://pandas.pydata.org/docs/",
         "NumPy": "https://numpy.org/doc/",
         "Matplotlib": "https://matplotlib.org/stable/users/index.html",
+        "Feature Engineering": "https://scikit-learn.org/stable/modules/preprocessing.html",
+        "Model Evaluation & Metrics": "https://scikit-learn.org/stable/modules/model_evaluation.html",
+        "Seaborn": "https://seaborn.pydata.org/tutorial.html",
     }
 
     FALLBACK_DOCS_BY_TRACK = {
@@ -218,6 +222,16 @@ class PlanGenerationService:
         except Exception as e:
             logger.error("Failed to initialize ResourceSearchService: %s", e, exc_info=True)
             self.resource_search_service = None
+
+        try:
+            self.weekly_resource_orchestrator = WeeklyResourceOrchestrator(
+                repository=self.repo,
+                resource_search_service=self.resource_search_service,
+            )
+            logger.info("WeeklyResourceOrchestrator initialized successfully")
+        except Exception as e:
+            logger.error("Failed to initialize WeeklyResourceOrchestrator: %s", e, exc_info=True)
+            self.weekly_resource_orchestrator = None
 
         try:
             self.llm = create_llm_provider()
@@ -351,13 +365,10 @@ class PlanGenerationService:
             effective_user_level,
         )
 
-        # -----------------------------
-        # Stage 1: weekly skeleton
-        # -----------------------------
         try:
             structure_data = await self._call_llm_for_json(
                 prompt=structure_prompt,
-                temperature=0.25,
+                temperature=0.1,
                 expecting_longer_output=True,
                 failure_message="LLM structure generation failed",
             )
@@ -402,9 +413,6 @@ class PlanGenerationService:
 
         weekly_breakdown = plan_data.get("weekly_breakdown", []) or []
 
-        # -----------------------------
-        # Stage 2: study guide per week
-        # -----------------------------
         for week in weekly_breakdown:
             level_info = self._infer_week_levels_from_topic(
                 week=week,
@@ -437,11 +445,7 @@ class PlanGenerationService:
 
             week["study_guide"] = study_guide
 
-        # -----------------------------
-        # Build resource queries + fetch resources
-        # -----------------------------
         track_keywords = self._build_track_keywords(track_name)
-        global_seen_urls = set()
 
         for week in weekly_breakdown:
             level_info = self._infer_week_levels_from_topic(
@@ -458,43 +462,73 @@ class PlanGenerationService:
                 all_used_learning_targets=used_learning_targets,
             )
 
-            resources = []
-            if self.resource_search_service:
+            focus_skill = (week.get("focus_skills") or [None])[0]
+            skill_id = None
+            for target in used_learning_targets:
+                if target.get("skill_name") == focus_skill:
+                    skill_id = target.get("skill_id")
+                    break
+
+            if self.weekly_resource_orchestrator:
                 try:
-                    resources = await self.resource_search_service.search_resources(
+                    week_result = await self.weekly_resource_orchestrator.build_week_resources(
+                        plan_id=None,
+                        track_id=track_id,
+                        track_name=track_name,
+                        week=week,
                         resource_queries=resource_queries,
-                        max_per_week=4,
-                        current_level=level_info.get("current_level"),
-                        target_level=level_info.get("target_level"),
+                        current_level=level_info.get("current_level", "beginner"),
+                        target_level=level_info.get("target_level", "intermediate"),
                         available_hours_per_week=available_hours_per_week,
+                        context_keywords=week.get("focus_skills", []) + track_keywords + week.get("resource_focus", []),
                         week_number=week.get("week_number"),
                         duration_weeks=duration_weeks,
-                        context_keywords=week.get("focus_skills", []) + track_keywords + week.get("resource_focus", []),
-                        track_name=track_name,
-                        week_topic=week.get("topic", ""),
+                        skill_id=skill_id,
+                        skill_name=focus_skill,
                     )
+                    week["resources"] = week_result["resources"]
+                    week["resource_validation_report"] = week_result["validation_report"]
                 except Exception as e:
-                    logger.warning("Resource fetching failed for week %s: %s", week.get("week_number"), e)
-                    resources = []
-
-            resources = self._dedupe_resources(resources, global_seen_urls)
-
-            if not resources:
-                resources = self._build_fallback_resources_for_week(
+                    logger.warning("Weekly resource orchestration failed for week %s: %s", week.get("week_number"), e, exc_info=True)
+                    fallback_resources = self._build_fallback_resources_for_week(
+                        week=week,
+                        track_name=track_name,
+                        current_level=level_info.get("current_level", "beginner"),
+                        target_level=level_info.get("target_level", "intermediate"),
+                        available_hours_per_week=available_hours_per_week,
+                    )
+                    week["resources"] = self._dedupe_resources(fallback_resources, set())
+                    week["resource_validation_report"] = {
+                        "source": "local_fallback",
+                        "resource_count": len(week["resources"]),
+                        "expected_resource_count": self._expected_week_resource_count(available_hours_per_week),
+                        "youtube_expected": self._expected_youtube_count(available_hours_per_week),
+                        "resource_type_counts": self._resource_type_counts(week["resources"]),
+                        "contract_passed": self._week_resources_meet_contract(
+                            resources=week["resources"],
+                            available_hours_per_week=available_hours_per_week,
+                        ),
+                    }
+            else:
+                fallback_resources = self._build_fallback_resources_for_week(
                     week=week,
                     track_name=track_name,
                     current_level=level_info.get("current_level", "beginner"),
                     target_level=level_info.get("target_level", "intermediate"),
+                    available_hours_per_week=available_hours_per_week,
                 )
-
-            week["resources"] = resources
-            week["resource_validation_report"] = {
-                "track_name": track_name,
-                "current_level": level_info.get("current_level"),
-                "target_level": level_info.get("target_level"),
-                "resource_count": len(resources),
-                "guide_style": week.get("guide_style"),
-            }
+                week["resources"] = self._dedupe_resources(fallback_resources, set())
+                week["resource_validation_report"] = {
+                    "source": "local_fallback",
+                    "resource_count": len(week["resources"]),
+                    "expected_resource_count": self._expected_week_resource_count(available_hours_per_week),
+                    "youtube_expected": self._expected_youtube_count(available_hours_per_week),
+                    "resource_type_counts": self._resource_type_counts(week["resources"]),
+                    "contract_passed": self._week_resources_meet_contract(
+                        resources=week["resources"],
+                        available_hours_per_week=available_hours_per_week,
+                    ),
+                }
 
             week.pop("resource_focus", None)
             week.pop("avoid_topics", None)
@@ -522,11 +556,104 @@ class PlanGenerationService:
                 "resource_personalization": True,
                 "cumulative_mode": True,
                 "smart_resource_sequencing": True,
-                "global_resource_dedupe": True,
+                "global_resource_dedupe": False,
                 "two_stage_llm": True,
+                "weekly_resource_contract": True,
             },
             **plan_data,
         }
+
+    # ============================================================
+    # NEW weekly resource contract helpers
+    # ============================================================
+
+    def _expected_youtube_count(self, available_hours_per_week: int) -> int:
+        return 1 if (available_hours_per_week or 6) <= 6 else 3
+
+    def _expected_week_resource_count(self, available_hours_per_week: int) -> int:
+        return 3 + self._expected_youtube_count(available_hours_per_week)
+
+    def _resource_type_counts(self, resources: List[Dict[str, Any]]) -> Dict[str, int]:
+        counts = {
+            "docs": 0,
+            "article": 0,
+            "youtube": 0,
+            "practice": 0,
+            "project": 0,
+        }
+
+        for resource in resources or []:
+            r_type = (resource.get("type") or "").strip().lower()
+            if r_type in counts:
+                counts[r_type] += 1
+
+        return counts
+
+    def _week_resources_meet_contract(
+        self,
+        resources: List[Dict[str, Any]],
+        available_hours_per_week: int,
+    ) -> bool:
+        counts = self._resource_type_counts(resources)
+        expected_youtube = self._expected_youtube_count(available_hours_per_week)
+
+        has_docs = counts["docs"] >= 1 or counts["article"] >= 1
+        has_practice = counts["practice"] >= 1
+        has_project = counts["project"] >= 1
+        has_youtube = counts["youtube"] >= expected_youtube
+
+        return has_docs and has_practice and has_project and has_youtube
+
+    def _merge_and_fill_week_resources(
+        self,
+        primary: List[Dict[str, Any]],
+        fallback: List[Dict[str, Any]],
+        available_hours_per_week: int,
+    ) -> List[Dict[str, Any]]:
+        expected_youtube = self._expected_youtube_count(available_hours_per_week)
+
+        merged = []
+        seen_urls = set()
+
+        for group in [primary or [], fallback or []]:
+            for item in group:
+                url = (item.get("url") or "").strip().lower()
+                if not url:
+                    continue
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                merged.append(item)
+
+        def take_by_type(resource_type: str, count: int) -> List[Dict[str, Any]]:
+            selected = []
+            for item in merged:
+                if (item.get("type") or "").strip().lower() == resource_type:
+                    selected.append(item)
+                if len(selected) >= count:
+                    break
+            return selected
+
+        final = []
+
+        docs_candidates = take_by_type("docs", 1)
+        if not docs_candidates:
+            docs_candidates = take_by_type("article", 1)
+        final.extend(docs_candidates[:1])
+
+        final.extend(take_by_type("practice", 1))
+        final.extend(take_by_type("project", 1))
+        final.extend(take_by_type("youtube", expected_youtube))
+
+        expected_total = self._expected_week_resource_count(available_hours_per_week)
+        for item in merged:
+            if item in final:
+                continue
+            final.append(item)
+            if len(final) >= expected_total:
+                break
+
+        return final[:expected_total]
 
     # ============================================================
     # LLM helpers
@@ -1364,18 +1491,13 @@ class PlanGenerationService:
             f"{focus_skill} {topic} {expected_level} tutorial {sequence_hint}".strip()
         )
         base_practice = self._compress_query(
-            f"{focus_skill} {topic} hands-on exercises {focus_hint} {related_hint}".strip()
+            f"{focus_skill} {topic} hands-on exercises notebook practice {focus_hint} {related_hint}".strip()
         )
         base_project = self._compress_query(
-            f"{focus_skill} {topic} project example {related_hint}".strip()
+            f"{focus_skill} {topic} project example github repo {related_hint}".strip()
         )
 
         return [
-            {
-                "title": f"{focus_skill} video",
-                "query": base_video,
-                "type": "youtube",
-            },
             {
                 "title": f"{focus_skill} docs",
                 "query": base_docs,
@@ -1390,6 +1512,11 @@ class PlanGenerationService:
                 "title": f"{focus_skill} project",
                 "query": base_project,
                 "type": "project",
+            },
+            {
+                "title": f"{focus_skill} video",
+                "query": base_video,
+                "type": "youtube",
             },
         ]
 
@@ -1446,34 +1573,52 @@ class PlanGenerationService:
         track_name: str,
         current_level: str,
         target_level: str,
+        available_hours_per_week: int,
     ) -> List[Dict[str, Any]]:
         topic = week.get("topic", "Weekly Topic")
         skill = (week.get("focus_skills") or ["General Skill"])[0]
         doc_url = self._fallback_doc_url(skill_name=skill, track_name=track_name)
+        youtube_needed = self._expected_youtube_count(available_hours_per_week)
 
-        return [
+        resources = [
             {
                 "title": f"{topic} official docs",
                 "url": doc_url,
                 "type": "docs",
                 "snippet": f"Fallback official docs for {skill}",
                 "duration": "30 min",
+                "score": 9.0,
             },
             {
-                "title": f"{topic} practice",
-                "url": "https://github.com/",
+                "title": f"{topic} practice notebook",
+                "url": "https://www.kaggle.com/learn",
                 "type": "practice",
                 "snippet": f"Fallback practice resource for {skill}",
                 "duration": "2 hours",
+                "score": 8.5,
             },
             {
                 "title": f"{topic} project example",
-                "url": "https://github.com/",
+                "url": "https://github.com/search?q=topic:programming&sort=stars&type=repositories",
                 "type": "project",
                 "snippet": f"Fallback project resource for {skill}",
                 "duration": "full course",
+                "score": 8.0,
             },
         ]
+
+        for idx in range(1, youtube_needed + 1):
+            resources.append({
+                "title": f"{topic} tutorial video {idx}",
+                "url": f"https://www.youtube.com/results?search_query={topic.replace(' ', '+')}&sp=CAI%253D",
+                "type": "youtube",
+                "snippet": f"Fallback tutorial search for {skill}",
+                "duration": "10 min",
+                "youtube_duration_minutes": 10,
+                "score": 7.5,
+            })
+
+        return resources
 
     # ============================================================
     # fallback plan
@@ -1590,21 +1735,47 @@ class PlanGenerationService:
         if raw is None:
             raise ValueError("Cannot parse JSON from None response")
 
-        raw = self._fix_common_json_issues(raw)
+        if isinstance(raw, dict):
+            return raw
 
+        text = str(raw).strip()
+
+        # remove markdown fences
+        text = re.sub(r"^```json\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"^```\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+
+        # fix minor issues
+        text = self._fix_common_json_issues(text)
+
+        # 1) try direct parse
         try:
-            return json.loads(raw)
+            return json.loads(text)
         except Exception:
             pass
 
-        fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
-        if fenced:
-            candidate = self._fix_common_json_issues(fenced.group(1))
-            return json.loads(candidate)
+        # 2) extract largest JSON object
+        start = text.find("{")
+        end = text.rfind("}")
 
-        brace_match = re.search(r"(\{.*\})", raw, re.DOTALL)
-        if brace_match:
-            candidate = self._fix_common_json_issues(brace_match.group(1))
-            return json.loads(candidate)
+        if start != -1 and end != -1 and end > start:
+            candidate = text[start:end + 1]
+            candidate = self._fix_common_json_issues(candidate)
+
+            try:
+                return json.loads(candidate)
+            except Exception as e:
+                logger.error(
+                    "JSON parse failed after extraction | len=%s | preview=%s",
+                    len(candidate),
+                    candidate[:300],
+                )
+                raise ValueError("Failed to extract valid JSON from LLM response") from e
+
+        logger.error(
+            "JSON parse completely failed | len=%s | preview=%s",
+            len(text),
+            text[:300],
+        )
 
         raise ValueError("Failed to parse plan JSON from model response")
