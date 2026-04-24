@@ -55,10 +55,13 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = ""
     GEMINI_EMBEDDING_MODEL: str = ""
     OPENAI_API_KEY: str = ""
+    MISTRAL_API_KEY: Optional[str] = None
+    MISTRAL_MODEL: Optional[str] = None
 
     # Resource APIs
     YOUTUBE_API_KEY: Optional[str] = None
     SERPAPI_API_KEY: Optional[str] = None
+    TAVILY_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_MODEL: Optional[str] = None
     # External APIs
@@ -73,10 +76,10 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
-@lru_cache()
 def get_settings() -> Settings:
-    """Cached settings instance."""
+    """Get settings instance (fresh read from .env each time)."""
     return Settings()
 
 
+# Don't cache settings - reload from .env on each call
 settings = get_settings()

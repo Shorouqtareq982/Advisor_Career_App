@@ -1,5 +1,16 @@
 """
-Backend 1 - Analysis Service (Enhanced Version)
+Backend 1 - Analysis Service (Final Clean Version)
+Analyze only:
+- CV skill extraction
+- matching
+- level detection
+- gap analysis
+- fit evaluation
+- reviewable skills
+
+NOTE:
+Time realism is NOT computed here.
+It is computed later in /confirm-time.
 """
 
 from typing import Dict, List, Any, Optional
@@ -10,7 +21,6 @@ import json
 
 from features.career_builder.ml_models.skill_matcher import HybridCareerAnalyzer
 from features.career_builder.ml_models.level_detector import LevelDetector
-from features.career_builder.ml_models.realism_checker import RealismChecker, RealismResult
 from features.career_builder.ml_models.gap_analyzer import SkillGapAnalyzer
 from features.career_builder.services.fit_evaluator import FitEvaluator
 from features.career_builder.repositories.career_repository import CareerRepository
@@ -63,7 +73,6 @@ class CareerAnalysisService:
         self.repo = repository
         self.hybrid_analyzer = HybridCareerAnalyzer(repository=repository)
         self.level_detector = LevelDetector()
-        self.realism_checker = RealismChecker()
         self.gap_analyzer = SkillGapAnalyzer()
         self.fit_evaluator = FitEvaluator()
 
@@ -106,9 +115,10 @@ class CareerAnalysisService:
         )
 
         logger.info(
-            f"Matched={len(analysis.matched_skills)}, "
-            f"Missing={len(analysis.missing_skills)}, "
-            f"Method={analysis.matching_method}"
+            "Matched=%s, Missing=%s, Method=%s",
+            len(analysis.matched_skills),
+            len(analysis.missing_skills),
+            analysis.matching_method
         )
 
         # =====================================================
@@ -156,7 +166,11 @@ class CareerAnalysisService:
             level_confidence = level_result.get("overall_confidence", 0.5)
             level_reasoning = level_result.get("summary", "")
 
-        logger.info(f"Detected overall level: {detected_level} ({level_confidence:.0%})")
+        logger.info(
+            "Detected overall level: %s (%s%%)",
+            detected_level,
+            round(level_confidence * 100)
+        )
 
         # =====================================================
         # Step 4.5: Build reliable detected skill levels
@@ -164,8 +178,6 @@ class CareerAnalysisService:
         # - unmatched skills must stay "none"
         # - matched skills with very low confidence become "beginner"
         #   for GAP CALCULATION only
-        # - medium confidence matched skills can still be treated as beginner
-        #   for user-friendly logic
         # =====================================================
         detected_levels = self._build_detected_levels(
             required_skill_names=required_skill_names,
@@ -202,34 +214,15 @@ class CareerAnalysisService:
         )
 
         # =====================================================
-        # Step 8: Realism
+        # Step 8: Realism placeholder
+        # NOTE:
+        # Realism is NOT computed in /analyze.
+        # It is computed later in /confirm-time.
         # =====================================================
-        if requested_weeks > 0:
-            logger.info("PHASE 8: Checking time realism...")
-
-            missing_for_realism = [
-                gap for gap in skill_gaps
-                if gap["status"] in ("missing", "partial")
-            ]
-
-            realism = self.realism_checker.check_realism(
-                requested_weeks=requested_weeks,
-                missing_skills=missing_for_realism,
-                level=required_level
-            )
-
-            if realism.is_below_safe:
-                logger.warning(f"Realism warning: {realism.warning}")
-
-        else:
-            realism = RealismResult(
-                requested_weeks=0,
-                safe_min_weeks=0,
-                recommended_weeks=0,
-                is_below_safe=False,
-                adjustment="pending",
-                warning=""
-            )
+        safe_min_weeks = 0
+        recommended_weeks = 0
+        is_below_safe = False
+        realism_warning = ""
 
         # =====================================================
         # Step 9: Quality score
@@ -240,7 +233,7 @@ class CareerAnalysisService:
             method=analysis.matching_method
         )
 
-        logger.info(f"Analysis completed (quality={analysis_quality:.0%})")
+        logger.info("Analysis completed (quality=%s%%)", round(analysis_quality * 100))
 
         return AnalysisResult(
             cv_id=cv_id,
@@ -263,11 +256,11 @@ class CareerAnalysisService:
             fit_analysis=fit_analysis,
             reviewable_skills=reviewable_skills,
 
-            requested_weeks=requested_weeks,
-            safe_min_weeks=realism.safe_min_weeks,
-            recommended_weeks=realism.recommended_weeks,
-            is_below_safe=realism.is_below_safe,
-            realism_warning=realism.warning,
+            requested_weeks=0,
+            safe_min_weeks=safe_min_weeks,
+            recommended_weeks=recommended_weeks,
+            is_below_safe=is_below_safe,
+            realism_warning=realism_warning,
 
             analysis_quality=analysis_quality
         )
@@ -486,11 +479,12 @@ class CareerAnalysisService:
             "detected_skill_levels": result.detected_skill_levels,
 
             "realism": {
-                "requested_weeks": result.requested_weeks,
-                "safe_min_weeks": result.safe_min_weeks,
-                "recommended_weeks": result.recommended_weeks,
-                "is_below_safe": result.is_below_safe,
-                "warning": result.realism_warning,
+                "requested_weeks": 0,
+                "safe_min_weeks": 0,
+                "recommended_weeks": 0,
+                "is_below_safe": False,
+                "adjustment": "pending",
+                "warning": "",
             },
 
             "matched_skills": result.matched_skills,

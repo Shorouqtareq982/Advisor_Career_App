@@ -1,9 +1,15 @@
 """
 Career Planning Schemas
-Pydantic models for request/response validation
+Draft-first version:
+1) analyze
+2) confirm skills
+3) confirm time
+4) generate plan (draft only)
+5) regenerate plan (draft only)
+6) save plan (final persistence)
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
@@ -39,22 +45,24 @@ class FitStatus(str, Enum):
     POOR_FIT = "poor_fit"
 
 
+class StudyIntensity(str, Enum):
+    LIGHT = "light"
+    MODERATE = "moderate"
+    INTENSIVE = "intensive"
+
+
+class PlanFeedbackIntent(str, Enum):
+    MORE_ADVANCED = "more_advanced"
+    MORE_PRACTICAL = "more_practical"
+    LESS_REPETITION = "less_repetition"
+    FOCUS_SELECTED = "focus_selected_skills"
+    FASTER_PROGRESS = "faster_progress"
+    SIMPLER_BASICS = "simpler_basics"
+
+
 # =====================================================
 # SKILL SCHEMAS
 # =====================================================
-
-class SkillBase(BaseModel):
-    skill_id: int
-    skill_name: str
-    category: str
-
-
-class SkillDetail(SkillBase):
-    importance_weight: int
-    beginner_weeks: int
-    intermediate_weeks: int
-    advanced_weeks: int
-
 
 class SkillGap(BaseModel):
     skill_id: int
@@ -81,11 +89,6 @@ class SkillOverride(BaseModel):
     level: CurrentLevel
 
 
-class SkillTarget(BaseModel):
-    skill_id: int
-    target_level: LevelEnum
-
-
 class ReviewableSkill(BaseModel):
     skill_id: int
     skill_name: str
@@ -97,6 +100,18 @@ class ReviewableSkill(BaseModel):
     selected_by_default: bool
 
 
+class SuggestedTarget(BaseModel):
+    skill_id: int
+    skill_name: str
+    current_level: CurrentLevel
+    suggested_target_level: LevelEnum
+    target_reason: str
+    learning_mode: str
+    status: Optional[SkillStatus] = None
+    is_core: Optional[bool] = True
+    selected_by_user: bool = False
+
+
 class LearningTarget(BaseModel):
     skill_id: int
     skill_name: str
@@ -105,92 +120,95 @@ class LearningTarget(BaseModel):
     required_level: LevelEnum
     required_weeks: int
     importance_weight: int
-    learning_mode: str  # learn_from_scratch | level_up
+    learning_mode: str
+    status: Optional[SkillStatus] = None
+    is_core: Optional[bool] = True
+    selected_by_user: bool = False
+
+
+class AnalysisMetadata(BaseModel):
+    match_percentage: float = Field(..., ge=0.0, le=100.0)
+    matching_method: str
+    analysis_quality: float = Field(..., ge=0.0, le=1.0)
 
 
 # =====================================================
-# TRACK SCHEMAS
+# CONFIRM SKILLS
 # =====================================================
 
-class TrackBase(BaseModel):
-    track_id: int
-    track_name: str
-    description: str
-
-
-class TrackSummary(TrackBase):
-    total_skills: int
-    min_beginner_weeks: int
-    min_intermediate_weeks: int
-    min_advanced_weeks: int
-    avg_importance: float
-
-
-class TrackWithSkills(TrackBase):
-    skills: List[SkillDetail]
-
-
-class TrackDropdownItem(BaseModel):
-    track_id: int
-    track_name: str
-    description: Optional[str] = None
-
-
-class TrackListResponse(BaseModel):
-    tracks: List[TrackDropdownItem]
-    total: int
-
-
-# =====================================================
-# CV ANALYSIS REQUEST/RESPONSE
-# =====================================================
-
-class CVAnalysisRequest(BaseModel):
+class ConfirmSkillsRequest(BaseModel):
     cv_id: UUID
     track_id: int
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "cv_id": "123e4567-e89b-12d3-a456-426614174000",
-                "track_id": 1
-            }
-        }
+    selected_skill_ids: List[int] = Field(default_factory=list)
+    skill_overrides: List[SkillOverride] = Field(default_factory=list)
 
 
-class ExtractedSkill(BaseModel):
-    skill_name: str
-    confidence: float = Field(..., ge=0.0, le=1.0)
-    matched_skill_id: Optional[int] = None
-
-
-class CVAnalysisResponse(BaseModel):
+class ConfirmSkillsResponse(BaseModel):
+    status: str = "success"
     cv_id: UUID
     track_id: int
     track_name: str
     detected_level: LevelEnum
-    extracted_skills: List[ExtractedSkill]
-    matched_skills_count: int
-    skill_gaps: List[SkillGap]
-    realism_check: Dict[str, Any]
+    selected_skill_ids: List[int] = Field(default_factory=list)
     reviewable_skills: List[ReviewableSkill] = Field(default_factory=list)
+    skill_gaps: List[SkillGap] = Field(default_factory=list)
+    detected_skill_levels: Dict[str, CurrentLevel] = Field(default_factory=dict)
     fit_analysis: Optional[FitAnalysis] = None
+    metadata: Optional[AnalysisMetadata] = None
 
 
 # =====================================================
-# CONFIRM FLOW
+# TIME GUIDANCE
 # =====================================================
 
-class ConfirmRequest(BaseModel):
+class TimeGuidanceInfo(BaseModel):
+    minimum_weeks: int
+    suitable_weeks: int
+    maximum_weeks: int
+    study_intensity: StudyIntensity
+    minimum_weeks_breakdown: Dict[str, int] = Field(default_factory=dict)
+    suitable_weeks_breakdown: Dict[str, int] = Field(default_factory=dict)
+    maximum_weeks_breakdown: Dict[str, int] = Field(default_factory=dict)
+
+
+class EnhancedRealismCheckInfo(BaseModel):
+    is_realistic: bool
+    adjustment: str
+    zone: str
+    requested_weeks: int
+    available_hours_per_week: int
+    study_intensity: StudyIntensity
+    calculated_minimum_weeks: int
+    calculated_suitable_weeks: int
+    calculated_maximum_weeks: int
+    warnings: List[str] = Field(default_factory=list)
+    suggestions: List[str] = Field(default_factory=list)
+
+
+class ConfirmTimeRequest(BaseModel):
     cv_id: UUID
     track_id: int
     requested_weeks: int = Field(..., ge=1, le=104)
     available_hours_per_week: int = Field(..., ge=1, le=80)
-    user_level: Optional[LevelEnum] = None
 
+
+class ConfirmTimeResponse(BaseModel):
+    status: str = "success"
+    cv_id: UUID
+    track_id: int
+    track_name: str
+    detected_level: LevelEnum
+    available_hours_per_week: int
+    requested_weeks: int
     selected_skill_ids: List[int] = Field(default_factory=list)
-    skill_overrides: List[SkillOverride] = Field(default_factory=list)
-    skill_targets: List[SkillTarget] = Field(default_factory=list)
+    suggested_targets: List[SuggestedTarget] = Field(default_factory=list)
+    confirmed_learning_targets: List[LearningTarget] = Field(default_factory=list)
+    realism: EnhancedRealismCheckInfo
+    time_guidance: Optional[TimeGuidanceInfo] = None
+    reviewable_skills: List[ReviewableSkill] = Field(default_factory=list)
+    skill_gaps: List[SkillGap] = Field(default_factory=list)
+    fit_analysis: Optional[FitAnalysis] = None
+    metadata: Optional[AnalysisMetadata] = None
 
 
 # =====================================================
@@ -201,53 +219,59 @@ class PlanGenerateRequest(BaseModel):
     cv_id: UUID
     track_id: int
     duration_weeks: int = Field(..., ge=1, le=104)
-    available_hours_per_week: Optional[int] = Field(default=None, ge=1, le=80)
-    user_level: Optional[str] = None
-
-    selected_skill_ids: Optional[List[int]] = None
-    skill_targets: List[SkillTarget] = Field(default_factory=list)
-
-    @validator("user_level")
-    def validate_user_level(cls, v):
-        if v is not None and v not in ("beginner", "intermediate", "advanced"):
-            raise ValueError("user_level must be beginner, intermediate, or advanced")
-        return v
+    available_hours_per_week: int = Field(..., ge=1, le=80)
 
 
 class PlanRegenerateRequest(BaseModel):
+    cv_id: Optional[UUID] = None
+    track_id: Optional[int] = None
     previous_plan: Dict[str, Any]
-    feedback: str
-    regeneration_mode: str = "full"
+    feedback_intents: List[PlanFeedbackIntent] = Field(..., min_length=1)
+    regeneration_mode: str = Field(default="full")
 
 
 class ResourceItem(BaseModel):
     title: str
     url: str
     type: str
+    snippet: Optional[str] = None
+    duration: Optional[str] = None
+    score: Optional[float] = None
+    youtube_duration_minutes: Optional[int] = None
+    channel_title: Optional[str] = None
+    query_context: Optional[str] = None
 
 
 class WeeklyContent(BaseModel):
     week_number: int
-    skill_id: int
-    skill_name: str
+    focus_skills: List[str] = Field(default_factory=list)
     topic: str
     description: str
-    resources: List[Any]
+    learning_outcomes: List[str] = Field(default_factory=list)
+    expected_level_after_week: CurrentLevel
+    study_guide: Optional[Dict[str, Any]] = None
+    resources: List[ResourceItem] = Field(default_factory=list)
+    resource_validation_report: Optional[Dict[str, Any]] = None
 
 
-class GeneratedPlan(BaseModel):
+class DraftPlanResponse(BaseModel):
+    status: str = "success"
+    cv_id: Optional[UUID] = None
     track_id: int
     track_name: str
-    level: LevelEnum
     duration_weeks: int
-    total_skills: int
-    weekly_breakdown: List[WeeklyContent]
-
-
-class PlanGenerationResponse(BaseModel):
-    plan: GeneratedPlan
-    metadata: Dict[str, Any]
-    warnings: Optional[List[str]] = None
+    available_hours_per_week: int
+    planning_mode: str
+    study_intensity: StudyIntensity
+    current_average_level: CurrentLevel
+    final_expected_level: CurrentLevel
+    latest_detected_skill_levels: Dict[str, CurrentLevel] = Field(default_factory=dict)
+    used_learning_targets: List[LearningTarget] = Field(default_factory=list)
+    deferred_learning_targets: List[Dict[str, Any]] = Field(default_factory=list)
+    generation_metadata: Dict[str, Any] = Field(default_factory=dict)
+    plan_summary: str
+    improvement_summary: str
+    weekly_breakdown: List[WeeklyContent] = Field(default_factory=list)
 
 
 # =====================================================
@@ -258,12 +282,6 @@ class SavePlanRequest(BaseModel):
     user_id: UUID
     cv_id: UUID
     track_id: int
-    detected_level: LevelEnum
-    confirmed_level: LevelEnum
-    duration_weeks: int
-    available_hours_per_week: Optional[int] = Field(default=None, ge=1, le=80)
-    skill_gaps: List[SkillGap]
-    weekly_content: List[WeeklyContent]
 
 
 class SavePlanResponse(BaseModel):
@@ -273,69 +291,7 @@ class SavePlanResponse(BaseModel):
 
 
 # =====================================================
-# GET USER PLANS
-# =====================================================
-
-class UserPlanSummary(BaseModel):
-    plan_id: int
-    track_name: str
-    level: LevelEnum
-    duration_weeks: int
-    progress_percentage: float
-    created_at: datetime
-    updated_at: datetime
-
-
-class UserPlansResponse(BaseModel):
-    user_id: UUID
-    plans: List[UserPlanSummary]
-    total_plans: int
-
-
-# =====================================================
-# REALISM CHECK
-# =====================================================
-
-class RealismCheckRequest(BaseModel):
-    track_id: int
-    level: LevelEnum
-    requested_weeks: int
-
-
-class RealismCheckResponse(BaseModel):
-    is_realistic: bool
-    min_weeks_required: int
-    suggested_min_weeks: int
-    requested_weeks: int
-    compression_ratio: float
-    message: str
-
-
-# =====================================================
-# SKILL MATCHING
-# =====================================================
-
-class SkillMatchRequest(BaseModel):
-    cv_text: str
-    track_id: Optional[int] = None
-
-
-class MatchedSkill(BaseModel):
-    skill_id: int
-    skill_name: str
-    category: str
-    confidence: float
-    track_relevance: List[str]
-
-
-class SkillMatchResponse(BaseModel):
-    detected_skills: List[MatchedSkill]
-    total_matched: int
-    suggested_tracks: List[TrackSummary]
-
-
-# =====================================================
-# ERROR RESPONSES
+# ERRORS
 # =====================================================
 
 class ErrorResponse(BaseModel):

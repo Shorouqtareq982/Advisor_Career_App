@@ -6,8 +6,8 @@ from pathlib import Path
 backend_dir = Path(__file__).parent.parent.parent.parent  # 4 parents = backend/
 env_path = backend_dir / '.env'
 
-print(f"🔍 Loading .env from: {env_path}")
-print(f"📁 File exists? {env_path.exists()}")
+print(f"Loading .env from: {env_path}")
+print(f"File exists? {env_path.exists()}")
 
 load_dotenv(dotenv_path=env_path)
 
@@ -22,20 +22,20 @@ class SupabaseClient:
         self.anon_key = os.getenv("SUPABASE_ANON_KEY")
         self.service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-        print(f"🔑 SUPABASE_URL: {'✅' if self.url else '❌'}")
-        print(f"🔑 SUPABASE_ANON_KEY: {'✅' if self.anon_key else '❌'}")
-        print(f"🔑 SUPABASE_SERVICE_ROLE_KEY: {'✅' if self.service_role_key else '❌'}")
+        print(f"SUPABASE_URL: {'FOUND' if self.url else 'MISSING'}")
+        print(f"SUPABASE_ANON_KEY: {'FOUND' if self.anon_key else 'MISSING'}")
+        print(f"SUPABASE_SERVICE_ROLE_KEY: {'FOUND' if self.service_role_key else 'MISSING'}")
         if not self.url or not self.anon_key:
             raise ValueError(
-                "❌ Supabase credentials not found in .env file. "
+                "Supabase credentials not found in .env file. "
                 "Make sure SUPABASE_URL and SUPABASE_ANON_KEY are set."
             )
 
         try:
             self.client: Client = create_client(self.url, self.service_role_key or self.anon_key)
-            print("✅ Supabase client initialized successfully.")
+            print("Supabase client initialized successfully.")
         except Exception as e:
-            print(f"❌ Failed to connect to Supabase: {e}")
+            print(f"Failed to connect to Supabase: {e}")
             raise
 
     def get_client(self) -> Client:

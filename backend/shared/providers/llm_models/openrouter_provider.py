@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Optional, Type, Any
 
 import httpx
@@ -20,9 +21,9 @@ class OpenRouterProvider(LLMProvider):
         self.base_url = "https://openrouter.ai/api/v1"
 
         if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY is missing")
+            raise ValueError("OPENROUTER_API_KEY is missing - cannot initialize OpenRouter provider")
 
-        logger.info(f"OpenRouter provider initialized with model: {self.model}")
+        logger.info(f"✅ OpenRouter provider initialized with model: {self.model}")
 
     async def get_response(
         self,
@@ -33,6 +34,11 @@ class OpenRouterProvider(LLMProvider):
         temperature: float = 0.1
     ) -> Any:
         try:
+            print("===== OPENROUTER DEBUG START =====")
+            print("PROVIDER:", getattr(self.settings, "LLM_PROVIDER", None))
+            print("MODEL:", self.model)
+            print("KEY STARTS WITH:", self.api_key[:12] if self.api_key else None)
+
             messages = []
 
             if self.system_prompt:
@@ -46,11 +52,21 @@ class OpenRouterProvider(LLMProvider):
                 "content": prompt
             })
 
+            # Reduced token limits to avoid 402 / insufficient credits issues
+            if need_json_output and expecting_longer_output:
+                max_tokens = 4000
+            elif need_json_output:
+                max_tokens = 2500
+            elif expecting_longer_output:
+                max_tokens = 2000
+            else:
+                max_tokens = 1200
+
             payload = {
                 "model": self.model,
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": 4000 if expecting_longer_output else 2000,
+                "max_tokens": max_tokens,
             }
 
             if need_json_output and schema is None:
@@ -72,14 +88,43 @@ class OpenRouterProvider(LLMProvider):
                 "Content-Type": "application/json",
             }
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            timeout = httpx.Timeout(90.0, connect=20.0)
+
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     headers=headers,
                     json=payload
                 )
-                response.raise_for_status()
+
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    error_msg = f"OpenRouter API Error {e.response.status_code}"
+
+                    if e.response.status_code == 401:
+                        error_msg = "OpenRouter: Authentication failed - Invalid API key"
+                    elif e.response.status_code == 402:
+                        error_msg = "OpenRouter: Insufficient credits or max_tokens too high"
+                    elif e.response.status_code == 429:
+                        error_msg = "OpenRouter: Rate limit exceeded - Too many requests"
+                    elif e.response.status_code == 503:
+                        error_msg = "OpenRouter: Service unavailable - Try fallback provider"
+                    elif e.response.status_code == 504:
+                        error_msg = "OpenRouter: Gateway timeout - Try fallback provider"
+
+                    logger.error(
+                        "OpenRouter HTTP error. Status=%s Reason=%s Response=%s",
+                        e.response.status_code,
+                        error_msg,
+                        e.response.text,
+                        exc_info=True
+                    )
+                    return None
+
                 data = response.json()
+
+            print("===== OPENROUTER DEBUG END =====")
 
             choices = data.get("choices", [])
             if not choices:
@@ -125,6 +170,9 @@ class OpenRouterProvider(LLMProvider):
             
             return response_text
 
+        except httpx.ReadTimeout:
+            logger.error("OpenRouter API timeout - provider took too long to respond", exc_info=True)
+            return None
         except Exception as e:
             logger.error(f"OpenRouter API error {type(e).__name__}: {str(e)}", exc_info=True)
             return None
@@ -137,7 +185,6 @@ class OpenRouterProvider(LLMProvider):
     ) -> Any:
         """
         Optional embeddings via OpenRouter.
-        If you are not using embeddings through OpenRouter yet, you can keep returning None.
         """
         embedding_model = model or "openai/text-embedding-3-small"
 
@@ -152,7 +199,9 @@ class OpenRouterProvider(LLMProvider):
                 "input": content
             }
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            timeout = httpx.Timeout(60.0, connect=20.0)
+
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/embeddings",
                     headers=headers,
@@ -185,7 +234,26 @@ class OpenRouterProvider(LLMProvider):
         end = cleaned.rfind("}")
 
         if start != -1 and end != -1 and end > start:
-            return cleaned[start:end + 1]
+            json_str = cleaned[start:end + 1]
+
+            try:
+                import json as json_module
+                json_module.loads(json_str)
+                return json_str
+            except json.JSONDecodeError:
+                open_braces = json_str.count("{")
+                close_braces = json_str.count("}")
+                open_brackets = json_str.count("[")
+                close_brackets = json_str.count("]")
+
+                if open_braces > close_braces:
+                    json_str += "}" * (open_braces - close_braces)
+
+                if open_brackets > close_brackets:
+                    json_str += "]" * (open_brackets - close_brackets)
+
+                json_str = re.sub(r",\s*([\]\}])", r"\1", json_str)
+                return json_str
 
         return cleaned
     
