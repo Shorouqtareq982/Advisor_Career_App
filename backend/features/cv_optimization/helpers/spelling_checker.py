@@ -89,7 +89,7 @@ def is_whitelisted(flagged: str, whitelist: set) -> bool:
 
 
 def check_typos(cv_text: str, extra_skills: set = None, user_info: dict = None) -> list[dict]:
-    tool = language_tool_python.LanguageTool('en-US', remote_server='https://api.languagetool.org/v2')
+    print("Checking typos with LanguageTool...",cv_text[:500])
 
     # Build unified whitelist
     whitelist = SKILLS_WHITELIST | INSTITUTIONS_WHITELIST
@@ -99,7 +99,12 @@ def check_typos(cv_text: str, extra_skills: set = None, user_info: dict = None) 
     if user_info:
         whitelist.update(build_personal_whitelist(user_info))
 
-    matches = tool.check(cv_text)
+    try:
+        tool = language_tool_python.LanguageTool('en-US', remote_server='https://api.languagetool.org/v2')
+        matches = tool.check(cv_text)
+    except Exception as e:
+        print("Error checking typos:", e)
+        matches = []
     issues = []
 
     for match in matches:

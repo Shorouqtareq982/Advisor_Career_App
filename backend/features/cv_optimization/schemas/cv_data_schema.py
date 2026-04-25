@@ -70,8 +70,8 @@ class Media(BaseModel):
         return v
 
 class CVData(BaseModel):
-    name: str = Field(...,description="The full name of the candidate.")
-    title: str = Field(...,description="The professional title or headline that summarizes the candidate's expertise and career focus.")
+    name: str = Field(...,description="The full name of the candidate. e.g. John Doe")
+    title: str = Field(...,description="The professional title or headline that summarizes the candidate's expertise and career focus. e.g. Software Engineer, Data Scientist, Product Manager.")
     summary: Optional[str] = Field(None,description="A brief summary or objective statement highlighting key skills, experience, and career goals.")
     phone: str = Field(...,description="The contact phone number of the candidate.")
     email: str = Field(...,description="The contact email address of the candidate.")
@@ -83,4 +83,4 @@ class CVData(BaseModel):
     projects: List[Project] = Field(...,description="Project experiences, including project name, type, link, resources, dates, and description.")
     certifications: List[Certification] = Field(...,description="job relevant certifications that you have earned, including the name, issuing organization, and a link to verify the certification.")
     achievements: List[str] = Field(...,description="job relevant key accomplishments, awards, or recognitions that demonstrate your skills and abilities.")
-    all_sections_in_order: List[str] = Field(...,description="An ordered list of every section heading found in the CV, preserving the exact sequence in which the sections appear, including any unstructured or custom sections not covered by the schema. example: [\"contact\", \"summary\", \"experience\", \"education\", \"skills\", \"projects\", \"certifications\", \"achievements\"]")
+    all_sections_in_order: List[str] = Field(...,description="An ordered list of every section heading found in the CV, preserving the exact sequence in which the sections appear, including any unstructured or custom sections not covered by the schema. example: [\"Contact\", \"Summary\", \"Work Experience\", \"Education\", \"Skills\", \"Projects\", \"Certifications\", \"Achievements\"]")

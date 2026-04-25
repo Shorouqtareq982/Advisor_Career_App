@@ -32,29 +32,20 @@ def _is_present(value: Any) -> bool:
 	if value is None:
 		return False
 	if isinstance(value, str):
-		return bool(value.strip())
+		return bool(value.strip() and value.strip().lower() not in {"n/a", "na", "none", "null", "unknown"})
 	if isinstance(value, (list, tuple, set, dict)):
 		return len(value) > 0
 	return True
 
+def _is_valid_email(email):
+        if not email:
+            return False
+        return re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", str(email).strip()) is not None
 
-def _count_measurable_bullets(descriptions: Any) -> int:
-	measurable_patterns = (
-		r"\b\d+[\d,]*(?:\.\d+)?%\b",
-		r"\$\d+[\d,]*(?:\.\d+)?",
-		r"\b\d+[\d,]*(?:\.\d+)?\s?(?:x|times|fold)\b",
-		r"\b\d+[\d,]*(?:\.\d+)?\s?(?:users|customers|clients|projects|features|tickets|reports|hours|days|weeks|months|years|members|engineers|people|percent)\b",
-		r"\b(?:increased|decreased|reduced|improved|boosted|grew|saved|generated|delivered|cut|optimized|accelerated|expanded)\b",
-	)
-
-	count = 0
-	for bullet in descriptions or []:
-		text = _flatten_text(bullet).strip()
-		if not text:
-			continue
-		if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in measurable_patterns):
-			count += 1
-	return count
+    
+def _is_valid_phone(phone):
+	digits = re.sub(r"\D", "", str(phone or ""))
+	return len(digits) >= 7
 
 
 def _section_pass_fail_notes(passed: bool, notes: str, pass_message: str, fail_prefix: str) -> Dict[str, Any]:
@@ -110,10 +101,12 @@ def analyze_section_analysis(parsed_cv: Any, parsed_jd: Optional[Any] = None) ->
 	contact_notes = ""
 	if not _is_present(name):
 		contact_notes = _append_note(contact_notes, "Missing name")
-	if not _is_present(email):
-		contact_notes = _append_note(contact_notes, "Missing email")
-	if not _is_present(phone):
-		contact_notes = _append_note(contact_notes, "Missing phone number")
+	if not _is_valid_email(email):
+		contact_notes = _append_note(contact_notes, "Missing/Invalid email")
+	if not _is_valid_phone(phone):
+		contact_notes = _append_note(contact_notes, "Missing/Invalid phone number")
+	if not _is_present(location):
+		contact_notes = _append_note(contact_notes, "Missing location")
 	if _is_present(location):
 		contact_pass_message = "Name, email, phone, and location are present and readable."
 	else:

@@ -1,7 +1,7 @@
 import math
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from ..schemas import CVData, CVLayoutAnalysis, JobData
 from ..helpers.content_quality_checker import check_cv_content_quality
@@ -404,13 +404,13 @@ class CVScoringService:
         if not phone_ok:
             self.content_quality_issues.append("Provide a valid phone number.")
 
-        location_ok = bool(self._norm(self.cv_data.get("location", "")))
+        location_ok = bool(self._is_present(self.cv_data.get("location", "")))
         passed_checks += int(location_ok)
         if not location_ok:
             self.content_quality_issues.append("Add your location or address.")
 
-        name_present = bool(self._norm(self.cv_data.get("name", "")))
-        title_present = bool(self._norm(self.cv_data.get("title", "")))
+        name_present = bool(self._is_present(self.cv_data.get("name", "")))
+        title_present = bool(self._is_present(self.cv_data.get("title", "")))
         identity_ok = name_present and title_present
         passed_checks += int(identity_ok)
         if not identity_ok:
@@ -433,7 +433,7 @@ class CVScoringService:
             if check_details:
                 first_line = check_details.splitlines()[0].strip()
                 sanitized_line = re.sub(r"^[^A-Za-z0-9]+", "", first_line)
-                self.content_quality_issues.append(f"{check_name}: {sanitized_line}")
+                self.content_quality_issues.append(f"{sanitized_line}")
             else:
                 self.content_quality_issues.append(f"{check_name}: failed.")
         
@@ -444,6 +444,14 @@ class CVScoringService:
     def _norm(self, value):
         return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
+    def _is_present(self, value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip() and value.strip().lower() not in {"n/a", "na", "none", "null", "unknown"})
+        if isinstance(value, (list, tuple, set, dict)):
+            return len(value) > 0
+        return True
     
     def _normalize_set(self, items):
         normalized = set()

@@ -263,6 +263,14 @@ class CVAnalyser:
         # Combine analysis results with scoring results
         analysis_results.update(cv_evaluation_scores)
         final_report = await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
+        if final_report:
+            final_report["cv"] = {
+                "title": parsed_cv.get("title", "CV"),
+                "original_filename": self._get_layout_value(cv_layout_analysis, "original_filename")
+            }
+            final_report["job_posting"] = {
+                "job_title": parsed_jd.get("job_title") if jd_text else None
+            }
         
         logger.info(f"CV analysis completed successfully for user: {user_id}, request_id: {request_id}")
         return final_report

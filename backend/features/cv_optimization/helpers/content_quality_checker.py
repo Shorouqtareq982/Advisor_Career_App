@@ -1,67 +1,84 @@
 """
 CV Content Quality Checker
 Analyzes CV text across 4 content quality dimensions.
-Install dependencies: pip install spacy nltk --break-system-packages
-                    python -m spacy download en_core_web_sm
 """
 
 import re
-import sys
 
 from shared.helpers.cv_pii_masker import pii_pipeline
 
 from ..helpers.spelling_checker import get_typos_with_suggestions
-# ── Try importing optional NLP libs, fall back gracefully ──────────────────────
-try:
-    import spacy
-    nlp = spacy.load("en_core_web_sm")
-    SPACY_OK = True
-except Exception:
-    SPACY_OK = False
-
-try:
-    import nltk
-    from nltk.tokenize import sent_tokenize
-    nltk.download("punkt", quiet=True)
-    nltk.download("punkt_tab", quiet=True)
-    NLTK_OK = True
-except Exception:
-    NLTK_OK = False
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONSTANTS
 # ══════════════════════════════════════════════════════════════════════════════
 
 STANDARD_HEADINGS = [
-    "summary", "objective", "profile", "about",
-    "experience", "work experience", "employment", "professional experience",
-    "education", "academic background", "qualifications",
-    "skills", "technical skills", "core competencies", "competencies",
-    "projects", "portfolio",
-    "certifications", "certificates", "licenses",
-    "awards", "honors", "achievements",
-    "publications", "research",
-    "volunteer", "volunteering", "community",
-    "languages",
-    "interests", "hobbies",
-    "references",
+    "summary", "professional summary", "executive summary", "career summary",
+    "objective", "career objective", "professional objective",
+    "profile", "about me", "overview",
+    "education", "academic background", "academic qualifications", "qualifications",
+    "degrees", "degree", "university", "college", "schooling",
+    "experience", "work experience", "professional experience", "employment experience",
+    "work history", "employment history", "career history",
+    "positions held", "employment", "professional background", "experience summary",
+    "internships", "internship experience", "internships experience",
+    "skills", "technical skills", "soft skills", "core skills", "key skills",
+    "professional skills", "competency", "competencies",
+    "expertise", "proficiencies", "capabilities",
+    "projects", "personal projects", "key projects",
+    "notable projects", "portfolio",
+    "certifications", "certificates", "certification",
+    "licenses and certifications", "credentials",
+    "accreditations", "professional development",
+    "awards", "achievements", "honors", "recognitions",
+    "accomplishments", "distinctions",
+    "publications", "papers", "research", "journals",
+    "articles", "conference papers",
+    "languages", "language proficiency", "linguistic skills",
+    "volunteer", "volunteering", "volunteer experience",
+    "community service", "community involvement",
+    "civic activities", "social activities",
+    "interests", "hobbies", "personal interests", "extracurricular",
+    "hobbies and interests",
+    "references", "referees",
+    "contact", "contact information", "contact details",
+    "personal information", "personal details",
 ]
 
 
 # Logical order tiers (earlier tier should appear before later)
 HEADING_TIERS = {
-    "summary": 1, "objective": 1, "profile": 1, "about": 1,
-    "experience": 2, "work experience": 2, "employment": 2, "professional experience": 2,
-    "education": 3,
-    "skills": 4, "technical skills": 4, "core competencies": 4, "competencies": 4,
-    "projects": 5, "portfolio": 5,
-    "certifications": 6, "certificates": 6, "licenses": 6,
-    "awards": 7, "honors": 7, "achievements": 7,
-    "publications": 8, "research": 8,
-    "volunteer": 9, "volunteering": 9,
-    "languages": 10,
-    "interests": 11, "hobbies": 11,
-    "references": 12,
+    "summary": 1, "professional summary": 1, "executive summary": 1, "career summary": 1,
+    "objective": 1, "career objective": 1, "professional objective": 1,
+    "profile": 1, "about me": 1, "overview": 1,
+    "education": 3, "academic background": 3, "academic qualifications": 3, "qualifications": 3,
+    "degrees": 3, "degree": 3, "university": 3, "college": 3, "schooling": 3,
+    "experience": 2, "work experience": 2, "professional experience": 2, "employment experience": 2,
+    "work history": 2, "employment history": 2, "career history": 2,
+    "positions held": 2, "employment": 2, "professional background": 2, "experience summary": 2,
+    "internships": 2, "internship experience": 2, "internships experience": 2,
+    "skills": 4, "technical skills": 4, "soft skills": 4, "core skills": 4, "key skills": 4,
+    "professional skills": 4, "competency": 4, "competencies": 4,
+    "expertise": 4, "proficiencies": 4, "capabilities": 4,
+    "projects": 5, "personal projects": 5, "key projects": 5,
+    "notable projects": 5, "portfolio": 5,
+    "certifications": 6, "certificates": 6, "certification": 6,
+    "licenses and certifications": 6, "credentials": 6,
+    "accreditations": 6, "professional development": 6,
+    "awards": 7, "achievements": 7, "honors": 7, "recognitions": 7,
+    "accomplishments": 7, "distinctions": 7,
+    "publications": 8, "papers": 8, "research": 8, "journals": 8,
+    "articles": 8, "conference papers": 8,
+    "languages": 10, "language proficiency": 10, "linguistic skills": 10,
+    "volunteer": 9, "volunteering": 9, "volunteer experience": 9,
+    "community service": 9, "community involvement": 9,
+    "civic activities": 9, "social activities": 9,
+    "interests": 11, "hobbies": 11, "personal interests": 11, "extracurricular": 11,
+    "hobbies and interests": 11,
+    "references": 12, "referees": 12,
+    "contact": 13, "contact information": 13, "contact details": 13,
+    "personal information": 13, "personal details": 13,
 }
 
 STRONG_ACTION_VERBS = {
@@ -275,9 +292,10 @@ def check_action_verbs_and_pronouns(cv_text: str) -> dict:
     passed = pronoun_ok and verb_ok
 
     details_parts = []
+    success_parts = []
     if verb_ok:
         unique_verbs = sorted(set(found_verbs))
-        details_parts.append(
+        success_parts.append(
             f"Found {len(found_verbs)} action-verb usage(s) "
             f"({', '.join(unique_verbs[:8])}{'...' if len(unique_verbs) > 8 else ''})."
         )
@@ -287,7 +305,7 @@ def check_action_verbs_and_pronouns(cv_text: str) -> dict:
         )
 
     if pronoun_ok:
-        details_parts.append("No personal pronouns detected.")
+        success_parts.append("No personal pronouns detected.")
     else:
         uniq = sorted(set(found_pronouns))
         details_parts.append(
@@ -298,6 +316,7 @@ def check_action_verbs_and_pronouns(cv_text: str) -> dict:
     return {
         "pass": passed,
         "details": " ".join(details_parts),
+        "success_message": " ".join(success_parts),
         "action_verbs_count": len(found_verbs),
         "pronouns_found": sorted(set(found_pronouns)),
     }
@@ -412,7 +431,7 @@ def check_spelling_and_grammar(cv_text: str, extra_skills: set = None, user_info
 
     return {
         "pass": passed,
-        "details": "\n".join(details_parts),
+        "details": "; ".join(details_parts),
         "typos": typos,
     }
 
