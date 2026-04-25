@@ -392,8 +392,20 @@ class PlanRegenerationService:
             **plan_data,
         }
 
-    def _normalize_intent(self, intent: str) -> str:
-        return str(intent or "").strip().lower()
+    def _normalize_intent(self, intent: Any) -> str:
+        if isinstance(intent, str):
+            value = intent
+        elif hasattr(intent, "value"):
+            value = str(intent.value)
+        else:
+            value = str(intent)
+
+        value = value.strip()
+
+        if "." in value:
+            value = value.split(".")[-1]
+
+        return value.strip().lower()
 
     def _normalize_level(self, level: Optional[str]) -> str:
         normalized = (level or "").strip().lower()
