@@ -12,7 +12,6 @@ from playwright.sync_api import sync_playwright
 class ExportService:
     def __init__(self):
         self.GITHUB_TOKEN=settings.GITHUB_TOKEN
-        self.GITHUB_USERNAME=settings.GITHUB_USERNAME
         self.REPO_NAME=settings.REPO_NAME
         self.g = Github(self.GITHUB_TOKEN)
 
@@ -35,18 +34,6 @@ class ExportService:
         contents = repo.get_contents(f"{slug}.html")
         repo.delete_file(contents.path, "Delete portfolio HTML file", contents.sha)
         
-
-    async def export_portfolio(self, portfolio_id: str, template_id: int):
-        portfolio = await portfolio_repo.get_portfolio(portfolio_id)
-        if not portfolio:
-            return None
-
-        rendered_html = RenderService.render_portfolio(
-            portfolio=portfolio["data"],
-            template_id=template_id,
-        )
-
-        return rendered_html
 
     @staticmethod
     def _generate_pdf_bytes_sync(rendered_html: str) -> bytes:
