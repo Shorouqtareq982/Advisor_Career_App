@@ -54,8 +54,14 @@ class PortfolioService:
             "updated_at": datetime.utcnow().isoformat(),
         }
 
-        return await portfolio_repo.update_portfolio(portfolio_id, payload)
-
+        updated_portfolio = await portfolio_repo.update_portfolio(portfolio_id, payload)
+        if updated_portfolio["is_published"]:
+            rendered_html = RenderService.render_portfolio(
+                portfolio=updated_portfolio["data"],
+                template_id=updated_portfolio["template_index"],
+            )
+            slug = updated_portfolio["public_slug"] if updated_portfolio["public_slug"] else PortfolioService.generate_slug(updated_portfolio["title"] if updated_portfolio["title"] else f"portfolio-{portfolio_id}")
+            await export_service.export_to_cloudflare(rendered_html, slug)
     @staticmethod
     async def get_portfolio(portfolio_id: str):
         portfolio =  await portfolio_repo.get_portfolio(portfolio_id)

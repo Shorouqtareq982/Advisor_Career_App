@@ -13,6 +13,7 @@ from features.ai_portfolio.services.render_service import RenderService
 from features.ai_portfolio.models.portfolio_data import PortfolioData
 from features.ai_portfolio.services.portfolio_service import PortfolioService
 from features.ai_portfolio.services.template_service import TemplateService
+from features.ai_portfolio.services.export_service import export_service
 
 router = APIRouter(
     prefix="/portfolio",
@@ -165,4 +166,19 @@ async def unpublish_portfolio(portfolio_id: str):
     return {
         "success": True,
         "message": "Portfolio unpublished",
+    }
+
+@router.post("/{portfolio_id}/export/pdf")
+async def export_portfolio_as_pdf(portfolio_id: str):
+
+    pdf_url = await export_service.export_portfolio_as_pdf(portfolio_id)
+
+    if not pdf_url:
+        raise HTTPException(
+            status_code=404,
+            detail="Portfolio not found"
+        )
+
+    return {
+        "pdf_url": pdf_url
     }

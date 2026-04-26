@@ -1,9 +1,13 @@
 
+import asyncio
 from core.config import settings
-from features.ai_portfolio.repositories import portfolio_repo
+from features.ai_portfolio.repositories.portfolio_repo import portfolio_repo
 from features.ai_portfolio.services.render_service import RenderService
+from shared.providers.storage.cloudinary import get_cloudinary_provider
+from io import BytesIO
 from git import Repo
 from github import Github
+from playwright.sync_api import sync_playwright
 
 class ExportService:
     def __init__(self):
@@ -32,7 +36,7 @@ class ExportService:
         repo.delete_file(contents.path, "Delete portfolio HTML file", contents.sha)
         
 
-    async def export_portfolio(portfolio_id: str, template_id: int):
+    async def export_portfolio(self, portfolio_id: str, template_id: int):
         portfolio = await portfolio_repo.get_portfolio(portfolio_id)
         if not portfolio:
             return None
@@ -43,5 +47,40 @@ class ExportService:
         )
 
         return rendered_html
+
+    @staticmethod
+    def _generate_pdf_bytes_sync(rendered_html: str) -> bytes:
+        """Generate PDF using Playwright sync API to avoid asyncio subprocess limitations."""
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.set_content(rendered_html)
+            # Wait for fonts/images to finish loading before snapshotting.
+            page.wait_for_timeout(2000)
+            pdf_bytes = page.pdf(format="A3", print_background=True)
+            browser.close()
+            return pdf_bytes
     
+    async def export_portfolio_as_pdf(self, portfolio_id: str):
+        portfolio = await portfolio_repo.get_portfolio(portfolio_id)
+        if not portfolio:
+            return None
+
+        rendered_html = RenderService.render_portfolio(
+            portfolio=portfolio["data"],
+            template_id=portfolio["template_index"],
+        )
+
+        pdf_bytes = await asyncio.to_thread(self._generate_pdf_bytes_sync, rendered_html)
+
+        # Upload PDF bytes to Cloudinary and return the file URL.
+        cloudinary_provider = get_cloudinary_provider()
+        pdf_file = BytesIO(pdf_bytes)
+        result = cloudinary_provider.upload_file(
+            file=pdf_file,
+            folder="portfolio_pdfs",
+            filename=f"{portfolio['title']}.pdf"
+        )
+        return result['url']
+
 export_service = ExportService()

@@ -60,6 +60,7 @@ language-tool-python
 PyGithub 
 gitpython
 Jinja2
+playwright
 # ===============================
 # PII Masking
 # ===============================
