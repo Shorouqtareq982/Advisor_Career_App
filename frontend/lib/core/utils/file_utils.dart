@@ -1,3 +1,6 @@
+// lib/core/utils/file_utils.dart
+// الحل النهائي لمشكلة اسم الـ CV
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
@@ -6,62 +9,127 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 
 class FileUtils {
+  /// UUID pattern للتعرف على الـ UUIDs
+  static final _uuidPattern = RegExp(
+    r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+  );
+
+  /// استخرج اسم الملف الأصلي من الـ URL
   static String? getFileNameFromUrl(String? url) {
     if (url == null || url.isEmpty) return null;
+
     try {
       final uri = Uri.parse(url);
+
+      // ── Case 1: URL مع ?original= param (الكود الجديد) ──────────────────
+      // مثال: .../1771274419752.pdf?original=Ranim_CV.pdf
+      final originalParam = uri.queryParameters['original'];
+      if (originalParam != null && originalParam.isNotEmpty) {
+        return Uri.decodeComponent(originalParam);
+      }
+
+      // ── Case 2: Supabase Storage URL (الكود القديم) ───────────────────────
+      // مثال: .../cvs/UUID/cv_UUID_timestamp.pdf
+      if (uri.host.contains('supabase.co') ||
+          uri.host.contains('supabase.in')) {
+        final segments = uri.pathSegments;
+        if (segments.isNotEmpty) {
+          final fileName = segments.last;
+          final ext =
+              fileName.contains('.') ? '.${fileName.split('.').last}' : '.pdf';
+
+          // لو الاسم بيبدأ بـ cv_ وبعده UUID → اسم قديم → رجّع "CV"
+          // Pattern: cv_UUID_timestamp.ext
+          if (RegExp(r'^cv_[0-9a-fA-F\-]+_\d+\.\w+$').hasMatch(fileName)) {
+            return 'CV$ext';
+          }
+
+          // لو الاسم مجرد timestamp → رجّع "CV"
+          final nameOnly = fileName.contains('.')
+              ? fileName.substring(0, fileName.lastIndexOf('.'))
+              : fileName;
+          if (RegExp(r'^\d+$').hasMatch(nameOnly)) {
+            return 'CV$ext';
+          }
+
+          // لو فيه UUID في الاسم → رجّع "CV"
+          if (_uuidPattern.hasMatch(nameOnly)) {
+            return 'CV$ext';
+          }
+
+          // غير كده → الاسم صح، ارجعه
+          return fileName;
+        }
+      }
+
+      // ── Case 3: Cloudinary URL ────────────────────────────────────────────
+      // مثال: https://res.cloudinary.com/.../cv_UUID_Ranim_CV.pdf
+      if (uri.host.contains('cloudinary.com')) {
+        final segments = uri.pathSegments;
+        if (segments.isNotEmpty) {
+          final lastSegment = segments.last;
+          final dotIdx = lastSegment.lastIndexOf('.');
+          final nameOnly =
+              dotIdx > 0 ? lastSegment.substring(0, dotIdx) : lastSegment;
+          final ext = dotIdx > 0 ? lastSegment.substring(dotIdx) : '.pdf';
+
+          // Pattern: cv_UUID_originalname.ext
+          final cvUuidMatch = RegExp(
+            r'^cv_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}_(.+)$',
+          ).firstMatch(nameOnly);
+
+          if (cvUuidMatch != null) {
+            final extracted = cvUuidMatch.group(1)!;
+            return extracted.isNotEmpty ? '$extracted$ext' : 'CV$ext';
+          }
+
+          // لو مجرد UUID أو timestamp
+          if (_uuidPattern.hasMatch(nameOnly) ||
+              RegExp(r'^\d+$').hasMatch(nameOnly)) {
+            return 'CV$ext';
+          }
+
+          return lastSegment;
+        }
+      }
+
+      // ── Case 4: أي URL تاني ───────────────────────────────────────────────
       final segments = uri.pathSegments;
       if (segments.isNotEmpty) {
-        return segments.last;
+        final fileName = segments.last.split('?').first;
+        if (fileName.isNotEmpty) return fileName;
       }
     } catch (e) {
-      print('Error parsing URL: $e');
+      print('Error parsing file URL: $e');
     }
-    return 'CV uploaded';
+
+    return 'CV';
   }
 
   static Future<bool> openFile(String url) async {
     try {
-      final uri = Uri.parse(url);
-      print('  Opening file: $url');
-
+      final cleanUrl = url.split('?original=').first;
+      final uri = Uri.parse(cleanUrl);
       if (await canLaunchUrl(uri)) {
-        return await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication,
-        );
+        return await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
-
-      return await launchUrl(
-        uri,
-        mode: LaunchMode.inAppWebView,
-      );
+      return await launchUrl(uri, mode: LaunchMode.inAppWebView);
     } catch (e) {
-      print('   Error opening file: $e');
+      print('Error opening file: $e');
       return false;
     }
   }
 
-  static Future<bool> downloadFile(String url,
-      {Function(double)? onProgress}) async {
+  static Future<bool> downloadFile(
+    String url, {
+    Function(double)? onProgress,
+  }) async {
     try {
-      print('  Starting download: $url');
-
       if (Platform.isAndroid) {
-        if (await Permission.manageExternalStorage.isGranted) {
-          print('    Manage storage permission already granted');
-        } else {
-          print(' Requesting manage storage permission...');
-          var status = await Permission.manageExternalStorage.request();
-          if (!status.isGranted) {
-            print('   Manage storage permission denied');
-
-            status = await Permission.storage.request();
-            if (!status.isGranted) {
-              print('   Storage permission denied');
-              return false;
-            }
-          }
+        var status = await Permission.manageExternalStorage.request();
+        if (!status.isGranted) {
+          status = await Permission.storage.request();
+          if (!status.isGranted) return false;
         }
       }
 
@@ -78,39 +146,27 @@ class FileUtils {
         directory = await getApplicationDocumentsDirectory();
       }
 
-      if (directory == null) {
-        print('   Could not access download directory');
-        return false;
-      }
+      if (directory == null) return false;
+      if (!await directory.exists()) await directory.create(recursive: true);
 
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-
-      String fileName = getFileNameFromUrl(url) ??
+      final fileName = getFileNameFromUrl(url) ??
           'cv_${DateTime.now().millisecondsSinceEpoch}.pdf';
-      String filePath = '${directory.path}/$fileName';
+      final filePath = '${directory.path}/$fileName';
 
-      print('📁 Saving to: $filePath');
+      // شيل الـ ?original= قبل الـ download
+      final downloadUrl =
+          url.contains('?original=') ? url.split('?original=').first : url;
 
-      Dio dio = Dio();
-
+      final dio = Dio();
       await dio.download(
-        url,
+        downloadUrl,
         filePath,
         onReceiveProgress: (received, total) {
-          if (total != -1) {
-            double progress = received / total;
-            print(
-                '  Download progress: ${(progress * 100).toStringAsFixed(1)}%');
-            if (onProgress != null) {
-              onProgress(progress);
-            }
+          if (total != -1 && onProgress != null) {
+            onProgress(received / total);
           }
         },
       );
-
-      print('    Download completed: $filePath');
 
       if (Platform.isAndroid) {
         await launchUrl(
@@ -122,7 +178,7 @@ class FileUtils {
 
       return true;
     } catch (e) {
-      print('   Error downloading file: $e');
+      print('Error downloading file: $e');
       return false;
     }
   }
@@ -131,18 +187,13 @@ class FileUtils {
     try {
       final fileName = getFileNameFromUrl(url) ?? '';
       final parts = fileName.split('.');
-      if (parts.length > 1) {
-        return parts.last.toLowerCase();
-      }
-    } catch (e) {
-      print('Error getting file extension: $e');
-    }
+      if (parts.length > 1) return parts.last.toLowerCase();
+    } catch (_) {}
     return 'pdf';
   }
 
   static IconData getFileIcon(String url) {
-    final ext = getFileExtension(url);
-    switch (ext) {
+    switch (getFileExtension(url)) {
       case 'pdf':
         return Icons.picture_as_pdf;
       case 'doc':
@@ -154,8 +205,7 @@ class FileUtils {
   }
 
   static Color getFileColor(String url) {
-    final ext = getFileExtension(url);
-    switch (ext) {
+    switch (getFileExtension(url)) {
       case 'pdf':
         return Colors.red;
       case 'doc':
