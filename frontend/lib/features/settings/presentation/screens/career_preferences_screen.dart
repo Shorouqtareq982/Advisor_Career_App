@@ -11,9 +11,15 @@ import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../core/utils/file_utils.dart';
 import '../../../../shared/widgets/custom_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../job_matching/presentation/widgets/job_matching_dialogs.dart';
 
 class CareerPreferencesScreen extends ConsumerStatefulWidget {
-  const CareerPreferencesScreen({super.key});
+  final VoidCallback? onPreferencesSaved;
+
+  const CareerPreferencesScreen({
+    super.key,
+    this.onPreferencesSaved,
+  });
 
   @override
   ConsumerState<CareerPreferencesScreen> createState() =>
@@ -78,9 +84,9 @@ class _CareerPreferencesScreenState
     _interestedTracksController.text = user.interestedTracks ?? '';
     _jobTitleController.text = user.jobTitle ?? '';
 
-    _selectedWorkTypes = List<String>.from(user.workType);
-    _selectedWorkLocations = List<String>.from(user.workLocation);
-    _selectedJobPlatforms = List<String>.from(user.jobPlatforms);
+    _selectedWorkTypes = List<String>.from(user.workType ?? []);
+    _selectedWorkLocations = List<String>.from(user.workLocation ?? []);
+    _selectedJobPlatforms = List<String>.from(user.jobPlatforms ?? []);
 
     final freq = user.jobAlertsFrequency;
     _selectedAlertFrequency = (freq == null || freq.isEmpty) ? null : freq;
@@ -234,8 +240,18 @@ class _CareerPreferencesScreenState
       await ref.read(authProvider.notifier).refreshUser();
       _loadUserPreferences();
       if (!mounted) return;
+
       setState(() => _isEditing = false);
-      _showSnack('Career preferences updated successfully!', isError: false);
+
+      if (widget.onPreferencesSaved != null) {
+        widget.onPreferencesSaved!();
+      } else {
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const PreferencesSavedDialog(),
+        );
+      }
     }
   }
 
