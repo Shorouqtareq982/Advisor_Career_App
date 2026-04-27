@@ -1,8 +1,3 @@
-// lib/features/job_matching/presentation/screens/job_details_screen.dart
-// إصلاحان:
-// 1. _handleOptimizeResume: استخدام FileUtils.getFileNameFromUrl بدل split
-// 2. _JobMatchingResumeUploadDialogState: الزرار يتفعل لو فيه currentCvUrl
-
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
@@ -57,7 +52,6 @@ class _JobDetailsScreenState extends ConsumerState<JobDetailsScreen> {
     final user = ref.read(authProvider).user;
     final cvUrl = user?.cvUrl;
 
-    // ── FIX 1: استخدام FileUtils بدل split ─────────────────────────────────
     final cvFileName =
         cvUrl != null ? FileUtils.getFileNameFromUrl(cvUrl) : null;
 
@@ -602,7 +596,6 @@ class _JobMatchingResumeUploadDialogState
         isDark ? AppColors.blue400.withOpacity(0.5) : AppColors.grey300;
     final btnColor = isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
 
-    // ── FIX 2: الزرار يتفعل لو فيه ملف جديد أو existing CV ──────────────────
     final hasCV = _selectedFile != null || _useExistingCv;
 
     return Dialog(

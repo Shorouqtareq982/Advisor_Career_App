@@ -1,8 +1,3 @@
-// lib/features/job_matching/presentation/screens/recommended_jobs_screen.dart
-//
-// التغيير الوحيد من النسخة السابقة:
-// بيعمل setUserId على الـ provider بعد التحميل عشان يعزل البيانات per-user
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -37,7 +32,6 @@ class _RecommendedJobsScreenState extends ConsumerState<RecommendedJobsScreen>
   }
 
   Future<void> _init() async {
-    // ← المهم: نعطي الـ provider الـ userId الحالي قبل أي حاجة
     final userId = ref.read(authProvider).user?.id;
     if (userId != null) {
       ref.read(jobMatchingProvider.notifier).setUserId(userId);

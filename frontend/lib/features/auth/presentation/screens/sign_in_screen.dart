@@ -195,19 +195,32 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         children: [
                           Row(
                             children: [
-                              SizedBox(
-                                width: context.w(20),
-                                height: context.w(20),
-                                child: Checkbox(
-                                  value: _rememberMe,
-                                  onChanged: (value) => setState(
-                                      () => _rememberMe = value ?? false),
-                                  fillColor: WidgetStateProperty.all(
-                                      AppColors.lightBlue700),
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(context.r(4))),
-                                  side: BorderSide.none,
+                              GestureDetector(
+                                onTap: () =>
+                                    setState(() => _rememberMe = !_rememberMe),
+                                child: Container(
+                                  width: context.w(20),
+                                  height: context.w(20),
+                                  decoration: BoxDecoration(
+                                    color: _rememberMe
+                                        ? AppColors.lightBlue700
+                                        : Colors.white,
+                                    borderRadius:
+                                        BorderRadius.circular(context.r(4)),
+                                    border: _rememberMe
+                                        ? null
+                                        : Border.all(
+                                            color: AppColors.grey700,
+                                            width: 1.5,
+                                          ),
+                                  ),
+                                  child: _rememberMe
+                                      ? Icon(
+                                          Icons.check,
+                                          size: context.icon(14),
+                                          color: Colors.white,
+                                        )
+                                      : null,
                                 ),
                               ),
                               SizedBox(width: context.w(8)),
