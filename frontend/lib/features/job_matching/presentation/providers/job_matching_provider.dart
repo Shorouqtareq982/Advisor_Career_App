@@ -1,5 +1,3 @@
-// lib/features/job_matching/presentation/providers/job_matching_provider.dart
-
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,7 +5,6 @@ import '../../data/repositories/job_matching_repository.dart';
 import '../../domain/entities/job_entity.dart';
 
 // ─── Per-user SharedPreferences keys ─────────────────────────────────────────
-// كل key بيتضمن الـ userId عشان كل يوزر عنده data مستقلة
 String _kSeen(String uid) => 'jm_seen_$uid';
 String _kSaved(String uid) => 'jm_saved_$uid';
 String _kRated(String uid) => 'jm_rated_$uid';

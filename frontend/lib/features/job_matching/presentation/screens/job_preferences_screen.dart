@@ -1,13 +1,3 @@
-// lib/features/job_matching/presentation/screens/job_preferences_screen.dart
-//
-// نفس البيانات بتاعة career_preferences_screen بالظبط:
-// preferredLocation, interestedTracks, jobTitle, workType,
-// workLocation, jobPlatforms, jobAlertsFrequency, cvUrl
-//
-// الفرق الوحيد في التصميم:
-// - من job matching: عنوان "Job Preferences" (teal) + subtitle + validation + dialog بعد save
-// - من settings (filter icon): عنوان "Job Preferences" (عادي) + snackbar بعد save
-
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -185,7 +175,6 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
     }
   }
 
-  // ── Save — نفس بيانات career_preferences_screen بالظبط ────────────────────
   Future<void> _handleSave() async {
     if (widget.fromJobMatching) {
       final error = _validate();
@@ -235,7 +224,6 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
       );
       if (mounted) context.go('/recommended-jobs');
     } else {
-      // من settings — show dialog أيضاً ثم pop
       await showDialog(
         context: context,
         barrierDismissible: false,
@@ -264,7 +252,7 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
     final user = ref.watch(authProvider).user;
     final hasCV = (user?.cvUrl?.isNotEmpty ?? false) || _cvFile != null;
 
-    final bg = isDark ? AppColors.blue900 : AppColors.grey50;
+    final bg = isDark ? AppColors.blue900 : AppColors.grey100;
     final primary = isDark ? AppColors.grey50 : AppColors.blue900;
     final muted = isDark ? AppColors.grey400 : AppColors.grey700;
     final accent = isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
@@ -304,7 +292,6 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
             Text(
               'Job Preferences',
               style: textTheme.title1Bold.copyWith(
-                // teal لما يجي من job matching, عادي لما يجي من settings
                 color: widget.fromJobMatching ? accent : primary,
               ),
             ),

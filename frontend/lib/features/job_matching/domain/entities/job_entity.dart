@@ -1,5 +1,3 @@
-// lib/features/job_matching/domain/entities/job_entity.dart
-
 class JobEntity {
   final String id;
   final String title;

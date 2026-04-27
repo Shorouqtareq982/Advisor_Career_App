@@ -1,10 +1,3 @@
-// lib/features/job_matching/presentation/screens/job_preferences_gate.dart
-//
-// Entry point for /jobs route.
-// Logic:
-// - Preferences complete? → RecommendedJobsScreen
-// - Preferences incomplete? → JobPreferencesScreen (fromJobMatching: true)
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -37,47 +30,3 @@ class JobPreferencesGate extends ConsumerWidget {
     return const JobPreferencesScreen(fromJobMatching: true);
   }
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// ROUTES TO ADD IN app_router.dart
-// ════════════════════════════════════════════════════════════════════════════
-//
-// Replace the existing /jobs route with:
-//
-// // ── Job Matching ─────────────────────────────────────────────────────
-// import '../../features/job_matching/presentation/screens/job_preferences_gate.dart';
-// import '../../features/job_matching/presentation/screens/job_preferences_screen.dart';
-// import '../../features/job_matching/presentation/screens/recommended_jobs_screen.dart';
-// import '../../features/job_matching/presentation/screens/job_details_screen.dart';
-// import '../../features/job_matching/domain/entities/job_entity.dart';
-//
-// GoRoute(
-//   path: '/jobs',
-//   name: 'jobs',
-//   builder: (context, state) => const JobPreferencesGate(),
-// ),
-// GoRoute(
-//   path: '/job-preferences',
-//   name: 'job-preferences',
-//   builder: (context, state) {
-//     final fromJobMatching =
-//         (state.extra as Map<String, dynamic>?)?['fromJobMatching'] as bool? ?? false;
-//     return JobPreferencesScreen(fromJobMatching: fromJobMatching);
-//   },
-// ),
-// GoRoute(
-//   path: '/recommended-jobs',
-//   name: 'recommended-jobs',
-//   builder: (context, state) => const RecommendedJobsScreen(),
-// ),
-// GoRoute(
-//   path: '/job-details',
-//   name: 'job-details',
-//   builder: (context, state) {
-//     final job = state.extra as JobEntity;
-//     return JobDetailsScreen(job: job);
-//   },
-// ),
-//
-// Also: In recommended_jobs_screen.dart, the filter icon should navigate to:
-//   context.push('/job-preferences', extra: {'fromJobMatching': false})

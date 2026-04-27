@@ -1,5 +1,3 @@
-// lib/features/job_matching/data/models/job_model.dart
-
 import '../../domain/entities/job_entity.dart';
 
 class JobModel {

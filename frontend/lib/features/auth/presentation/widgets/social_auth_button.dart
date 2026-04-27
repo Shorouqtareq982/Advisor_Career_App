@@ -25,8 +25,8 @@ class SocialAuthButton extends StatelessWidget {
     final textTheme = context.appTextTheme;
 
     final borderColor = useTheme
-        ? (isDark ? AppColors.blue400 : AppColors.lightBlue500)
-        : AppColors.lightBlue500;
+        ? (isDark ? AppColors.blue400 : AppColors.lightBlue700)
+        : AppColors.lightBlue700;
 
     final textColor = useTheme
         ? (isDark ? AppColors.grey50 : AppColors.blue500)

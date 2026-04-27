@@ -1,5 +1,3 @@
-// lib/features/job_matching/presentation/widgets/job_rating_widget.dart
-
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
