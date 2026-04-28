@@ -813,8 +813,17 @@ class AuthService {
         return null;
       }
 
-      final fileName =
-          'cv_${userId}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      // ← الحل: نحتفظ بالاسم الأصلي للملف
+      final originalName = filePath.split('/').last.split('\\').last;
+      // نضيف timestamp عشان مينفعش يتكرر في الـ storage لكن نحتفظ بالاسم الأصلي
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final ext = originalName.contains('.')
+          ? originalName.split('.').last.toLowerCase()
+          : 'pdf';
+      // اسم الفايل في الـ storage: timestamp.ext (عشان unique)
+      // لكن بنحفظ الاسم الأصلي بطريقة تانية (شوف تحت)
+      final storageName = '${timestamp}.$ext';
+
       final fileBytes = await file.readAsBytes();
 
       try {
@@ -822,21 +831,27 @@ class AuthService {
       } catch (e) {}
 
       await _client.storage.from('cvs').uploadBinary(
-            '$userId/$fileName',
+            '$userId/$storageName',
             fileBytes,
           );
 
       final publicUrl =
-          _client.storage.from('cvs').getPublicUrl('$userId/$fileName');
+          _client.storage.from('cvs').getPublicUrl('$userId/$storageName');
+
       print('    CV uploaded successfully: $publicUrl');
+
+      // ← نضيف query parameter بالاسم الأصلي عشان نقدر نسترجعه
+      // مثلاً: ...1776291038558.pdf?original=Ranim_Moustafa_CV.pdf
+      final urlWithName =
+          '$publicUrl?original=${Uri.encodeComponent(originalName)}';
 
       await updateProfile(
         userId: userId,
-        cvUrl: publicUrl,
+        cvUrl: urlWithName,
       );
-      print('    CV URL saved to profile successfully.');
+      print('    CV URL saved to profile: $urlWithName');
 
-      return publicUrl;
+      return urlWithName;
     } catch (e) {
       print('   Error uploading CV: $e');
       return null;

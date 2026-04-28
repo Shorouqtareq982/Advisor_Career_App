@@ -48,6 +48,13 @@ import '../../features/ai_portfolio/presentation/screens/ai_portfolio_screen.dar
 
 import '../../features/auth/presentation/providers/auth_provider.dart';
 
+// // ── Job Matching ─────────────────────────────────────────────────────
+import '../../features/job_matching/presentation/screens/job_preferences_gate.dart';
+import '../../features/job_matching/presentation/screens/job_preferences_screen.dart';
+import '../../features/job_matching/presentation/screens/recommended_jobs_screen.dart';
+import '../../features/job_matching/presentation/screens/job_details_screen.dart';
+import '../../features/job_matching/domain/entities/job_entity.dart';
+
 Widget _withAuthTheme(BuildContext context, Widget child) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
   if (isDark) return child;
@@ -320,25 +327,34 @@ class AppRouter {
         builder: (context, state) => const AlertsScreen(),
       ),
 
+      // // ── Job Matching ──────────────────────────────────────────────────────
       GoRoute(
         path: '/jobs',
         name: 'jobs',
-        builder: (context, state) => const Scaffold(
-          backgroundColor: AppColors.blue500,
-          body: SafeArea(
-            child: Center(
-              child: Text(
-                'Jobs Screen - Coming Soon',
-                style: TextStyle(
-                  color: AppColors.grey50,
-                  fontSize: 18,
-                  fontFamily: 'Inter',
-                ),
-              ),
-            ),
-          ),
-          bottomNavigationBar: HomeBottomNav(currentRoute: '/jobs'),
-        ),
+        builder: (context, state) => const JobPreferencesGate(),
+      ),
+      GoRoute(
+        path: '/job-preferences',
+        name: 'job-preferences',
+        builder: (context, state) {
+          final fromJobMatching = (state.extra
+                  as Map<String, dynamic>?)?['fromJobMatching'] as bool? ??
+              false;
+          return JobPreferencesScreen(fromJobMatching: fromJobMatching);
+        },
+      ),
+      GoRoute(
+        path: '/recommended-jobs',
+        name: 'recommended-jobs',
+        builder: (context, state) => const RecommendedJobsScreen(),
+      ),
+      GoRoute(
+        path: '/job-details',
+        name: 'job-details',
+        builder: (context, state) {
+          final job = state.extra as JobEntity;
+          return JobDetailsScreen(job: job);
+        },
       ),
 
       GoRoute(
@@ -356,7 +372,13 @@ class AppRouter {
       GoRoute(
         path: '/career-preferences',
         name: 'career-preferences',
-        builder: (context, state) => const CareerPreferencesScreen(),
+        builder: (context, state) {
+          final callback = state.extra as VoidCallback?;
+
+          return CareerPreferencesScreen(
+            onPreferencesSaved: callback,
+          );
+        },
       ),
 
       GoRoute(
