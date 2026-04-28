@@ -114,119 +114,176 @@ class CVScoringService:
         pages_ok = passes(num_of_pages is None or num_of_pages <= 2)
         passed_checks += int(pages_ok)
         if not pages_ok:
-            self.ats_issues.append("CV should be 2 pages or fewer.")
+            self.ats_issues.append({
+                "Check_Name": "Page Count",
+                "Result": {"description": "Your CV has more than 2 pages and it should be 2 pages or fewer."}
+            })
 
         fonts_used = self.layout_analysis.get("fonts_used")
         fonts_ok = passes(fonts_used is None or len(fonts_used) <= 3)
         passed_checks += int(fonts_ok)
         if not fonts_ok:
-            self.ats_issues.append("Use 3 or fewer font families for ATS readability.")
+            self.ats_issues.append({
+                "Check_Name": "Font Families",
+                "Result": {"description": "Your CV has more than 3 font families and they should be 3 or fewer for ATS readability."}
+            })
 
         avg_font_size = self.layout_analysis.get("avg_font_size")
         font_size_ok = passes(avg_font_size is None or 9 <= avg_font_size <= 13)
         passed_checks += int(font_size_ok)
         if not font_size_ok:
-            self.ats_issues.append("Average font size should be between 9 and 13 pt.")
+            self.ats_issues.append({
+                "Check_Name": "Font Size",
+                "Result": {"description": "Your CV has an average font size outside the range and it should be between 9 and 13 pt."}
+            })
 
         word_count = self.layout_analysis.get("word_count")
         word_count_ok = passes(word_count is None or word_count <= 1000)
         passed_checks += int(word_count_ok)
         if not word_count_ok:
-            self.ats_issues.append("Keep CV word count at 1000 words or fewer.")
+            self.ats_issues.append({
+                "Check_Name": "Word Count",
+                "Result": {"description": "Your CV has more than 1000 words and it should be kept at 1000 words or fewer."}
+            })
 
         # 2. Page Setup (4)
         page_sizes = self.layout_analysis.get("page_sizes_in_points")
         page_size_ok = self._is_standard_page_size(page_sizes)
         passed_checks += int(page_size_ok)
         if not page_size_ok:
-            self.ats_issues.append("Use standard page size like A4 or Letter.")
+            self.ats_issues.append({
+                "Check_Name": "Page Size",
+                "Result": {"description": "Your CV has a non-standard page size and it should use standard page size like A4 or Letter."}
+            })
 
         page_margins = self.layout_analysis.get("page_margins_in_inches")
         margins_ok = self._is_valid_margin_range(page_margins)
         passed_checks += int(margins_ok)
         if not margins_ok:
-            self.ats_issues.append("Keep page margins between 0.5 and 1.0 inches.")
+            self.ats_issues.append({
+                "Check_Name": "Page Margins",
+                "Result": {"description": "Your CV has page margins outside the range and they should be between 0.5 and 1.0 inches."}
+            })
 
         header_info = self.layout_analysis.get("information_in_header")
         no_header_info_ok = header_info is None or not header_info
         passed_checks += int(no_header_info_ok)
         if not no_header_info_ok:
-            self.ats_issues.append("Remove important content from header for ATS parsing.")
+            self.ats_issues.append({
+                "Check_Name": "Header Content",
+                "Result": {"description": "Your CV has important content in the header and it should be removed for proper ATS parsing."}
+            })
 
         footer_info = self.layout_analysis.get("information_in_footer")
         no_footer_info_ok = footer_info is None or not footer_info
         passed_checks += int(no_footer_info_ok)
         if not no_footer_info_ok:
-            self.ats_issues.append("Remove important content from footer for ATS parsing.")
+            self.ats_issues.append({
+                "Check_Name": "Footer Content",
+                "Result": {"description": "Your CV has important content in the footer and it should be removed for proper ATS parsing."}
+            })
 
         # 3. ATS Parsing Compatibility (5)
         have_tables = self.layout_analysis.get("have_tables")
         tables_ok = have_tables is None or not have_tables
         passed_checks += int(tables_ok)
         if not tables_ok:
-            self.ats_issues.append("Avoid tables to improve ATS parsing compatibility.")
+            self.ats_issues.append({
+                "Check_Name": "Tables",
+                "Result": {"description": "Your CV has tables and they should be avoided to improve ATS parsing compatibility."}
+            })
 
         have_columns = self.layout_analysis.get("have_columns")
         columns_ok = have_columns is None or not have_columns
         passed_checks += int(columns_ok)
         if not columns_ok:
-            self.ats_issues.append("Avoid multi-column layouts for ATS parsing.")
+            self.ats_issues.append({
+                "Check_Name": "Column Layout",
+                "Result": {"description": "Your CV has multi-column layouts and they should be avoided for proper ATS parsing."}
+            })
 
         have_images = self.layout_analysis.get("have_images")
         images_ok = have_images is None or not have_images
         passed_checks += int(images_ok)
         if not images_ok:
-            self.ats_issues.append("Avoid images unless essential, as ATS may skip them.")
+            self.ats_issues.append({
+                "Check_Name": "Images",
+                "Result": {"description": "Your CV has images and they should be avoided unless essential, as ATS may skip them."}
+            })
 
         have_graphics = self.layout_analysis.get("have_graphics")
         graphics_ok = have_graphics is None or not have_graphics
         passed_checks += int(graphics_ok)
         if not graphics_ok:
-            self.ats_issues.append("Avoid graphics/icons for better ATS readability.")
+            self.ats_issues.append({
+                "Check_Name": "Graphics/Icons",
+                "Result": {"description": "Your CV has graphics or icons and they should be avoided for better ATS readability."}
+            })
 
         have_textboxes = self.layout_analysis.get("have_textboxes")
         textboxes_ok = have_textboxes is None or not have_textboxes
         passed_checks += int(textboxes_ok)
         if not textboxes_ok:
-            self.ats_issues.append("Avoid textboxes, they can break ATS extraction.")
+            self.ats_issues.append({
+                "Check_Name": "Textboxes",
+                "Result": {"description": "Your CV has textboxes and they should be avoided as they can break ATS extraction."}
+            })
 
         # 4. Valid Date Formats (1)
         valid_date_format = self.layout_analysis.get("valid_date_format")
         date_format_ok = valid_date_format is None or valid_date_format
         passed_checks += int(date_format_ok)
         if not date_format_ok:
-            self.ats_issues.append("Use consistent date formats like MM/YYYY or Month YYYY.")
+            self.ats_issues.append({
+                "Check_Name": "Date Format",
+                "Result": {"description": "Your CV has inconsistent date formats and they should be MM/YYYY or Month YYYY."}
+            })
 
         # 5. File Quality (5)
         file_size_kb = self.layout_analysis.get("file_size_kb")
         file_size_ok = file_size_kb is None or file_size_kb <= 5000
         passed_checks += int(file_size_ok)
         if not file_size_ok:
-            self.ats_issues.append("File size should be 5000 KB or less.")
+            self.ats_issues.append({
+                "Check_Name": "File Size",
+                "Result": {"description": "Your CV file size is too large and it should be 5000 KB or less."}
+            })
 
         file_type = self.layout_analysis.get("file_type")
         file_type_ok = self._is_ats_file_type(file_type)
         passed_checks += int(file_type_ok)
         if not file_type_ok:
-            self.ats_issues.append("Use PDF or DOCX format.")
+            self.ats_issues.append({
+                "Check_Name": "File Type",
+                "Result": {"description": "Your CV is in an unsupported file format and it should be PDF or DOCX."}
+            })
 
         valid_cv_filename = self.layout_analysis.get("valid_cv_filename")
         filename_relevant_ok = valid_cv_filename is None or valid_cv_filename
         passed_checks += int(filename_relevant_ok)
         if not filename_relevant_ok:
-            self.ats_issues.append("Use a CV-relevant filename (e.g., contains CV or Resume).")
+            self.ats_issues.append({
+                "Check_Name": "Filename Relevance",
+                "Result": {"description": "Your CV filename is not CV-relevant and it should contain CV or Resume."}
+            })
 
         valid_cv_filename_length = self.layout_analysis.get("valid_cv_filename_length")
         filename_length_ok = valid_cv_filename_length is None or valid_cv_filename_length
         passed_checks += int(filename_length_ok)
         if not filename_length_ok:
-            self.ats_issues.append("Filename should be 100 characters or fewer.")
+            self.ats_issues.append({
+                "Check_Name": "Filename Length",
+                "Result": {"description": "Your CV filename is too long and it should be 100 characters or fewer."}
+            })
 
         original_filename = self.layout_analysis.get("original_filename")
         filename_chars_ok = self._has_no_special_chars(original_filename)
         passed_checks += int(filename_chars_ok)
         if not filename_chars_ok:
-            self.ats_issues.append("Filename should avoid special characters.")
+            self.ats_issues.append({
+                "Check_Name": "Filename Characters",
+                "Result": {"description": "Your CV filename contains special characters and it should avoid them."}
+            })
 
         return min(100, math.ceil((passed_checks / total_checks) * 100)), total_checks, passed_checks
 
@@ -374,47 +431,71 @@ class CVScoringService:
         summary_ok = bool(self._norm(self.cv_data.get("summary", "")))
         passed_checks += int(summary_ok)
         if not summary_ok:
-            self.content_quality_issues.append("Add a professional summary section.")
+            self.content_quality_issues.append({
+                "Check_Name": "Professional Summary",
+                "Result": {"description": "Your CV is missing a professional summary section and it should include one."}
+            })
 
         skills_ok = bool(self.cv_data.get("skill_section", []))
         passed_checks += int(skills_ok)
         if not skills_ok:
-            self.content_quality_issues.append("Add a dedicated skills section.")
+            self.content_quality_issues.append({
+                "Check_Name": "Skills Section",
+                "Result": {"description": "Your CV is missing a dedicated skills section and it should include one."}
+            })
 
         education_ok = bool(self.cv_data.get("education", []))
         passed_checks += int(education_ok)
         if not education_ok:
-            self.content_quality_issues.append("Add an education section.")
+            self.content_quality_issues.append({
+                "Check_Name": "Education Section",
+                "Result": {"description": "Your CV is missing an education section and it should include one."}
+            })
 
         experience_ok = bool(self.cv_data.get("work_experience", []))
         passed_checks += int(experience_ok)
         if not experience_ok:
-            self.content_quality_issues.append("Add a work experience section.")
+            self.content_quality_issues.append({
+                "Check_Name": "Work Experience Section",
+                "Result": {"description": "Your CV is missing a work experience section and it should include one."}
+            })
 
         # 2. Contact info present (4)
         email = self.cv_data.get("email", "")
         email_ok = self._is_valid_email(email)
         passed_checks += int(email_ok)
         if not email_ok:
-            self.content_quality_issues.append("Provide a valid email address.")
+            self.content_quality_issues.append({
+                "Check_Name": "Email Address",
+                "Result": {"description": "Your CV is missing a valid email address and it should include one."}
+            })
 
         phone = self.cv_data.get("phone", "")
         phone_ok = self._is_valid_phone(phone)
         passed_checks += int(phone_ok)
         if not phone_ok:
-            self.content_quality_issues.append("Provide a valid phone number.")
+            self.content_quality_issues.append({
+                "Check_Name": "Phone Number",
+                "Result": {"description": "Your CV is missing a valid phone number and it should include one."}
+            })
 
         location_ok = bool(self._is_present(self.cv_data.get("location", "")))
         passed_checks += int(location_ok)
         if not location_ok:
-            self.content_quality_issues.append("Add your location or address.")
+            self.content_quality_issues.append({
+                "Check_Name": "Location",
+                "Result": {"description": "Your CV is missing location information and it should include your location or address."}
+            })
 
         name_present = bool(self._is_present(self.cv_data.get("name", "")))
         title_present = bool(self._is_present(self.cv_data.get("title", "")))
         identity_ok = name_present and title_present
         passed_checks += int(identity_ok)
         if not identity_ok:
-            self.content_quality_issues.append("Include both your full name and professional title.")
+            self.content_quality_issues.append({
+                "Check_Name": "Name and Title",
+                "Result": {"description": "Your CV is missing your full name or professional title and it should include both."}
+            })
 
         # 3. Content quality (5)
         parsed_content = dict(self.cv_data)
@@ -433,9 +514,15 @@ class CVScoringService:
             if check_details:
                 first_line = check_details.splitlines()[0].strip()
                 sanitized_line = re.sub(r"^[^A-Za-z0-9]+", "", first_line)
-                self.content_quality_issues.append(f"{sanitized_line}")
+                self.content_quality_issues.append({
+                    "Check_Name": check_name,
+                    "Result": {"description": sanitized_line}
+                })
             else:
-                self.content_quality_issues.append(f"{check_name}: failed.")
+                self.content_quality_issues.append({
+                    "Check_Name": check_name,
+                    "Result": {"description": f"{check_name}: failed."}
+                })
         
 
         return min(100, math.ceil((passed_checks / total_checks) * 100)), total_checks, passed_checks
