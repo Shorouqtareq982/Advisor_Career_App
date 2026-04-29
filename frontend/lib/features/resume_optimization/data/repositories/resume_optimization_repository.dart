@@ -26,8 +26,8 @@ class ResumeOptimizationRepository {
         'jd_text': jobDescription.trim(),
     });
 
-    // Step 1: Run analysis (backend returns analysis body, no report_id)
-    await _dio.post(
+    // Step 1: Run analysis — backend returns CVOptimizationReportDetailed with report_id
+    final response = await _dio.post(
       '${ApiConstants.baseUrl}/api/v1/cv_optimization/analyze',
       data: formData,
       options: Options(
@@ -37,16 +37,8 @@ class ResumeOptimizationRepository {
       ),
     );
 
-    // Step 2: Fetch reports list to get the newly created report_id
-    final reportsResponse = await _dio.get(
-      '${ApiConstants.baseUrl}/api/v1/cv_optimization/reports',
-    );
-    final List<dynamic> reports = reportsResponse.data as List<dynamic>? ?? [];
-    if (reports.isEmpty) return {};
-
-    // First item = newest report
-    final latest = reports.first as Map<String, dynamic>;
-    return {'report_id': latest['report_id']};
+    final data = response.data as Map<String, dynamic>? ?? {};
+    return {'report_id': data['report_id']};
   }
 
   /// GET /api/v1/cv_optimization/report/{report_id}
