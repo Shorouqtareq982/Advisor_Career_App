@@ -55,6 +55,13 @@ typing-extensions
 language-tool-python
 
 # ===============================
+# Portfolio Feature
+# ===============================
+PyGithub 
+gitpython
+Jinja2
+playwright
+# ===============================
 # PII Masking
 # ===============================
 presidio-analyzer 

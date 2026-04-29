@@ -57,7 +57,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     MISTRAL_API_KEY: Optional[str] = None
     MISTRAL_MODEL: Optional[str] = None
-
+    #GitHub
+    GITHUB_TOKEN: Optional[str] = None
+    REPO_NAME: Optional[str] = None
     # Resource APIs
     YOUTUBE_API_KEY: Optional[str] = None
     SERPAPI_API_KEY: Optional[str] = None

@@ -1,0 +1,536 @@
+<!-- templates/creative_dark.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ portfolio.name or 'Portfolio' }}</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #1a1a2e;
+            --secondary: #00d4ff;
+            --card: #16213e;
+            --text-light: rgba(255,255,255,0.7);
+        }
+
+        body {
+            background: var(--primary);
+            color: white;
+            font-family: 'Roboto', sans-serif;
+            line-height: 1.6;
+        }
+
+        .container {
+            width: min(1200px, 92%);
+            margin: auto;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Poppins', sans-serif;
+        }
+
+        /* HERO */
+
+        .hero {
+            min-height: 400px;
+            background: linear-gradient(135deg, var(--primary), #16213e);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-overlay {
+            position: absolute;
+            inset: 0;
+            opacity: 0.08;
+            background: url('https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2070') center/cover;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .profile-image {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            border: 4px solid var(--secondary);
+            overflow: hidden;
+            margin-bottom: 20px;
+            background: #2d3748;
+        }
+
+        .profile-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .hero h1 {
+            font-size: 42px;
+            font-weight: 700;
+        }
+
+        .hero p {
+            color: var(--secondary);
+            font-size: 20px;
+            margin-top: 10px;
+        }
+
+        /* CONTENT */
+
+        .content {
+            padding: 40px 0;
+        }
+
+        .stats {
+            background: var(--card);
+            border-radius: 20px;
+            padding: 30px;
+            display: flex;
+            justify-content: space-around;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 40px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-item h3 {
+            color: var(--secondary);
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .stat-item p {
+            color: rgba(255,255,255,0.6);
+            font-size: 14px;
+        }
+
+        /* SECTION */
+
+        .section {
+            margin-bottom: 50px;
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .section-title-bar {
+            width: 4px;
+            height: 24px;
+            background: var(--secondary);
+            margin-right: 12px;
+        }
+
+        .section-title h2 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .section p {
+            color: var(--text-light);
+        }
+
+        /* SKILLS */
+
+        .skills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .skill-chip {
+            padding: 10px 20px;
+            border-radius: 30px;
+            background: linear-gradient(
+                135deg,
+                var(--secondary),
+                rgba(0, 212, 255, 0.7)
+            );
+            color: white;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        /* TIMELINE */
+
+        .timeline-item {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+
+        .timeline-line {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .timeline-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--secondary);
+        }
+
+        .timeline-bar {
+            width: 2px;
+            height: 100%;
+            background: rgba(0,212,255,0.3);
+            margin-top: 4px;
+        }
+
+        .timeline-content h3 {
+            font-size: 20px;
+            margin-bottom: 5px;
+        }
+
+        .timeline-company {
+            color: var(--secondary);
+            font-size: 15px;
+        }
+
+        .timeline-period {
+            color: rgba(255,255,255,0.5);
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+
+        .timeline-description {
+            color: var(--text-light);
+        }
+
+        /* PROJECTS */
+
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }
+
+        .project-card {
+            background: linear-gradient(
+                135deg,
+                #16213e,
+                #1a1a2e
+            );
+            border: 1px solid rgba(0,212,255,0.3);
+            border-radius: 18px;
+            padding: 30px 20px;
+            text-align: center;
+            transition: 0.3s;
+        }
+
+        .project-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--secondary);
+        }
+
+        .project-card h3 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .project-card p {
+            font-size: 14px;
+        }
+
+        .project-link {
+            display: inline-block;
+            margin-top: 15px;
+            color: var(--secondary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        /* CONTACT */
+
+        .contact-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .contact-chip {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--card);
+            border: 1px solid rgba(0,212,255,0.25);
+            border-radius: 30px;
+            padding: 14px 18px;
+        }
+
+        .contact-icon {
+            color: var(--secondary);
+            font-size: 18px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 30px;
+            color: rgba(255,255,255,0.5);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            margin-top: 50px;
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 32px;
+            }
+
+            .hero p {
+                font-size: 18px;
+            }
+
+            .section-title h2 {
+                font-size: 24px;
+            }
+
+            .stats {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HERO -->
+    <section class="hero">
+        <div class="hero-overlay"></div>
+
+        <div class="hero-content container">
+
+            <div class="profile-image">
+                <img
+                    src="{{ portfolio.profile_image_url if portfolio.profile_image_url else 'https://via.placeholder.com/150' }}"
+                    alt="Profile Image"
+                >
+            </div>
+
+            <h1>{{ portfolio.name or 'Alex Johnson' }}</h1>
+
+            <p>
+                {{ portfolio.title or 'Creative Developer' }}
+            </p>
+
+        </div>
+    </section>
+
+    <main class="content container">
+
+        <!-- STATS -->
+        <section class="stats">
+            <div class="stat-item">
+                <h3>{{ portfolio.projects|length }}</h3>
+                <p>Projects</p>
+            </div>
+
+            <div class="stat-item">
+                <h3>3+</h3>
+                <p>Experience</p>
+            </div>
+
+            <div class="stat-item">
+                <h3>12</h3>
+                <p>Clients</p>
+            </div>
+        </section>
+
+        <!-- ABOUT -->
+        <section class="section">
+
+            <div class="section-title">
+                <div class="section-title-bar"></div>
+                <h2>About</h2>
+            </div>
+
+            <p>
+                {{ portfolio.about or 'Creative developer with passion for building amazing digital experiences.' }}
+            </p>
+
+        </section>
+
+        <!-- SKILLS -->
+        <section class="section">
+
+            <div class="section-title">
+                <div class="section-title-bar"></div>
+                <h2>Skills</h2>
+            </div>
+
+            <div class="skills">
+
+                {% set default_skills = ['Flutter', 'Dart', 'UI/UX', 'Firebase', 'Animation'] %}
+
+                {% for skill in portfolio.skills if portfolio.skills %}
+                    <div class="skill-chip">{{ skill }}</div>
+                {% endfor %}
+
+                {% if not portfolio.skills %}
+                    {% for skill in default_skills %}
+                        <div class="skill-chip">{{ skill }}</div>
+                    {% endfor %}
+                {% endif %}
+
+            </div>
+
+        </section>
+
+        <!-- EXPERIENCE -->
+        {% if portfolio.experiences %}
+        <section class="section">
+
+            <div class="section-title">
+                <div class="section-title-bar"></div>
+                <h2>Experience</h2>
+            </div>
+
+            {% for exp in portfolio.experiences %}
+            <div class="timeline-item">
+
+                <div class="timeline-line">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-bar"></div>
+                </div>
+
+                <div class="timeline-content">
+                    <h3>{{ exp.job_title or 'Position' }}</h3>
+
+                    <div class="timeline-company">
+                        {{ exp.company or 'Company' }}
+                    </div>
+
+                    <div class="timeline-period">
+                        {{ exp.period or '2020 - Present' }}
+                    </div>
+
+                    <p class="timeline-description">
+                        {{ exp.description or 'Job description and achievements...' }}
+                    </p>
+                </div>
+
+            </div>
+            {% endfor %}
+
+        </section>
+        {% endif %}
+
+        <!-- PROJECTS -->
+        {% if portfolio.projects %}
+        <section class="section">
+
+            <div class="section-title">
+                <div class="section-title-bar"></div>
+                <h2>Projects</h2>
+            </div>
+
+            <div class="projects-grid">
+
+                {% for project in portfolio.projects %}
+                <div class="project-card">
+
+                    <h3>{{ project.name or 'Project' }}</h3>
+
+                    <p>
+                        {{ project.description or 'Project description...' }}
+                    </p>
+
+                    {% if project.technologies %}
+                    <p style="margin-top:10px; color: var(--secondary);">
+                        {{ project.technologies }}
+                    </p>
+                    {% endif %}
+
+                    {% if project.link %}
+                    <a
+                        href="{{ project.link }}"
+                        class="project-link"
+                        target="_blank"
+                    >
+                        View Project →
+                    </a>
+                    {% endif %}
+
+                </div>
+                {% endfor %}
+
+            </div>
+
+        </section>
+        {% endif %}
+
+        <!-- CONTACT -->
+        <section class="section">
+
+            <div class="section-title">
+                <div class="section-title-bar"></div>
+                <h2>Contact</h2>
+            </div>
+
+            <div class="contact-list">
+
+                <div class="contact-chip">
+                    <span class="contact-icon">✉</span>
+                    <span>{{ portfolio.email or 'email@example.com' }}</span>
+                </div>
+
+                <div class="contact-chip">
+                    <span class="contact-icon">☎</span>
+                    <span>{{ portfolio.phone or '+20 123 456 7890' }}</span>
+                </div>
+
+                <div class="contact-chip">
+                    <span class="contact-icon">📍</span>
+                    <span>{{ portfolio.location or 'City, Country' }}</span>
+                </div>
+
+                {% if portfolio.github %}
+                <div class="contact-chip">
+                    <span class="contact-icon">💻</span>
+                    <span>{{ portfolio.github }}</span>
+                </div>
+                {% endif %}
+
+                {% if portfolio.linkedin %}
+                <div class="contact-chip">
+                    <span class="contact-icon">🔗</span>
+                    <span>{{ portfolio.linkedin }}</span>
+                </div>
+                {% endif %}
+
+            </div>
+
+        </section>
+
+    </main>
+
+    <footer>
+        © {{ portfolio.name or 'Portfolio' }} - Creative Dark Portfolio
+    </footer>
+
+</body>
+</html>
