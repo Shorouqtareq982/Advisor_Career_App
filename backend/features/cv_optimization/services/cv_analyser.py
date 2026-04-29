@@ -289,6 +289,7 @@ class CVAnalyser:
     ) -> CVOptimizationReportDetailed:
         """Check for existing report or create new one with analysis."""
         # Check for existing report
+        no_jd = no_jd or jd_id is None
         existing_report = await self._check_existing_report(cv_id, jd_id, no_jd)
         if existing_report:
             # Convert existing report dict to CVOptimizationReportDetailed
@@ -827,12 +828,17 @@ class CVAnalyser:
             llm_insights = analysis.get("LLM_Insights")
             job_alignment = analysis.get("Job_Alignment")
             industry_keywords = analysis.get("Industry_Keyword_Optimization")
-            if job_alignment or industry_keywords:
-                llm_insights = llm_insights or LLMInsights(
-                    Job_Alignment=job_alignment,
-                    Keyword_Optimization=industry_keywords,
-                    Improvement_Tips=analysis.get("Improvement_Tips")
-                )
+            improvement_tips = analysis.get("Improvement_Tips")
+            
+            # Only create LLMInsights if we have at least one of the expected fields
+            if job_alignment or industry_keywords or improvement_tips:
+                if not llm_insights:
+                    # Create LLMInsights with available data (None values are acceptable for Optional fields)
+                    llm_insights = LLMInsights(
+                        Job_Alignment=job_alignment,
+                        Keyword_Optimization=industry_keywords,
+                        Improvement_Tips=improvement_tips
+                    )
             
             final_report_analysis = FinalReportAnalysis(
                 ATS_Readability_Analysis=ats_readability,

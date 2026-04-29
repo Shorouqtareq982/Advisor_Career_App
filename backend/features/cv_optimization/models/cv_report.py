@@ -64,25 +64,25 @@ class JobAlignment(BaseModel):
     Keyword_Analysis: KeywordAnalysis 
 
 class LLMInsights(BaseModel):
-    Job_Alignment: Optional[JobAlignment]
-    Keyword_Optimization: Optional[IndustryKeywordOptimization]
-    Improvement_Tips: Optional[List[str]]
+    Job_Alignment: Optional[JobAlignment] = None
+    Keyword_Optimization: Optional[IndustryKeywordOptimization] = None
+    Improvement_Tips: Optional[List[str]] = None
 
 class FinalReportAnalysis(BaseModel):
     ATS_Readability_Analysis: ATSReadability
     Content_Quality_Analysis: ContentQuality
     Section_Analysis: SectionAnalysis
-    LLM_Insights: Optional[LLMInsights]
-    Additional_Metadata: Optional[Dict[str, Any]]
+    LLM_Insights: Optional[LLMInsights] = None
+    Additional_Metadata: Optional[Dict[str, Any]] = None
 
 class CVOptimizationReportDetailed(BaseModel):
-    report_id: Optional[UUID]
-    request_id: Optional[UUID]
-    cv_id: Optional[UUID]
-    job_posting_id: Optional[UUID]
-    generated_at: Optional[datetime]
-    cv: Optional[Dict[str, Any]]          # e.g. {"title": "My CV", "original_filename": "resume.pdf"}
-    job_posting: Optional[Dict[str, Any]] # e.g. {"job_title": "Data Scientist"}
+    report_id: Optional[UUID] = None
+    request_id: Optional[UUID] = None
+    cv_id: Optional[UUID] = None
+    job_posting_id: Optional[UUID] = None
+    generated_at: Optional[datetime] = None
+    cv: Optional[Dict[str, Any]] = None          # e.g. {"title": "My CV", "original_filename": "resume.pdf"}
+    job_posting: Optional[Dict[str, Any]] = None # e.g. {"job_title": "Data Scientist"}
     analysis: FinalReportAnalysis
 
 class CVOptimizationReport(BaseModel):
