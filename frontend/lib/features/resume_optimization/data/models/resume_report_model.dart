@@ -206,6 +206,7 @@ class ResumeReportModel {
   final JobAlignmentModel? jobAlignment;
   final IndustryKeywordModel industryKeyword;
   final List<String> atsIssues;
+  final List<String> contentIssues;
   final List<String> improvementTips;
   final DateTime createdAt;
 
@@ -218,6 +219,7 @@ class ResumeReportModel {
     this.jobAlignment,
     required this.industryKeyword,
     required this.atsIssues,
+    required this.contentIssues,
     required this.improvementTips,
     required this.createdAt,
   });
@@ -256,6 +258,7 @@ class ResumeReportModel {
             {},
       ),
       atsIssues: _toIssueList(atsAnalysis['ATS_Issues']),
+      contentIssues: _toIssueList(contentAnalysis['Content_Issues']),
       improvementTips: improvementTips,
       createdAt: _parseDate(json),
     );
@@ -273,6 +276,7 @@ class ResumeReportModel {
         industryKeyword: industryKeyword.toEntity(),
         atsIssues: atsIssues,
         improvementTips: improvementTips,
+        contentIssues: contentIssues,
       );
 }
 

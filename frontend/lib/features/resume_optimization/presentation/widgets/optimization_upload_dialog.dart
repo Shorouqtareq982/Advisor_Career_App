@@ -1,6 +1,3 @@
-// lib/features/resume_optimization/presentation/widgets/optimization_upload_dialog.dart
-// التغيير الرئيسي: الزرار يتفعل لو فيه CV موجود من قبل
-
 import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -18,7 +15,6 @@ import '../providers/resume_optimization_provider.dart';
 import 'analysis_pending_dialog.dart';
 
 // ─── Progress Loading Overlay ─────────────────────────────────────────────────
-// (نفس الكود القديم — لا تغيير)
 
 class _AnalysisLoadingOverlay extends ConsumerStatefulWidget {
   final VoidCallback onTimeout;
@@ -191,7 +187,6 @@ class _AnalysisLoadingOverlayState
 // ─── Upload Dialog ─────────────────────────────────────────────────────────────
 
 class OptimizationUploadDialog extends ConsumerStatefulWidget {
-  /// ← جديد: لو اليوزر عنده CV مرفوع بالفعل، نعرضه ونفعّل الزرار
   final String? existingCvUrl;
   final String? existingCvFileName;
 
@@ -219,7 +214,6 @@ class _OptimizationUploadDialogState
   @override
   void initState() {
     super.initState();
-    // لو فيه CV موجود، نفعّله تلقائياً
     if (widget.existingCvUrl != null && widget.existingCvUrl!.isNotEmpty) {
       _useExistingCv = true;
       _selectedFileName = widget.existingCvFileName ??
@@ -250,13 +244,12 @@ class _OptimizationUploadDialogState
       setState(() {
         _selectedFile = File(file.path!);
         _selectedFileName = file.name;
-        _useExistingCv = false; // اختار ملف جديد → شيل الـ existing flag
+        _useExistingCv = false;
       });
     }
   }
 
   Future<void> _startOptimization() async {
-    // ← الحل: الزرار يشتغل لو فيه ملف جديد أو CV موجود
     if (_selectedFile == null && !_useExistingCv) {
       _showSnack('Please upload your CV first.');
       return;
@@ -291,7 +284,6 @@ class _OptimizationUploadDialogState
     );
 
     if (_selectedFile != null) {
-      // ← رفع ملف جديد (الطريقة القديمة)
       await ref.read(resumeOptimizationProvider.notifier).analyzeCV(
             cvFile: _selectedFile!,
             jobDescription: _jdController.text.trim().isEmpty
@@ -299,7 +291,6 @@ class _OptimizationUploadDialogState
                 : _jdController.text.trim(),
           );
     } else if (_useExistingCv && widget.existingCvUrl != null) {
-      // ← استخدام الـ CV الموجود: نعمل download مؤقت ثم analyze
       await _analyzeCvFromUrl(
         cvUrl: widget.existingCvUrl!,
         jobDescription: _jdController.text.trim().isEmpty
@@ -309,6 +300,14 @@ class _OptimizationUploadDialogState
     }
 
     if (!mounted || timedOut) return;
+    final currentState = ref.read(resumeOptimizationProvider);
+    if (currentState.analysisStatus == AnalysisStatus.error) {
+      _showErrorSnack(
+        currentState.errorMessage ?? 'Something went wrong. Please try again.',
+      );
+      ref.read(resumeOptimizationProvider.notifier).resetAnalysisStatus();
+      return;
+    }
 
     final state = ref.read(resumeOptimizationProvider);
     if (state.analysisStatus == AnalysisStatus.success &&
@@ -330,7 +329,6 @@ class _OptimizationUploadDialogState
       final fileName = _selectedFileName ?? 'cv_temp.pdf';
       final tempFile = File('${tempDir.path}/$fileName');
 
-      // نشيل الـ ?original= param قبل الـ download
       final downloadUrl = cvUrl.split('?original=').first;
 
       final dio = Dio();
@@ -341,8 +339,8 @@ class _OptimizationUploadDialogState
             jobDescription: jobDescription,
           );
     } catch (e) {
-      ref.read(resumeOptimizationProvider.notifier);
-      // الـ error هيتعامل معاه في الـ overlay listener
+      ref.read(resumeOptimizationProvider.notifier).setError(
+          'Failed to download your CV. Please upload the file manually.');
     }
   }
 
@@ -390,6 +388,8 @@ class _OptimizationUploadDialogState
     final uploadBg =
         isDark ? AppColors.blue600.withOpacity(0.5) : AppColors.grey100;
     final btnColor = isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
+    final cvActiveColor =
+        isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
 
     // ← هل فيه CV (جديد أو موجود)؟
     final hasCV = _selectedFile != null || _useExistingCv;
@@ -466,7 +466,7 @@ class _OptimizationUploadDialogState
                   color: uploadBg,
                   borderRadius: BorderRadius.circular(context.r(12)),
                   border: Border.all(
-                    color: hasCV ? AppColors.lightBlue500 : borderColor,
+                    color: hasCV ? cvActiveColor : borderColor,
                     width: hasCV ? 1.5 : 1,
                   ),
                 ),
@@ -478,9 +478,9 @@ class _OptimizationUploadDialogState
                           ? Icons.check_circle_outline
                           : Icons.upload_file_outlined,
                       color: hasCV
-                          ? AppColors.lightBlue500
+                          ? AppColors.lightBlue700
                           : (isDark
-                              ? AppColors.lightBlue400
+                              ? AppColors.lightBlue500
                               : AppColors.lightBlue700),
                       size: context.icon(36),
                     ),
@@ -488,7 +488,11 @@ class _OptimizationUploadDialogState
                     context.text(
                       hasCV ? 'click to Change' : 'click to upload',
                       style: textTheme.bodyMedium.copyWith(
-                        color: hasCV ? AppColors.lightBlue500 : textPrimary,
+                        color: hasCV
+                            ? AppColors.lightBlue700
+                            : (isDark
+                                ? AppColors.lightBlue500
+                                : AppColors.lightBlue700),
                       ),
                     ),
                     SizedBox(height: context.h(4)),
@@ -536,6 +540,8 @@ class _OptimizationUploadDialogState
             TextField(
               controller: _jdController,
               maxLines: 4,
+              cursorColor:
+                  isDark ? AppColors.lightBlue500 : AppColors.lightBlue700,
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: context.sp(13),
@@ -543,6 +549,8 @@ class _OptimizationUploadDialogState
               ),
               decoration: InputDecoration(
                 labelText: 'Job Description (Optional)',
+                alignLabelWithHint: true,
+                floatingLabelBehavior: FloatingLabelBehavior.always,
                 hintText: 'Paste the full Job Description here',
                 hintStyle: TextStyle(
                     color: textMuted,
@@ -552,8 +560,7 @@ class _OptimizationUploadDialogState
                     color: textMuted,
                     fontSize: context.sp(12),
                     fontFamily: 'Inter'),
-                filled: true,
-                fillColor: uploadBg,
+                filled: false,
                 contentPadding: EdgeInsets.all(context.w(14)),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(context.r(12)),
@@ -565,7 +572,11 @@ class _OptimizationUploadDialogState
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(context.r(12)),
-                  borderSide: const BorderSide(color: AppColors.lightBlue500),
+                  borderSide: BorderSide(
+                    color: isDark
+                        ? AppColors.lightBlue500
+                        : AppColors.lightBlue700,
+                  ),
                 ),
               ),
             ),
@@ -577,7 +588,6 @@ class _OptimizationUploadDialogState
               width: double.infinity,
               height: context.h(52),
               child: ElevatedButton(
-                // ← الحل: يتفعل لو hasCV (ملف جديد أو موجود)
                 onPressed:
                     (_isSubmitting || !hasCV) ? null : _startOptimization,
                 style: ElevatedButton.styleFrom(

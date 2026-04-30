@@ -10,6 +10,7 @@ class ResumeReportEntity {
   final IndustryKeywordEntity industryKeyword;
   final List<String> atsIssues;
   final List<String> improvementTips;
+  final List<String> contentIssues;
 
   const ResumeReportEntity({
     required this.reportId,
@@ -23,6 +24,7 @@ class ResumeReportEntity {
     required this.industryKeyword,
     required this.atsIssues,
     required this.improvementTips,
+    required this.contentIssues,
   });
 
   ResumeReportEntity copyWith({String? cvName}) {
@@ -38,6 +40,7 @@ class ResumeReportEntity {
       industryKeyword: industryKeyword,
       atsIssues: atsIssues,
       improvementTips: improvementTips,
+      contentIssues: contentIssues,
     );
   }
 
@@ -53,6 +56,7 @@ class ResumeReportEntity {
         'industryKeyword': industryKeyword.toJson(),
         'atsIssues': atsIssues,
         'improvementTips': improvementTips,
+        'contentIssues': contentIssues,
       };
 
   factory ResumeReportEntity.fromJson(Map<String, dynamic> j) =>
@@ -70,6 +74,7 @@ class ResumeReportEntity {
         industryKeyword: IndustryKeywordEntity.fromJson(j['industryKeyword']),
         atsIssues: List<String>.from(j['atsIssues']),
         improvementTips: List<String>.from(j['improvementTips']),
+        contentIssues: List<String>.from(j['contentIssues'] ?? []),
       );
 }
 

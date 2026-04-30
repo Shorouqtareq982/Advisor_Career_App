@@ -213,6 +213,13 @@ class ResumeOptimizationNotifier
     state = state.copyWith(clearCurrentReport: true);
   }
 
+  void setError(String message) {
+    state = state.copyWith(
+      analysisStatus: AnalysisStatus.error,
+      errorMessage: message,
+    );
+  }
+
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
   Future<void> _cacheReports(List<ResumeReportSummary> reports) async {
@@ -357,6 +364,10 @@ class ResumeOptimizationNotifier
         msg.contains('Cloudinary') ||
         msg.contains('upload')) {
       return 'Failed to upload your file. Please check your connection and try again.';
+    }
+
+    if (msg.contains('Empty file') || msg.contains('empty file')) {
+      return 'The selected file appears to be empty. Please choose a valid file.';
     }
 
     return 'Something went wrong. Please try again.';
