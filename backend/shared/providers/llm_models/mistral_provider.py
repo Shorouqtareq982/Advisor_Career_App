@@ -20,11 +20,11 @@ logger = logging.getLogger(__name__)
 class MistralProvider(LLMProvider):
     """Mistral AI provider implementation"""
 
-    def __init__(self, settings: Settings, system_prompt: Optional[str] = None):
+    def __init__(self, settings: Settings, system_prompt: Optional[str] = None, model: Optional[str] = None):
         self.settings = settings
         self.system_prompt = system_prompt
         self.api_key = settings.MISTRAL_API_KEY
-        self.model = settings.MISTRAL_MODEL or "mistral-large-latest"
+        self.model = model or settings.MISTRAL_MODEL or "mistral-large-latest"
         self.base_url = "https://api.mistral.ai/v1"
 
         if not self.api_key:

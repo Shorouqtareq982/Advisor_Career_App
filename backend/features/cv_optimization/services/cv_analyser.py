@@ -36,7 +36,7 @@ TODO:
 
 class CVAnalyser:
     def __init__(self, llm: LLMProvider = None):
-        self.llm = llm or create_llm_provider()
+        self.llm = llm or create_llm_provider(None,None,None,'google/gemini-2.5-flash-lite')
         self.parser = DocumentParser(self.llm)
         self.storage_provider = CloudinaryProvider()
         self.repo = CVOptRepository()

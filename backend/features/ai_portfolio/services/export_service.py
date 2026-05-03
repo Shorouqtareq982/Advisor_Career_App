@@ -11,8 +11,8 @@ from playwright.sync_api import sync_playwright
 
 class ExportService:
     def __init__(self):
-        self.GITHUB_TOKEN=settings.GITHUB_TOKEN
-        self.REPO_NAME=settings.REPO_NAME
+        self.GITHUB_TOKEN=settings.PORTFOLIO_GITHUB_TOKEN
+        self.REPO_NAME=settings.PORTFOLIO_REPO_NAME
         self.g = Github(self.GITHUB_TOKEN)
 
 
