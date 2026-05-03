@@ -2,6 +2,8 @@
 
 from datetime import datetime
 import re
+import secrets
+import string
 
 from features.ai_portfolio.services.render_service import RenderService
 
@@ -62,17 +64,27 @@ class PortfolioService:
                 template_id=updated_portfolio["template_index"],
             )
             slug = updated_portfolio["public_slug"] if updated_portfolio["public_slug"] else PortfolioService.generate_slug(updated_portfolio["title"] if updated_portfolio["title"] else f"portfolio-{portfolio_id}")
-            await export_service.export_to_cloudflare(rendered_html, slug)
+            await export_service.update_cloudflare(rendered_html, slug)
+        return updated_portfolio
+
     @staticmethod
     async def get_portfolio(portfolio_id: str):
         portfolio =  await portfolio_repo.get_portfolio(portfolio_id)
         if not portfolio:
             return None
+        if portfolio["is_published"]:
+            portfolio["public_url"] = f"https://growza-portfolios.pages.dev/{portfolio['public_slug']}"
         return portfolio
 
     @staticmethod
     async def get_user_portfolios(user_id: str):
-        return await portfolio_repo.get_user_portfolios(user_id)
+        portfolio = await portfolio_repo.get_user_portfolios(user_id)
+        if not portfolio:
+            return []
+        for p in portfolio:
+            if p["is_published"]:
+                p["public_url"] = f"https://growza-portfolios.pages.dev/{p['public_slug']}"
+        return portfolio
 
     @staticmethod
     async def delete_portfolio(portfolio_id: str):
@@ -114,9 +126,14 @@ class PortfolioService:
     
     @staticmethod
     def generate_slug(name: str):
-
         slug = name.lower()
         slug = re.sub(r'[^a-z0-9]+', '-', slug)
         slug = slug.strip("-")
 
-        return slug
+        # Generate secure random alphanumeric suffix
+        random_suffix = ''.join(
+            secrets.choice(string.ascii_lowercase + string.digits)
+            for _ in range(8)
+        )
+
+        return f"{slug}-{random_suffix}"

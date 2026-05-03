@@ -26,6 +26,14 @@ class ExportService:
 
         return f"https://growza-portfolios.pages.dev/{slug}"
     
+    async def update_cloudflare(self, html_content: str, slug: str):
+        user = self.g.get_user()
+        repo = user.get_repo(self.REPO_NAME)
+
+        # Find the file in the repository
+        contents = repo.get_contents(f"{slug}.html")
+        repo.update_file(contents.path, "Update portfolio HTML file", html_content, contents.sha)
+
     async def delete_from_cloudflare(self, slug: str):
         user = self.g.get_user()
         repo = user.get_repo(self.REPO_NAME)
