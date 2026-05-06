@@ -73,6 +73,13 @@ celery
 redis
 
 # ===============================
+# Portfolio Feature
+# ===============================
+PyGithub 
+gitpython
+Jinja2
+playwright
+# ===============================
 # PII Masking
 # ===============================
 presidio-analyzer 

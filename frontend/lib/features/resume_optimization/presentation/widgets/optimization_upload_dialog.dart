@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../core/theme/app_text_theme.dart';
+import '../../../../core/utils/file_utils.dart';
 import '../providers/resume_optimization_provider.dart';
 import 'analysis_pending_dialog.dart';
 
@@ -39,7 +42,6 @@ class _AnalysisLoadingOverlayState
   @override
   void initState() {
     super.initState();
-
     _progressController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: _maxSeconds),
@@ -58,18 +60,12 @@ class _AnalysisLoadingOverlayState
     super.dispose();
   }
 
-  /// Success
   void _completeAndClose() {
     if (_completing) return;
     _completing = true;
     _timeoutTimer?.cancel();
-
     _progressController
-        .animateTo(
-      1.0,
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeOut,
-    )
+        .animateTo(1.0, duration: const Duration(milliseconds: 600))
         .then((_) {
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
@@ -77,13 +73,11 @@ class _AnalysisLoadingOverlayState
     });
   }
 
-  /// Error: close immediately and pass error message to parent
   void _closeWithError(String errorMessage) {
     if (_completing) return;
     _completing = true;
     _timeoutTimer?.cancel();
     _progressController.stop();
-
     if (mounted && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
@@ -126,7 +120,6 @@ class _AnalysisLoadingOverlayState
           builder: (context, _) {
             final percent =
                 (_progressController.value * 100).round().clamp(0, 100);
-
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -194,7 +187,14 @@ class _AnalysisLoadingOverlayState
 // ─── Upload Dialog ─────────────────────────────────────────────────────────────
 
 class OptimizationUploadDialog extends ConsumerStatefulWidget {
-  const OptimizationUploadDialog({super.key});
+  final String? existingCvUrl;
+  final String? existingCvFileName;
+
+  const OptimizationUploadDialog({
+    super.key,
+    this.existingCvUrl,
+    this.existingCvFileName,
+  });
 
   @override
   ConsumerState<OptimizationUploadDialog> createState() =>
@@ -207,6 +207,19 @@ class _OptimizationUploadDialogState
   String? _selectedFileName;
   final _jdController = TextEditingController();
   bool _isSubmitting = false;
+
+  /// ← جديد: هل بنستخدم الـ CV الموجود من الـ profile؟
+  bool _useExistingCv = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.existingCvUrl != null && widget.existingCvUrl!.isNotEmpty) {
+      _useExistingCv = true;
+      _selectedFileName = widget.existingCvFileName ??
+          FileUtils.getFileNameFromUrl(widget.existingCvUrl);
+    }
+  }
 
   @override
   void dispose() {
@@ -224,33 +237,31 @@ class _OptimizationUploadDialogState
     if (result != null && result.files.isNotEmpty) {
       final file = result.files.first;
       if (file.size > 10 * 1024 * 1024) {
-        if (mounted) {
+        if (mounted)
           _showSnack('File exceeds 10 MB. Please choose a smaller file.');
-        }
         return;
       }
       setState(() {
         _selectedFile = File(file.path!);
         _selectedFileName = file.name;
+        _useExistingCv = false;
       });
     }
   }
 
   Future<void> _startOptimization() async {
-    if (_selectedFile == null) {
+    if (_selectedFile == null && !_useExistingCv) {
       _showSnack('Please upload your CV first.');
       return;
     }
 
     setState(() => _isSubmitting = true);
 
-    // Close upload sheet
     if (mounted) Navigator.of(context).pop();
     if (!mounted) return;
 
     bool timedOut = false;
 
-    // Show progress overlay
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -264,7 +275,6 @@ class _OptimizationUploadDialogState
             builder: (_) => const AnalysisPendingDialog(),
           );
         },
-        // ← NEW: لما يحصل error، الـ overlay بيتقفل وبيبعت الـ message هنا
         onError: (errorMessage) {
           if (!mounted) return;
           _showErrorSnack(errorMessage);
@@ -273,18 +283,33 @@ class _OptimizationUploadDialogState
       ),
     );
 
-    // Run analysis
-    await ref.read(resumeOptimizationProvider.notifier).analyzeCV(
-          cvFile: _selectedFile!,
-          jobDescription: _jdController.text.trim().isEmpty
-              ? null
-              : _jdController.text.trim(),
-        );
+    if (_selectedFile != null) {
+      await ref.read(resumeOptimizationProvider.notifier).analyzeCV(
+            cvFile: _selectedFile!,
+            jobDescription: _jdController.text.trim().isEmpty
+                ? null
+                : _jdController.text.trim(),
+          );
+    } else if (_useExistingCv && widget.existingCvUrl != null) {
+      await _analyzeCvFromUrl(
+        cvUrl: widget.existingCvUrl!,
+        jobDescription: _jdController.text.trim().isEmpty
+            ? null
+            : _jdController.text.trim(),
+      );
+    }
 
     if (!mounted || timedOut) return;
+    final currentState = ref.read(resumeOptimizationProvider);
+    if (currentState.analysisStatus == AnalysisStatus.error) {
+      _showErrorSnack(
+        currentState.errorMessage ?? 'Something went wrong. Please try again.',
+      );
+      ref.read(resumeOptimizationProvider.notifier).resetAnalysisStatus();
+      return;
+    }
 
     final state = ref.read(resumeOptimizationProvider);
-
     if (state.analysisStatus == AnalysisStatus.success &&
         state.latestReportId != null) {
       await Future.delayed(const Duration(milliseconds: 700));
@@ -292,11 +317,33 @@ class _OptimizationUploadDialogState
       context.push('/report-details/${state.latestReportId}');
       ref.read(resumeOptimizationProvider.notifier).resetAnalysisStatus();
     }
-    // error case مش محتاجة تتعامل معاه هنا —
-    // الـ onError callback في الـ overlay بيتكلم عنه
   }
 
-  /// Snackbar للـ errors العادية (file size, etc.)
+  /// Download CV from URL to temp file then analyze
+  Future<void> _analyzeCvFromUrl({
+    required String cvUrl,
+    String? jobDescription,
+  }) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final fileName = _selectedFileName ?? 'cv_temp.pdf';
+      final tempFile = File('${tempDir.path}/$fileName');
+
+      final downloadUrl = cvUrl.split('?original=').first;
+
+      final dio = Dio();
+      await dio.download(downloadUrl, tempFile.path);
+
+      await ref.read(resumeOptimizationProvider.notifier).analyzeCV(
+            cvFile: tempFile,
+            jobDescription: jobDescription,
+          );
+    } catch (e) {
+      ref.read(resumeOptimizationProvider.notifier).setError(
+          'Failed to download your CV. Please upload the file manually.');
+    }
+  }
+
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -307,7 +354,6 @@ class _OptimizationUploadDialogState
     );
   }
 
-  /// Snackbar للـ server/network errors — أحمر مع duration أطول
   void _showErrorSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -316,13 +362,9 @@ class _OptimizationUploadDialogState
             const Icon(Icons.error_outline, color: AppColors.grey50, size: 18),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                msg,
-                style: const TextStyle(
-                  color: AppColors.grey50,
-                  fontFamily: 'Inter',
-                ),
-              ),
+              child: Text(msg,
+                  style: const TextStyle(
+                      color: AppColors.grey50, fontFamily: 'Inter')),
             ),
           ],
         ),
@@ -346,6 +388,11 @@ class _OptimizationUploadDialogState
     final uploadBg =
         isDark ? AppColors.blue600.withOpacity(0.5) : AppColors.grey100;
     final btnColor = isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
+    final cvActiveColor =
+        isDark ? AppColors.lightBlue500 : AppColors.lightBlue700;
+
+    // ← هل فيه CV (جديد أو موجود)؟
+    final hasCV = _selectedFile != null || _useExistingCv;
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: context.w(12)),
@@ -383,11 +430,8 @@ class _OptimizationUploadDialogState
                 ),
                 GestureDetector(
                   onTap: () => Navigator.of(context).pop(),
-                  child: Icon(
-                    Icons.close,
-                    color: AppColors.red500,
-                    size: context.icon(22),
-                  ),
+                  child: Icon(Icons.close,
+                      color: AppColors.red500, size: context.icon(22)),
                 ),
               ],
             ),
@@ -412,6 +456,7 @@ class _OptimizationUploadDialogState
             ),
             SizedBox(height: context.h(8)),
 
+            // ── CV Upload Area ──────────────────────────────────────────────
             GestureDetector(
               onTap: _pickFile,
               child: Container(
@@ -421,37 +466,64 @@ class _OptimizationUploadDialogState
                   color: uploadBg,
                   borderRadius: BorderRadius.circular(context.r(12)),
                   border: Border.all(
-                    color: _selectedFile != null
-                        ? AppColors.lightBlue500
-                        : borderColor,
-                    width: 1.5,
+                    color: hasCV ? cvActiveColor : borderColor,
+                    width: hasCV ? 1.5 : 1,
                   ),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      _selectedFile != null
+                      hasCV
                           ? Icons.check_circle_outline
                           : Icons.upload_file_outlined,
-                      color: _selectedFile != null
-                          ? AppColors.green500
+                      color: hasCV
+                          ? AppColors.lightBlue700
                           : (isDark
-                              ? AppColors.lightBlue400
+                              ? AppColors.lightBlue500
                               : AppColors.lightBlue700),
                       size: context.icon(36),
                     ),
                     SizedBox(height: context.h(8)),
                     context.text(
-                      _selectedFileName ?? 'click to upload',
+                      hasCV ? 'click to Change' : 'click to upload',
                       style: textTheme.bodyMedium.copyWith(
-                        color: _selectedFile != null
-                            ? AppColors.green500
-                            : textPrimary,
+                        color: hasCV
+                            ? AppColors.lightBlue700
+                            : (isDark
+                                ? AppColors.lightBlue500
+                                : AppColors.lightBlue700),
                       ),
                     ),
                     SizedBox(height: context.h(4)),
-                    if (_selectedFile == null)
+                    if (_selectedFileName != null)
+                      Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: context.w(16)),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.delete_outline,
+                                color: AppColors.red500,
+                                size: context.icon(14)),
+                            SizedBox(width: context.w(4)),
+                            Flexible(
+                              child: Text(
+                                _selectedFileName!,
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: context.sp(12),
+                                  color: AppColors.red500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
                       context.text(
                         'Supported formats: PDF, DOCX (max 10 MB)',
                         style:
@@ -464,9 +536,12 @@ class _OptimizationUploadDialogState
 
             SizedBox(height: context.h(16)),
 
+            // ── JD Field ────────────────────────────────────────────────────
             TextField(
               controller: _jdController,
               maxLines: 4,
+              cursorColor:
+                  isDark ? AppColors.lightBlue500 : AppColors.lightBlue700,
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: context.sp(13),
@@ -474,19 +549,18 @@ class _OptimizationUploadDialogState
               ),
               decoration: InputDecoration(
                 labelText: 'Job Description (Optional)',
+                alignLabelWithHint: true,
+                floatingLabelBehavior: FloatingLabelBehavior.always,
                 hintText: 'Paste the full Job Description here',
                 hintStyle: TextStyle(
-                  color: textMuted,
-                  fontSize: context.sp(12),
-                  fontFamily: 'Inter',
-                ),
+                    color: textMuted,
+                    fontSize: context.sp(12),
+                    fontFamily: 'Inter'),
                 labelStyle: TextStyle(
-                  color: textMuted,
-                  fontSize: context.sp(12),
-                  fontFamily: 'Inter',
-                ),
-                filled: true,
-                fillColor: uploadBg,
+                    color: textMuted,
+                    fontSize: context.sp(12),
+                    fontFamily: 'Inter'),
+                filled: false,
                 contentPadding: EdgeInsets.all(context.w(14)),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(context.r(12)),
@@ -498,18 +572,24 @@ class _OptimizationUploadDialogState
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(context.r(12)),
-                  borderSide: const BorderSide(color: AppColors.lightBlue500),
+                  borderSide: BorderSide(
+                    color: isDark
+                        ? AppColors.lightBlue500
+                        : AppColors.lightBlue700,
+                  ),
                 ),
               ),
             ),
 
             SizedBox(height: context.h(20)),
 
+            // ── Start Button ─────────────────────────────────────────────────
             SizedBox(
               width: double.infinity,
               height: context.h(52),
               child: ElevatedButton(
-                onPressed: _isSubmitting ? null : _startOptimization,
+                onPressed:
+                    (_isSubmitting || !hasCV) ? null : _startOptimization,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: btnColor,
                   foregroundColor:

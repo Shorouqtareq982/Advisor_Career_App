@@ -288,6 +288,11 @@ class CareerRepository:
         suggested_min_weeks: Optional[int] = None
     ) -> Optional[int]:
         try:
+            # Validate detected_level and confirmed_level before inserting into the database
+            valid_levels = ["beginner", "intermediate", "advanced"]
+            if detected_level not in valid_levels or confirmed_level not in valid_levels:
+                raise ValueError(f"Invalid level_enum value: detected_level={detected_level}, confirmed_level={confirmed_level}")
+
             payload = {
                 "user_id": str(user_id),
                 "cv_id": str(cv_id),
@@ -714,28 +719,65 @@ class CareerRepository:
         self,
         rows: List[Dict[str, Any]],
     ) -> None:
-        try:
-            if not rows:
-                return
+        """
+        Safely store discovered resources without breaking plan generation.
 
-            for row in rows:
-                url = (row.get("url") or "").strip()
-                skill_id = row.get("skill_id")
-                canonical_topic = (row.get("canonical_topic") or "").strip().lower()
-                current_level = (row.get("current_level") or "none").strip().lower()
-                target_level = (row.get("target_level") or "beginner").strip().lower()
+        Important:
+        The database has a unique constraint on normalized URL:
+            lower(trim trailing '/' from url)
 
-                if not url or not skill_id or not canonical_topic:
-                    continue
+        So we must not only check by skill/topic/level/url. The same URL may already
+        exist for another skill or topic. In that case, update the existing row or
+        skip safely instead of raising an exception.
+        """
+        if not rows:
+            return
 
+        for row in rows:
+            url = (row.get("url") or "").strip()
+            normalized_url = url.rstrip("/").lower()
+
+            skill_id = row.get("skill_id")
+            canonical_topic = (row.get("canonical_topic") or "").strip().lower()
+            current_level = (row.get("current_level") or "none").strip().lower()
+            target_level = (row.get("target_level") or "beginner").strip().lower()
+
+            if not normalized_url or not skill_id or not canonical_topic:
+                continue
+
+            payload = {
+                "track_id": row.get("track_id"),
+                "skill_id": skill_id,
+                "plan_id": row.get("plan_id"),
+                "week_topic": row.get("week_topic"),
+                "canonical_topic": canonical_topic,
+                "current_level": current_level,
+                "target_level": target_level,
+                "resource_type": row.get("resource_type"),
+                "title": row.get("title"),
+                "url": normalized_url,
+                "snippet": row.get("snippet"),
+                "source_provider": row.get("source_provider"),
+                "source_domain": row.get("source_domain"),
+                "estimated_duration_minutes": row.get("estimated_duration_minutes"),
+                "base_score": float(row.get("base_score", 0) or 0),
+                "final_score": float(row.get("final_score", 0) or 0),
+                "times_selected": int(row.get("times_selected", 1) or 1),
+                "times_validation_passed": int(row.get("times_validation_passed", 1) or 1),
+                "times_used_in_final_plan": int(row.get("times_used_in_final_plan", 1) or 1),
+                "is_active": bool(row.get("is_active", True)),
+                "is_official": bool(row.get("is_official", False)),
+                "is_practical": bool(row.get("is_practical", False)),
+                "was_fallback": bool(row.get("was_fallback", False)),
+            }
+
+            try:
+                # First try exact normalized-url lookup. This matches the DB uniqueness rule
+                # better than the old skill/topic/level/url lookup.
                 existing = (
                     self.client.table("discovered_learning_resources")
                     .select("*")
-                    .eq("skill_id", skill_id)
-                    .eq("canonical_topic", canonical_topic)
-                    .eq("current_level", current_level)
-                    .eq("target_level", target_level)
-                    .eq("url", url)
+                    .eq("url", normalized_url)
                     .limit(1)
                     .execute()
                 )
@@ -743,65 +785,55 @@ class CareerRepository:
                 if existing.data:
                     existing_row = existing.data[0]
 
+                    update_payload = {
+                        **payload,
+                        "times_selected": int(existing_row.get("times_selected", 0) or 0) + payload["times_selected"],
+                        "times_validation_passed": int(existing_row.get("times_validation_passed", 0) or 0) + payload["times_validation_passed"],
+                        "times_used_in_final_plan": int(existing_row.get("times_used_in_final_plan", 0) or 0) + payload["times_used_in_final_plan"],
+                        "final_score": max(
+                            float(existing_row.get("final_score", 0) or 0),
+                            payload["final_score"],
+                        ),
+                        "base_score": max(
+                            float(existing_row.get("base_score", 0) or 0),
+                            payload["base_score"],
+                        ),
+                        "is_active": True,
+                    }
+
                     (
                         self.client.table("discovered_learning_resources")
-                        .update({
-                            "times_selected": int(existing_row.get("times_selected", 1) or 1) + int(row.get("times_selected", 1) or 1),
-                            "times_validation_passed": int(existing_row.get("times_validation_passed", 1) or 1) + int(row.get("times_validation_passed", 1) or 1),
-                            "times_used_in_final_plan": int(existing_row.get("times_used_in_final_plan", 1) or 1) + int(row.get("times_used_in_final_plan", 1) or 1),
-                            "final_score": max(
-                                float(existing_row.get("final_score", 0) or 0),
-                                float(row.get("final_score", 0) or 0),
-                            ),
-                            "base_score": max(
-                                float(existing_row.get("base_score", 0) or 0),
-                                float(row.get("base_score", 0) or 0),
-                            ),
-                            "week_topic": row.get("week_topic"),
-                            "source_provider": row.get("source_provider"),
-                            "source_domain": row.get("source_domain"),
-                            "estimated_duration_minutes": row.get("estimated_duration_minutes"),
-                            "is_official": bool(row.get("is_official", False)),
-                            "is_practical": bool(row.get("is_practical", False)),
-                            "was_fallback": bool(row.get("was_fallback", False)),
-                            "track_id": row.get("track_id"),
-                            "plan_id": row.get("plan_id"),
-                            "title": row.get("title"),
-                            "snippet": row.get("snippet"),
-                            "resource_type": row.get("resource_type"),
-                            "is_active": True,
-                        })
+                        .update(update_payload)
                         .eq("id", existing_row["id"])
                         .execute()
                     )
-                else:
-                    payload = {
-                        "track_id": row.get("track_id"),
-                        "skill_id": skill_id,
-                        "plan_id": row.get("plan_id"),
-                        "week_topic": row.get("week_topic"),
-                        "canonical_topic": canonical_topic,
-                        "current_level": current_level,
-                        "target_level": target_level,
-                        "resource_type": row.get("resource_type"),
-                        "title": row.get("title"),
-                        "url": url,
-                        "snippet": row.get("snippet"),
-                        "source_provider": row.get("source_provider"),
-                        "source_domain": row.get("source_domain"),
-                        "estimated_duration_minutes": row.get("estimated_duration_minutes"),
-                        "base_score": float(row.get("base_score", 0) or 0),
-                        "final_score": float(row.get("final_score", 0) or 0),
-                        "times_selected": int(row.get("times_selected", 1) or 1),
-                        "times_validation_passed": int(row.get("times_validation_passed", 1) or 1),
-                        "times_used_in_final_plan": int(row.get("times_used_in_final_plan", 1) or 1),
-                        "is_active": bool(row.get("is_active", True)),
-                        "is_official": bool(row.get("is_official", False)),
-                        "is_practical": bool(row.get("is_practical", False)),
-                        "was_fallback": bool(row.get("was_fallback", False)),
-                    }
+                    continue
+
+                try:
                     self.client.table("discovered_learning_resources").insert(payload).execute()
 
-        except Exception as e:
-            logger.error(f"Error upserting discovered learning resources: {e}", exc_info=True)
-            raise
+                except Exception as insert_error:
+                    error_text = str(insert_error).lower()
+
+                    # Parallel generation can create a race condition:
+                    # two weeks may insert the same URL at the same time.
+                    # If the second one loses the race, skip safely.
+                    if "duplicate key value" in error_text or "23505" in error_text:
+                        logger.warning(
+                            "Duplicate discovered resource skipped safely | url=%s | reason=%s",
+                            normalized_url,
+                            insert_error,
+                        )
+                        continue
+
+                    raise
+
+            except Exception as e:
+                # Resource caching must never fail the whole plan generation.
+                logger.warning(
+                    "Skipping discovered resource persistence failure | url=%s | reason=%s",
+                    normalized_url,
+                    e,
+                    exc_info=True,
+                )
+                continue

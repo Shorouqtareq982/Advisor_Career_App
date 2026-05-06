@@ -14,6 +14,8 @@ from features.career_builder.repositories.career_repository import CareerReposit
 from features.career_builder.services.career_analysis_service import CareerAnalysisService
 from features.career_builder.services.resource_search_service import ResourceSearchService
 from features.career_builder.services.weekly_resource_orchestrator import WeeklyResourceOrchestrator
+from features.career_builder.services.generation_runtime import GenerationRuntime
+from features.career_builder.services.parallel_plan_generation_mixin import ParallelPlanGenerationMixin
 from shared.providers.llm_models.llm_provider import create_llm_provider
 
 logger = logging.getLogger(__name__)
@@ -158,7 +160,7 @@ OUTPUT JSON
 """
 
 
-class PlanGenerationService:
+class PlanGenerationService(ParallelPlanGenerationMixin):
     LEVEL_VALUES = {
         "none": 0,
         "beginner": 1,
@@ -413,126 +415,31 @@ class PlanGenerationService:
 
         weekly_breakdown = plan_data.get("weekly_breakdown", []) or []
 
-        for week in weekly_breakdown:
-            level_info = self._infer_week_levels_from_topic(
-                week=week,
-                used_learning_targets=used_learning_targets,
-            )
+        runtime = GenerationRuntime(
+            max_llm_parallel=4,
+            max_resource_parallel=4,
+        )
 
-            try:
-                study_guide = await self._generate_personalized_study_guide_for_week(
-                    track_name=track_name,
-                    week=week,
-                    current_level=level_info.get("current_level", "beginner"),
-                    target_level=level_info.get("target_level", "intermediate"),
-                    available_hours_per_week=available_hours_per_week,
-                )
-            except Exception as e:
-                logger.warning(
-                    "Study guide generation failed for week %s, using fallback. Reason: %s",
-                    week.get("week_number"),
-                    e,
-                )
-                study_guide = self._build_study_guide(
-                    skill_name=(week.get("focus_skills") or ["General Skill"])[0],
-                    subtopic_terms=week.get("topic", "Weekly topic"),
-                    current_level=level_info.get("current_level", "none"),
-                    target_level=level_info.get("target_level", "beginner"),
-                    available_hours=available_hours_per_week,
-                    guide_style=week.get("guide_style", "hands_on"),
-                    resource_focus=week.get("resource_focus", []),
-                )
-
-            week["study_guide"] = study_guide
+        weekly_breakdown = await self._attach_study_guides_parallel(
+            weekly_breakdown=weekly_breakdown,
+            used_learning_targets=used_learning_targets,
+            track_name=track_name,
+            available_hours_per_week=available_hours_per_week,
+            runtime=runtime,
+        )
 
         track_keywords = self._build_track_keywords(track_name)
 
-        for week in weekly_breakdown:
-            level_info = self._infer_week_levels_from_topic(
-                week=week,
-                used_learning_targets=used_learning_targets,
-            )
-
-            resource_queries = self._build_resource_queries_for_week(
-                week=week,
-                current_level=level_info.get("current_level", "beginner"),
-                target_level=level_info.get("target_level", "intermediate"),
-                duration_weeks=duration_weeks,
-                week_number=int(week.get("week_number", 1) or 1),
-                all_used_learning_targets=used_learning_targets,
-            )
-
-            focus_skill = (week.get("focus_skills") or [None])[0]
-            skill_id = None
-            for target in used_learning_targets:
-                if target.get("skill_name") == focus_skill:
-                    skill_id = target.get("skill_id")
-                    break
-
-            if self.weekly_resource_orchestrator:
-                try:
-                    week_result = await self.weekly_resource_orchestrator.build_week_resources(
-                        plan_id=None,
-                        track_id=track_id,
-                        track_name=track_name,
-                        week=week,
-                        resource_queries=resource_queries,
-                        current_level=level_info.get("current_level", "beginner"),
-                        target_level=level_info.get("target_level", "intermediate"),
-                        available_hours_per_week=available_hours_per_week,
-                        context_keywords=week.get("focus_skills", []) + track_keywords + week.get("resource_focus", []),
-                        week_number=week.get("week_number"),
-                        duration_weeks=duration_weeks,
-                        skill_id=skill_id,
-                        skill_name=focus_skill,
-                    )
-                    week["resources"] = week_result["resources"]
-                    week["resource_validation_report"] = week_result["validation_report"]
-                except Exception as e:
-                    logger.warning("Weekly resource orchestration failed for week %s: %s", week.get("week_number"), e, exc_info=True)
-                    fallback_resources = self._build_fallback_resources_for_week(
-                        week=week,
-                        track_name=track_name,
-                        current_level=level_info.get("current_level", "beginner"),
-                        target_level=level_info.get("target_level", "intermediate"),
-                        available_hours_per_week=available_hours_per_week,
-                    )
-                    week["resources"] = self._dedupe_resources(fallback_resources, set())
-                    week["resource_validation_report"] = {
-                        "source": "local_fallback",
-                        "resource_count": len(week["resources"]),
-                        "expected_resource_count": self._expected_week_resource_count(available_hours_per_week),
-                        "youtube_expected": self._expected_youtube_count(available_hours_per_week),
-                        "resource_type_counts": self._resource_type_counts(week["resources"]),
-                        "contract_passed": self._week_resources_meet_contract(
-                            resources=week["resources"],
-                            available_hours_per_week=available_hours_per_week,
-                        ),
-                    }
-            else:
-                fallback_resources = self._build_fallback_resources_for_week(
-                    week=week,
-                    track_name=track_name,
-                    current_level=level_info.get("current_level", "beginner"),
-                    target_level=level_info.get("target_level", "intermediate"),
-                    available_hours_per_week=available_hours_per_week,
-                )
-                week["resources"] = self._dedupe_resources(fallback_resources, set())
-                week["resource_validation_report"] = {
-                    "source": "local_fallback",
-                    "resource_count": len(week["resources"]),
-                    "expected_resource_count": self._expected_week_resource_count(available_hours_per_week),
-                    "youtube_expected": self._expected_youtube_count(available_hours_per_week),
-                    "resource_type_counts": self._resource_type_counts(week["resources"]),
-                    "contract_passed": self._week_resources_meet_contract(
-                        resources=week["resources"],
-                        available_hours_per_week=available_hours_per_week,
-                    ),
-                }
-
-            week.pop("resource_focus", None)
-            week.pop("avoid_topics", None)
-            week.pop("guide_style", None)
+        weekly_breakdown = await self._attach_resources_parallel(
+            weekly_breakdown=weekly_breakdown,
+            used_learning_targets=used_learning_targets,
+            track_id=track_id,
+            track_name=track_name,
+            track_keywords=track_keywords,
+            duration_weeks=duration_weeks,
+            available_hours_per_week=available_hours_per_week,
+            runtime=runtime,
+        )
 
         plan_data["weekly_breakdown"] = weekly_breakdown
 
@@ -556,9 +463,13 @@ class PlanGenerationService:
                 "resource_personalization": True,
                 "cumulative_mode": True,
                 "smart_resource_sequencing": True,
-                "global_resource_dedupe": False,
+                "global_resource_dedupe": True,
                 "two_stage_llm": True,
                 "weekly_resource_contract": True,
+                "parallel_generation": True,
+                "max_llm_parallel": runtime.max_llm_parallel,
+                "max_resource_parallel": runtime.max_resource_parallel,
+                "provider_health": runtime.snapshot(),
             },
             **plan_data,
         }

@@ -47,7 +47,7 @@ GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
 TAVILY_URL = "https://api.tavily.com/search"
 
 SKILLS_LIMIT = int(os.getenv("PROJECT_SEED_SKILLS_LIMIT", "50"))
-START_OFFSET = int(os.getenv("PROJECT_SEED_START_OFFSET", "0"))
+START_OFFSET = int(os.getenv("PROJECT_SEED_START_OFFSET", "100"))
 MAX_PROJECTS_PER_SKILL = int(os.getenv("MAX_PROJECTS_PER_SKILL", "3"))
 
 MIN_GITHUB_STARS = int(os.getenv("PROJECT_MIN_GITHUB_STARS", "10"))
@@ -457,7 +457,7 @@ def build_db_rows(skill: Dict[str, Any], projects: List[Dict[str, Any]]) -> List
             "week_topic": f"{skill_name} mini project implementation",
             "canonical_topic": f"{skill_name} mini project implementation".lower(),
             "current_level": "none",
-            "target_level": "beginner",
+            "target_level": "intermmediate",
             "resource_type": "project",
             "title": project["title"][:300],
             "url": project["url"],

@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ portfolio.name }} | iPortfolio</title>
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+
+    <style>
+        *{
+            margin:0;
+            padding:0;
+            box-sizing:border-box;
+        }
+
+        html{
+            scroll-behavior:smooth;
+        }
+
+        body{
+            font-family:'Roboto',sans-serif;
+            color:#272829;
+            background:#fff;
+        }
+
+        :root{
+            --primary:#040b14;
+            --secondary:#149ddd;
+            --light:#f4fafd;
+            --text:#272829;
+        }
+
+        h1,h2,h3,h4,h5{
+            font-family:'Raleway',sans-serif;
+        }
+
+        a{
+            text-decoration:none;
+            color:inherit;
+        }
+
+        img{
+            max-width:100%;
+            display:block;
+        }
+
+        /* =========================
+            LAYOUT
+        ========================== */
+
+        .layout{
+            display:flex;
+            min-height:100vh;
+        }
+
+        /* =========================
+            SIDEBAR
+        ========================== */
+
+        .sidebar{
+            width:300px;
+            background:var(--primary);
+            position:fixed;
+            top:0;
+            left:0;
+            height:100vh;
+            overflow-y:auto;
+            padding:30px 20px;
+            z-index:1000;
+        }
+
+        .profile{
+            text-align:center;
+        }
+
+        .profile-image{
+            width:120px;
+            height:120px;
+            border-radius:50%;
+            overflow:hidden;
+            margin:auto;
+            border:8px solid rgba(255,255,255,0.12);
+        }
+
+        .profile-image img{
+            width:100%;
+            height:100%;
+            object-fit:cover;
+        }
+
+        .profile h2{
+            color:white;
+            margin-top:18px;
+            font-size:26px;
+            font-weight:700;
+        }
+
+        .social-links{
+            display:flex;
+            justify-content:center;
+            gap:10px;
+            margin:20px 0 30px;
+        }
+
+        .social-links a{
+            width:38px;
+            height:38px;
+            border-radius:50%;
+            background:rgba(255,255,255,0.1);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color:white;
+            transition:0.3s;
+        }
+
+        .social-links a:hover{
+            background:var(--secondary);
+        }
+
+        .nav-menu{
+            display:flex;
+            flex-direction:column;
+            gap:8px;
+        }
+
+        .nav-menu a{
+            display:flex;
+            align-items:center;
+            gap:12px;
+            padding:14px 10px;
+            border-radius:6px;
+            color:#a8a9b4;
+            transition:0.3s;
+            font-size:16px;
+        }
+
+        .nav-menu a:hover,
+        .nav-menu a.active{
+            color:white;
+            background:rgba(255,255,255,0.05);
+        }
+
+        .nav-menu a:hover i,
+        .nav-menu a.active i{
+            color:var(--secondary);
+        }
+
+        /* =========================
+            MAIN CONTENT
+        ========================== */
+
+        .main{
+            margin-left:300px;
+            width:calc(100% - 300px);
+        }
+
+        section{
+            padding:70px 60px;
+        }
+
+        .section-title{
+            margin-bottom:40px;
+        }
+
+        .section-title h2{
+            font-size:34px;
+            font-weight:700;
+            color:#050d18;
+            position:relative;
+            padding-bottom:10px;
+        }
+
+        .section-title h2::after{
+            content:"";
+            position:absolute;
+            left:0;
+            bottom:0;
+            width:55px;
+            height:3px;
+            background:var(--secondary);
+        }
+
+        .section-title p{
+            margin-top:20px;
+            line-height:1.8;
+        }
+
+        /* =========================
+            HERO
+        ========================== */
+
+        .hero{
+            height:100vh;
+            background:var(--primary);
+            position:relative;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            text-align:center;
+            overflow:hidden;
+        }
+
+        .hero::before{
+            content:"";
+            position:absolute;
+            inset:0;
+            background:rgba(4,11,20,0.85);
+        }
+
+        .hero-content{
+            position:relative;
+            z-index:2;
+        }
+
+        .hero-avatar{
+            width:130px;
+            height:130px;
+            border-radius:50%;
+            overflow:hidden;
+            margin:auto auto 25px;
+            border:5px solid rgba(255,255,255,0.15);
+        }
+
+        .hero-avatar img{
+            width:100%;
+            height:100%;
+            object-fit:cover;
+        }
+
+        .hero h1{
+            font-size:58px;
+            color:white;
+            font-weight:700;
+        }
+
+        .hero p{
+            margin-top:15px;
+            font-size:26px;
+            color:rgba(255,255,255,0.85);
+        }
+
+        /* =========================
+            ABOUT
+        ========================== */
+
+        .about-wrapper{
+            display:flex;
+            gap:40px;
+            align-items:flex-start;
+        }
+
+        .about-image{
+            width:260px;
+            border-radius:10px;
+            overflow:hidden;
+            flex-shrink:0;
+        }
+
+        .about-content h3{
+            font-size:28px;
+            color:#050d18;
+            margin-bottom:15px;
+        }
+
+        .about-content p{
+            line-height:1.8;
+            margin-bottom:20px;
+        }
+
+        .info-grid{
+            display:grid;
+            grid-template-columns:repeat(2,1fr);
+            gap:20px;
+        }
+
+        .info-item strong{
+            color:#050d18;
+        }
+
+        /* =========================
+            RESUME
+        ========================== */
+
+        .resume{
+            background:var(--light);
+        }
+
+        .resume-grid{
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:40px;
+        }
+
+        .resume-column h3{
+            font-size:28px;
+            margin-bottom:25px;
+            color:#050d18;
+        }
+
+        .resume-item{
+            position:relative;
+            padding-left:30px;
+            margin-bottom:40px;
+            border-left:2px solid #d0e6f6;
+        }
+
+        .resume-item::before{
+            content:"";
+            position:absolute;
+            left:-9px;
+            top:0;
+            width:16px;
+            height:16px;
+            border-radius:50%;
+            background:white;
+            border:2px solid var(--secondary);
+        }
+
+        .resume-item h4{
+            font-size:20px;
+            color:#050d18;
+            margin-bottom:8px;
+        }
+
+        .resume-item h5{
+            display:inline-block;
+            padding:6px 14px;
+            background:rgba(20,157,221,0.1);
+            color:var(--secondary);
+            border-radius:5px;
+            margin:12px 0;
+            font-size:14px;
+        }
+
+        .resume-item em{
+            display:block;
+            margin-bottom:10px;
+            color:#666;
+        }
+
+        .resume-item p{
+            line-height:1.8;
+        }
+
+        /* =========================
+            PORTFOLIO
+        ========================== */
+
+        .portfolio-grid{
+            display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+            gap:25px;
+        }
+
+        .portfolio-item{
+            position:relative;
+            overflow:hidden;
+            border-radius:10px;
+            background:#dbe7ef;
+            min-height:250px;
+        }
+
+        .portfolio-overlay{
+            position:absolute;
+            inset:0;
+            background:linear-gradient(
+                to top,
+                rgba(0,0,0,0.75),
+                transparent
+            );
+            display:flex;
+            align-items:flex-end;
+            padding:20px;
+        }
+
+        .portfolio-overlay h4{
+            color:white;
+            font-size:18px;
+        }
+
+        .portfolio-overlay p{
+            color:rgba(255,255,255,0.75);
+            font-size:13px;
+            margin-top:4px;
+        }
+
+        /* =========================
+            SERVICES
+        ========================== */
+
+        .services{
+            background:var(--light);
+        }
+
+        .services-grid{
+            display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+            gap:25px;
+        }
+
+        .service-card{
+            background:white;
+            padding:30px;
+            border-radius:10px;
+            box-shadow:0 5px 20px rgba(0,0,0,0.05);
+        }
+
+        .service-icon{
+            width:60px;
+            height:60px;
+            border-radius:50%;
+            background:var(--secondary);
+            color:white;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:22px;
+            margin-bottom:20px;
+        }
+
+        .service-card h3{
+            margin-bottom:12px;
+            color:#050d18;
+        }
+
+        .service-card p{
+            line-height:1.7;
+        }
+
+        /* =========================
+            CONTACT
+        ========================== */
+
+        .contact-wrapper{
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:35px;
+        }
+
+        .contact-box{
+            background:white;
+            padding:35px;
+            box-shadow:0 5px 20px rgba(0,0,0,0.08);
+        }
+
+        .contact-item{
+            display:flex;
+            gap:15px;
+            margin-bottom:30px;
+        }
+
+        .contact-icon{
+            width:50px;
+            height:50px;
+            border-radius:50%;
+            background:rgba(20,157,221,0.1);
+            color:var(--secondary);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            flex-shrink:0;
+        }
+
+        .contact-item h4{
+            margin-bottom:5px;
+            color:#050d18;
+        }
+
+        form input,
+        form textarea{
+            width:100%;
+            padding:14px;
+            border:1px solid #ddd;
+            margin-bottom:18px;
+            font-family:inherit;
+            border-radius:5px;
+        }
+
+        form textarea{
+            min-height:160px;
+            resize:vertical;
+        }
+
+        .btn{
+            border:none;
+            background:var(--secondary);
+            color:white;
+            padding:14px 28px;
+            cursor:pointer;
+            border-radius:5px;
+            font-size:15px;
+        }
+
+        /* =========================
+            FOOTER
+        ========================== */
+
+        footer{
+            background:var(--light);
+            padding:30px;
+            text-align:center;
+        }
+
+        footer p{
+            margin-bottom:10px;
+        }
+
+        /* =========================
+            RESPONSIVE
+        ========================== */
+
+        @media(max-width:992px){
+
+            .sidebar{
+                position:relative;
+                width:100%;
+                height:auto;
+            }
+
+            .layout{
+                flex-direction:column;
+            }
+
+            .main{
+                margin-left:0;
+                width:100%;
+            }
+
+            .about-wrapper,
+            .resume-grid,
+            .contact-wrapper{
+                grid-template-columns:1fr;
+                flex-direction:column;
+            }
+
+            section{
+                padding:50px 25px;
+            }
+
+            .hero h1{
+                font-size:42px;
+            }
+
+            .hero p{
+                font-size:20px;
+            }
+
+            .info-grid{
+                grid-template-columns:1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="layout">
+
+    <!-- ================= SIDEBAR ================= -->
+
+    <aside class="sidebar">
+
+        <div class="profile">
+
+            <div class="profile-image">
+                <img
+                    src="{{ portfolio.profile_image_url or 'https://via.placeholder.com/300' }}"
+                    alt="{{ portfolio.name }}"
+                >
+            </div>
+
+            <h2>{{ portfolio.name or 'Alex Smith' }}</h2>
+
+            <div class="social-links">
+
+                {% if portfolio.twitter %}
+                <a href="{{ portfolio.twitter }}" target="_blank">
+                    <i class="fab fa-x-twitter"></i>
+                </a>
+                {% endif %}
+
+                {% if portfolio.linkedin %}
+                <a href="{{ portfolio.linkedin }}" target="_blank">
+                    <i class="fab fa-linkedin"></i>
+                </a>
+                {% endif %}
+
+                {% if portfolio.github %}
+                <a href="{{ portfolio.github }}" target="_blank">
+                    <i class="fab fa-github"></i>
+                </a>
+                {% endif %}
+
+            </div>
+
+            <nav class="nav-menu">
+                <a href="#hero" class="active">
+                    <i class="fa-solid fa-house"></i>
+                    Home
+                </a>
+
+                <a href="#about">
+                    <i class="fa-solid fa-user"></i>
+                    About
+                </a>
+
+                <a href="#resume">
+                    <i class="fa-solid fa-file"></i>
+                    Resume
+                </a>
+
+                <a href="#portfolio">
+                    <i class="fa-solid fa-image"></i>
+                    Portfolio
+                </a>
+
+                <a href="#services">
+                    <i class="fa-solid fa-briefcase"></i>
+                    Services
+                </a>
+
+                <a href="#contact">
+                    <i class="fa-solid fa-envelope"></i>
+                    Contact
+                </a>
+            </nav>
+
+        </div>
+
+    </aside>
+
+    <!-- ================= MAIN ================= -->
+
+    <main class="main">
+
+        <!-- HERO -->
+
+        <section class="hero" id="hero">
+
+            <div class="hero-content">
+
+                <div class="hero-avatar">
+                    <img
+                        src="{{ portfolio.profile_image_url or 'https://via.placeholder.com/300' }}"
+                        alt="{{ portfolio.name }}"
+                    >
+                </div>
+
+                <h1>{{ portfolio.name or 'Alex Smith' }}</h1>
+
+                <p>
+                    I'm {{ portfolio.title or 'Developer' }}
+                </p>
+
+            </div>
+
+        </section>
+
+        <!-- ABOUT -->
+
+        <section id="about">
+
+            <div class="section-title">
+                <h2>About</h2>
+
+                <p>
+                    {{ portfolio.about or 'Write something about yourself...' }}
+                </p>
+            </div>
+
+            <div class="about-wrapper">
+
+                <div class="about-image">
+                    <img
+                        src="{{ portfolio.profile_image_url or 'https://via.placeholder.com/400' }}"
+                        alt="{{ portfolio.name }}"
+                    >
+                </div>
+
+                <div class="about-content">
+
+                    <h3>
+                        {{ portfolio.title or 'UI/UX Designer & Web Developer' }}
+                    </h3>
+
+                    <p>
+                        {{ portfolio.about }}
+                    </p>
+
+                    <div class="info-grid">
+
+                        <div class="info-item">
+                            <strong>Phone:</strong>
+                            {{ portfolio.phone or '+123 456 7890' }}
+                        </div>
+
+                        <div class="info-item">
+                            <strong>Email:</strong>
+                            {{ portfolio.email or 'email@example.com' }}
+                        </div>
+
+                        <div class="info-item">
+                            <strong>Location:</strong>
+                            {{ portfolio.location or 'New York, USA' }}
+                        </div>
+
+                        <div class="info-item">
+                            <strong>Freelance:</strong>
+                            Available
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- RESUME -->
+
+        <section class="resume" id="resume">
+
+            <div class="section-title">
+                <h2>Resume</h2>
+
+                <p>
+                    Professional experience and education background.
+                </p>
+            </div>
+
+            <div class="resume-grid">
+
+                <!-- EDUCATION -->
+
+                <div class="resume-column">
+
+                    <h3>Education</h3>
+
+                    {% for edu in portfolio.education %}
+                    <div class="resume-item">
+
+                        <h4>{{ edu.degree }}</h4>
+
+                        <h5>{{ edu.period }}</h5>
+
+                        <em>{{ edu.institution }}</em>
+
+                        <p>
+                            {{ edu.description }}
+                        </p>
+
+                    </div>
+                    {% endfor %}
+
+                </div>
+
+                <!-- EXPERIENCE -->
+
+                <div class="resume-column">
+
+                    <h3>Professional Experience</h3>
+
+                    {% for exp in portfolio.experiences %}
+                    <div class="resume-item">
+
+                        <h4>{{ exp.job_title }}</h4>
+
+                        <h5>{{ exp.period }}</h5>
+
+                        <em>{{ exp.company }}</em>
+
+                        <p>
+                            {{ exp.description }}
+                        </p>
+
+                    </div>
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- PORTFOLIO -->
+
+        <section id="portfolio">
+
+            <div class="section-title">
+                <h2>Portfolio</h2>
+
+                <p>
+                    Some of my recent projects and work.
+                </p>
+            </div>
+
+            <div class="portfolio-grid">
+
+                {% for project in portfolio.projects %}
+                <div class="portfolio-item">
+
+                    <div class="portfolio-overlay">
+
+                        <div>
+
+                            <h4>{{ project.name }}</h4>
+
+                            <p>{{ project.technologies }}</p>
+
+                            {% if project.link %}
+                            <div style="margin-top:10px;">
+                                <a href="{{ project.link }}"
+                                   target="_blank"
+                                   style="color:white;">
+                                    View Project →
+                                </a>
+                            </div>
+                            {% endif %}
+
+                        </div>
+
+                    </div>
+
+                </div>
+                {% endfor %}
+
+            </div>
+
+        </section>
+
+        <!-- SERVICES -->
+
+        <section class="services" id="services">
+
+            <div class="section-title">
+                <h2>Services</h2>
+
+                <p>
+                    Services I can provide for your business or project.
+                </p>
+            </div>
+
+            <div class="services-grid">
+
+                <div class="service-card">
+                    <div class="service-icon">
+                        <i class="fa-solid fa-code"></i>
+                    </div>
+
+                    <h3>Web Development</h3>
+
+                    <p>
+                        Modern and responsive web applications.
+                    </p>
+                </div>
+
+                <div class="service-card">
+                    <div class="service-icon">
+                        <i class="fa-solid fa-pen-ruler"></i>
+                    </div>
+
+                    <h3>UI/UX Design</h3>
+
+                    <p>
+                        Beautiful and intuitive user experiences.
+                    </p>
+                </div>
+
+                <div class="service-card">
+                    <div class="service-icon">
+                        <i class="fa-solid fa-chart-line"></i>
+                    </div>
+
+                    <h3>Consulting</h3>
+
+                    <p>
+                        Expert technical and business consultation.
+                    </p>
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- CONTACT -->
+
+        <section id="contact">
+
+            <div class="section-title">
+                <h2>Contact</h2>
+
+                <p>
+                    Feel free to contact me anytime.
+                </p>
+            </div>
+
+            <div class="contact-wrapper">
+
+                <!-- LEFT -->
+
+                <div class="contact-box">
+
+                    <div class="contact-item">
+
+                        <div class="contact-icon">
+                            <i class="fa-solid fa-location-dot"></i>
+                        </div>
+
+                        <div>
+                            <h4>Address</h4>
+
+                            <p>
+                                {{ portfolio.location or 'New York, USA' }}
+                            </p>
+                        </div>
+
+                    </div>
+
+                    <div class="contact-item">
+
+                        <div class="contact-icon">
+                            <i class="fa-solid fa-phone"></i>
+                        </div>
+
+                        <div>
+                            <h4>Phone</h4>
+
+                            <p>
+                                {{ portfolio.phone or '+123 456 7890' }}
+                            </p>
+                        </div>
+
+                    </div>
+
+                    <div class="contact-item">
+
+                        <div class="contact-icon">
+                            <i class="fa-solid fa-envelope"></i>
+                        </div>
+
+                        <div>
+                            <h4>Email</h4>
+
+                            <p>
+                                {{ portfolio.email or 'email@example.com' }}
+                            </p>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <!-- RIGHT -->
+
+                <div class="contact-box">
+
+                    <form>
+
+                        <input type="text" placeholder="Your Name">
+
+                        <input type="email" placeholder="Your Email">
+
+                        <input type="text" placeholder="Subject">
+
+                        <textarea placeholder="Message"></textarea>
+
+                        <button class="btn">
+                            Send Message
+                        </button>
+
+                    </form>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- FOOTER -->
+
+        <footer>
+
+            <p>
+                © Copyright iPortfolio.
+                All Rights Reserved
+            </p>
+
+            <small>
+                Designed with Jinja2 & HTML
+            </small>
+
+        </footer>
+
+    </main>
+
+</div>
+
+</body>
+</html>

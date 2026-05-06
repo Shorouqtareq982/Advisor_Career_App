@@ -89,8 +89,6 @@ def is_whitelisted(flagged: str, whitelist: set) -> bool:
 
 
 def check_typos(cv_text: str, extra_skills: set = None, user_info: dict = None) -> list[dict]:
-    print("Checking typos with LanguageTool...",cv_text[:500])
-
     # Build unified whitelist
     whitelist = SKILLS_WHITELIST | INSTITUTIONS_WHITELIST
     whitelist.update(extract_abbreviations(cv_text))

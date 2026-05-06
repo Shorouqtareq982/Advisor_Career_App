@@ -11,11 +11,11 @@ from core.config import Settings
 logger = logging.getLogger(__name__)
 
 class Gemini(LLMProvider): 
-    def __init__(self, settings: Settings, system_prompt = None):
+    def __init__(self, settings: Settings, system_prompt = None, model: Optional[str] = None):
         self.settings = settings
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         self.system_prompt = system_prompt
-        self.model = settings.GEMINI_MODEL
+        self.model = model or settings.GEMINI_MODEL
         self.quota_exhausted = False  # Track if quota is exhausted
         logger.info(f"✅ Gemini provider initialized with model: {self.model}")
     
