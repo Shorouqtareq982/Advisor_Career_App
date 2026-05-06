@@ -48,11 +48,29 @@ scikit-learn
 google-genai
 
 # ===============================
+# Mock Interview ML (Inference + Notebooks)
+# ===============================
+numpy
+torch
+torchvision
+opencv-python
+spacy
+opensmile
+soundfile
+tqdm
+decord
+gensim
+matplotlib
+seaborn
+#install FFMPEG separately for decord to work
+# ===============================
 # Utilities
 # ===============================
 python-dateutil
 typing-extensions
 language-tool-python
+celery
+redis
 
 # ===============================
 # Portfolio Feature
