@@ -3,6 +3,7 @@ Application Configuration Settings
 """
 from typing import List, Optional
 from pathlib import Path
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     # Azure Blob Storage
     AZURE_STORAGE_CONNECTION_STRING: str = ""
     AZURE_CONTAINER_NAME: str = ""
+    AZURE_AUDIO_CONTAINER_NAME: str = ""
     STORAGE_ACCOUNT_NAME: str = ""
     STORAGE_ACCOUNT_KEY: str = ""
 
@@ -54,6 +56,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = ""
     GEMINI_EMBEDDING_MODEL: str = ""
+    ASSEMBLYAI_API_KEY: str = Field(default="", validation_alias="AssemblyAI_API_KEY")
+    ELEVENLABS_API_KEY: str = Field(default="", validation_alias="ElevenLabs_API_KEY")
     OPENAI_API_KEY: str = ""
     MISTRAL_API_KEY: Optional[str] = None
     MISTRAL_MODEL: Optional[str] = None
@@ -67,6 +71,10 @@ class Settings(BaseSettings):
     # External APIs
     JOB_API_BASE_URL: str = ""
     JOB_API_KEY: str = ""
+
+    # Celery
+    CELERY_BROKER_URL: str = ""
+    CELERY_RESULT_BACKEND: str = ""
     
     
     class Config:
