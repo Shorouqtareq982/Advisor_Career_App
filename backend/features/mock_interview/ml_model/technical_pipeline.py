@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any, Dict, List
 
 
@@ -37,3 +38,14 @@ def chunk_transcript_words(response_payload: str) -> List[str]:
 		chunks[-1].append(word["text"])
 
 	return [" ".join(chunk).strip() for chunk in chunks if " ".join(chunk).strip()]
+
+
+def clean_answer_text(text: str) -> str:
+	if not text:
+		return ""
+	cleaned = re.sub(r"\s+", " ", text).strip()
+	return cleaned
+
+
+def preprocess_chunks(chunks: List[str]) -> List[str]:
+	return [clean_answer_text(chunk) for chunk in chunks]

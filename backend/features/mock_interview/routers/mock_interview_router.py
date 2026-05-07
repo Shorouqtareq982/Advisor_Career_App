@@ -55,6 +55,8 @@ async def notify_behavioral_upload(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    await service.verify_blob_ready(payload.blob_url)
+
     background_tasks.add_task(
         service.process_behavioral_upload,
         payload.session_id,
