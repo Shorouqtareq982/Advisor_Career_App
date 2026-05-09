@@ -4,12 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'core/services/supabase_service.dart';
 import 'core/network/api_client.dart';
-<<<<<<< HEAD
 import 'core/services/notification_service.dart';
-=======
 import 'core/services/app_notification_service.dart';
 import 'core/services/supabase_service.dart';
->>>>>>> 3a52581b473b2c991b14549a0257d0785d0cfcf0
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
