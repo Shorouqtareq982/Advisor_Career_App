@@ -54,7 +54,14 @@ import '../../features/career_build/presentation/screens/career_plan_view_screen
 
 import '../../features/mock_interview/presentation/screens/mock_interview_screen.dart';
 import '../../features/market_insight/presentation/screens/market_insights_screen.dart';
-import '../../features/ai_portfolio/presentation/screens/ai_portfolio_screen.dart';
+
+// // ── Ai Portfolio ─────────────────────────────────────────────────────
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_entry_screen.dart';
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_designs_screen.dart';
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_preview_screen.dart';
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_settings_screen.dart';
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_section_details_screen.dart';
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_my_portfolios_screen.dart';
 
 import '../../features/auth/presentation/providers/auth_provider.dart';
 
@@ -86,9 +93,29 @@ class AppRouter {
     debugLogDiagnostics: true,
     redirect: (context, state) async {
       final currentPath = state.uri.path;
+      final currentFragment = state.uri.fragment;
+      final fullLocation = state.uri.toString();
 
-      // splash
-      if (currentPath == '/splash') return null;
+      final normalizedFragmentPath = currentFragment.startsWith('/')
+          ? currentFragment.split('?').first
+          : currentFragment.isNotEmpty
+              ? '/${currentFragment.split('?').first}'
+              : '';
+
+      final effectivePath = normalizedFragmentPath.isNotEmpty
+          ? normalizedFragmentPath
+          : currentPath;
+
+      final isPortfolioWebRoute =
+          effectivePath.startsWith('/ai-portfolio/web/') ||
+              currentFragment.contains('/ai-portfolio/web/') ||
+              fullLocation.contains('/ai-portfolio/web/');
+
+      if (isPortfolioWebRoute) {
+        return null;
+      }
+
+      if (effectivePath == '/splash') return null;
 
       final prefs = await SharedPreferences.getInstance();
       final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
@@ -474,6 +501,7 @@ class AppRouter {
           );
         },
       ),
+
       GoRoute(
         path: '/mock-interview',
         name: 'mock-interview',
@@ -504,10 +532,83 @@ class AppRouter {
         name: 'market-insights',
         builder: (context, state) => const MarketInsightsScreen(),
       ),
+
+      // // ── Mock Interview ──────────────────────────────────────────────────────
       GoRoute(
         path: '/ai-portfolio',
         name: 'ai-portfolio',
-        builder: (context, state) => const AIPortfolioScreen(),
+        builder: (context, state) => const AIPortfolioEntryScreen(),
+      ),
+      GoRoute(
+        path: '/ai-portfolio/designs',
+        name: 'ai-portfolio-designs',
+        builder: (context, state) => const AIPortfolioDesignsScreen(),
+      ),
+      GoRoute(
+        path: '/ai-portfolio/preview',
+        name: 'ai-portfolio-preview',
+        builder: (context, state) => const AIPortfolioPreviewScreen(),
+      ),
+      GoRoute(
+        path: '/ai-portfolio/settings',
+        name: 'ai-portfolio-settings',
+        builder: (context, state) => const AIPortfolioSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/ai-portfolio/my-portfolios',
+        name: 'ai-portfolio-my-portfolios',
+        builder: (context, state) => const AIPortfolioMyPortfoliosScreen(),
+      ),
+      GoRoute(
+        path: '/ai-portfolio/section/:sectionKey',
+        name: 'ai-portfolio-section',
+        builder: (context, state) {
+          final sectionKey = state.pathParameters['sectionKey'] ?? '';
+
+          switch (sectionKey) {
+            case 'about-me':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'About Me',
+                subtitle: 'Tell your professional story',
+              );
+
+            case 'professional-experience':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Professional Experience',
+                subtitle: 'Where you worked and what you achieved',
+              );
+
+            case 'projects':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Projects',
+                subtitle: 'Showcase your best work',
+              );
+
+            case 'skills':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Skills & Expertise',
+                subtitle: 'Showcase your expertise',
+              );
+
+            case 'education':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Education',
+                subtitle: 'Your academic background',
+              );
+
+            case 'contact':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Contact',
+                subtitle: 'Let people reach you',
+              );
+
+            default:
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Section',
+                subtitle: 'Portfolio section',
+              );
+          }
+        },
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

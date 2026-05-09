@@ -28,9 +28,46 @@ class ApiConstants {
   static const String careerRegenerationIntents =
       '$careerBuilder/regeneration-intents';
   static const String careerSavePlan = '$careerBuilder/save-plan';
-
-  // (اختياري لو عندك endpoint)
   static const String careerGetPlans = '$careerBuilder/plans';
+
+  // ===============================
+  // AI Portfolio
+  // ===============================
+  static const String aiPortfolio = '/api/v1/portfolio';
+
+  static const String portfolioTemplates = '$aiPortfolio/templates';
+
+  static String portfolioPreviewTemplate(int templateId) {
+    return '$aiPortfolio/preview_template/$templateId';
+  }
+
+  static const String portfolioUploadImage = '$aiPortfolio/upload-image';
+
+  static const String portfolioCreate = '$aiPortfolio/';
+
+  static String portfolioById(String portfolioId) {
+    return '$aiPortfolio/$portfolioId';
+  }
+
+  static String portfolioPreview(String portfolioId) {
+    return '$aiPortfolio/preview/$portfolioId';
+  }
+
+  static const String userPortfolios = '$aiPortfolio/user/';
+
+  static const String lastSavedPortfolioData = '$aiPortfolio/last_saved_data';
+
+  static String publishPortfolio(String portfolioId) {
+    return '$aiPortfolio/$portfolioId/publish';
+  }
+
+  static String unpublishPortfolio(String portfolioId) {
+    return '$aiPortfolio/$portfolioId/unpublish';
+  }
+
+  static String exportPortfolioPdf(String portfolioId) {
+    return '$aiPortfolio/$portfolioId/export/pdf';
+  }
 
   // Headers
   static const String authorization = 'Authorization';
