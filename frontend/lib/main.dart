@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'core/services/supabase_service.dart';
 import 'core/network/api_client.dart';
+import 'core/services/app_notification_service.dart';
+import 'core/services/supabase_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +35,8 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  await AppNotificationService.instance.init();
 
   runApp(
     const ProviderScope(

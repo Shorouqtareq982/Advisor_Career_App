@@ -41,7 +41,17 @@ import '../../features/settings/presentation/screens/delete_account_screen.dart'
 import '../../features/resume_optimization/presentation/screens/resume_optimization_screen.dart';
 import '../../features/resume_optimization/presentation/screens/report_details_screen.dart';
 import '../../features/resume_optimization/presentation/screens/start_optimization_screen.dart';
+
+// // ── Career Build ─────────────────────────────────────────────────────
 import '../../features/career_build/presentation/screens/career_builder_screen.dart';
+import '../../features/career_build/presentation/screens/career_build_entry_screen.dart';
+import '../../features/career_build/presentation/screens/create_plan_step1_screen.dart';
+import '../../features/career_build/presentation/screens/create_plan_step2_screen.dart';
+import '../../features/career_build/presentation/screens/create_plan_step3_screen.dart';
+import '../../features/career_build/presentation/screens/create_plan_step4_screen.dart';
+import '../../features/career_build/presentation/screens/career_plans_screen.dart';
+import '../../features/career_build/presentation/screens/career_plan_view_screen.dart';
+
 import '../../features/mock_interview/presentation/screens/mock_interview_screen.dart';
 import '../../features/market_insight/presentation/screens/market_insights_screen.dart';
 import '../../features/ai_portfolio/presentation/screens/ai_portfolio_screen.dart';
@@ -415,6 +425,47 @@ class AppRouter {
         path: '/career-builder',
         name: 'career-builder',
         builder: (context, state) => const CareerBuilderScreen(),
+      ),
+      GoRoute(
+        path: '/career-build',
+        name: 'career-build-entry',
+        builder: (context, state) => const CareerBuildEntryScreen(),
+      ),
+      GoRoute(
+        path: '/career-build/create/step-1',
+        name: 'career-build-step-1',
+        builder: (context, state) => const CreatePlanStep1Screen(),
+      ),
+      GoRoute(
+        path: '/career-build/create/step-2',
+        name: 'career-build-step-2',
+        builder: (context, state) => const CreatePlanStep2Screen(),
+      ),
+      GoRoute(
+        path: '/career-build/create/step-3',
+        name: 'career-build-step-3',
+        builder: (context, state) => const CreatePlanStep3Screen(),
+      ),
+      GoRoute(
+        path: '/career-build/create/step-4',
+        name: 'career-build-step-4',
+        builder: (context, state) => const CreatePlanStep4Screen(),
+      ),
+      GoRoute(
+        path: '/career-build/plans',
+        name: 'career-build-plans',
+        builder: (context, state) => const CareerPlansScreen(),
+      ),
+      GoRoute(
+        path: '/career-build/plans/:id',
+        name: 'career-build-plan-view',
+        builder: (context, state) {
+          final id = state.pathParameters['id'] ?? '';
+
+          return CareerPlanViewScreen(
+            planId: id,
+          );
+        },
       ),
       GoRoute(
         path: '/mock-interview',

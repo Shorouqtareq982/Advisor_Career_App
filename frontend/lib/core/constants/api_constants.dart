@@ -12,6 +12,26 @@ class ApiConstants {
   static const String reports = '$cvOptimization/reports';
   static const String report = '$cvOptimization/report'; // + /{report_id}
 
+  // ===============================
+  // Career Builder
+  // ===============================
+  static const String careerBuilder = '/api/v1/career';
+
+  static const String careerTracks = '$careerBuilder/tracks';
+  static const String careerAnalyze = '$careerBuilder/analyze';
+  static const String careerConfirmSkills = '$careerBuilder/confirm-skills';
+  static const String careerConfirmTimePreview =
+      '$careerBuilder/confirm-time-preview';
+  static const String careerConfirmTime = '$careerBuilder/confirm-time';
+  static const String careerGeneratePlan = '$careerBuilder/generate-plan';
+  static const String careerRegeneratePlan = '$careerBuilder/regenerate-plan';
+  static const String careerRegenerationIntents =
+      '$careerBuilder/regeneration-intents';
+  static const String careerSavePlan = '$careerBuilder/save-plan';
+
+  // (اختياري لو عندك endpoint)
+  static const String careerGetPlans = '$careerBuilder/plans';
+
   // Headers
   static const String authorization = 'Authorization';
   static const String bearer = 'Bearer';

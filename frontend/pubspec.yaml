@@ -102,6 +102,9 @@ flutter:
     - assets/images/branding/
     - assets/images/onboarding/
 
+    # Feature assets
+    - assets/images/career_build/
+
     # Home icons
     - assets/images/home_icons/
 
