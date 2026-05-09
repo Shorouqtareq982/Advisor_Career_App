@@ -835,13 +835,17 @@ class CareerBuildNotifier extends Notifier<CareerBuildState> {
         throw Exception('User is not logged in.');
       }
 
-      // Backend /save-plan expects only these IDs.
-      // Do not call confirm-time again here; it can overwrite cached level_used
-      // and cause confirmed_level=none on backend save.
+      // Important:
+      // Refresh confirmed skills before saving so the backend has the latest
+      // selected required skills cached before /save-plan is called.
+      await _refreshBackendCacheBeforeSave();
+
+      final refreshedAnalysis = state.analysis ?? analysis;
+
       final saveResponse = await _repo.savePlan(
         userId: userId,
-        cvId: analysis.cvId,
-        trackId: analysis.trackId,
+        cvId: refreshedAnalysis.cvId,
+        trackId: refreshedAnalysis.trackId,
       );
 
       final localPlan = _planUiFromBackend(
@@ -1753,8 +1757,35 @@ class CareerBuildNotifier extends Notifier<CareerBuildState> {
 
     final workingSkills =
         _ensureAtLeastOneCurrentSkillSelected(state.userSkills);
-    final selectedSkillIds = _selectedSkillIdsForBackend(workingSkills);
-    if (selectedSkillIds.isEmpty) return;
+
+    var selectedSkillIds = _selectedSkillIdsForBackend(workingSkills);
+
+    // Extra frontend safety:
+    // If selected ids are still empty, take any valid selected/current/gap skill.
+    if (selectedSkillIds.isEmpty) {
+      selectedSkillIds = workingSkills
+          .where((s) {
+            final id = s.skillId ?? 0;
+            if (id <= 0) return false;
+
+            final status = s.status.trim().toLowerCase();
+            final isGap = status == 'missing' || status == 'partial';
+            final isCurrent = status == 'has';
+
+            return s.selected || isGap || isCurrent;
+          })
+          .map((s) => s.skillId)
+          .whereType<int>()
+          .where((id) => id > 0)
+          .toSet()
+          .toList();
+    }
+
+    if (selectedSkillIds.isEmpty) {
+      throw Exception(
+        'Please go back to Skills and select at least one required skill before saving.',
+      );
+    }
 
     final confirmedSkills = await _repo.confirmSkills(
       cvId: analysis.cvId,
@@ -1777,20 +1808,6 @@ class CareerBuildNotifier extends Notifier<CareerBuildState> {
           .where((s) => s.status == 'missing' || s.status == 'partial')
           .map((e) => e.title)
           .toList(),
-    );
-
-    final refreshedTime = await _repo.confirmTime(
-      cvId: confirmedSkills.cvId,
-      trackId: confirmedSkills.trackId,
-      requestedWeeks: state.totalRequestedWeeks,
-      availableHoursPerWeek: state.weeklyStudyHours,
-    );
-
-    state = state.copyWith(
-      confirmedTime: refreshedTime,
-      suggestedWeeks:
-          refreshedTime.timeGuidance?.suitableWeeks ?? state.suggestedWeeks,
-      months: 0,
     );
   }
 
