@@ -918,3 +918,27 @@ async def save_plan(
     except Exception as e:
         logger.error(f"Save plan failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    
+     
+@router.post("/benchmark-generate-plan")
+async def benchmark_generate_plan(
+    request: PlanGenerateRequest,
+    repo: CareerRepository = Depends(get_repository),
+    analysis_service: CareerAnalysisService = Depends(get_analysis_service),
+):
+    from features.career_builder.services.plan_generation_benchmark import PlanGenerationBenchmark
+
+    service = PlanGenerationService(
+        repository=repo,
+        analysis_service=analysis_service,
+    )
+
+    benchmark = PlanGenerationBenchmark(service)
+
+    return await benchmark.run_benchmark(
+        cv_id=request.cv_id,
+        track_id=request.track_id,
+        duration_weeks=request.duration_weeks,
+        available_hours_per_week=request.available_hours_per_week,
+        user_level=request.user_level,
+    )
