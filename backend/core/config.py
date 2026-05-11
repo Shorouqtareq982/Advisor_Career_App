@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = ""
     GEMINI_EMBEDDING_MODEL: str = ""
+    GEMINI_REQUEST_DELAY_SECONDS: float = 2.0
     ASSEMBLYAI_API_KEY: str = Field(default="", validation_alias="AssemblyAI_API_KEY")
     ELEVENLABS_API_KEY: str = Field(default="", validation_alias="ElevenLabs_API_KEY")
     OPENAI_API_KEY: str = ""

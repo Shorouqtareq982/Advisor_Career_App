@@ -5,6 +5,7 @@
 # ============================================
 
 import os
+from io import BytesIO
 from pathlib import Path
 import json
 import torch
@@ -12,11 +13,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import subprocess
-import glob
-import time
-import requests
 import cv2
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -38,9 +36,6 @@ class Config:
     VOCAB_PATH = str(ASSETS_DIR / "vocab.json")
     AUDIO_STATS_PATH = str(ASSETS_DIR / "audio_stats.npz")
 
-    # AssemblyAI API Key
-    ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY", "") 
-    
     # Processing parameters (NO CALIBRATION)
     MAX_FRAMES = 6
     MAX_TEXT_LEN = 80
@@ -190,49 +185,6 @@ def extract_audio_features(video_path, device, smile, audio_mins, audio_denom):
     return torch.from_numpy(audio_feat).float().unsqueeze(0).to(device)
 
 # ============================================
-# ASSEMBLYAI TRANSCRIPTION
-# ============================================
-
-def transcribe_with_assemblyai(video_path, api_key):
-    if not api_key or api_key == "":
-        return ""
-    headers = {"authorization": api_key}
-    base_url = "https://api.assemblyai.com"
-    audio_path = "/tmp/temp_audio.wav"
-    cmd = ["ffmpeg", "-v", "error", "-i", video_path, "-ac", "1", "-ar", "16000", audio_path, "-y"]
-    subprocess.run(cmd, capture_output=True)
-    if not os.path.exists(audio_path):
-        return ""
-    with open(audio_path, "rb") as f:
-        response = requests.post(base_url + "/v2/upload", headers=headers, data=f)
-    if response.status_code != 200:
-        return ""
-    audio_url = response.json().get("upload_url")
-    if not audio_url:
-        return ""
-    data = {
-        "audio_url": audio_url,
-        "language_detection": True,
-        "punctuate": True,
-        "speech_models": ["universal-3-pro", "universal-2"]
-    }
-    response = requests.post(base_url + "/v2/transcript", json=data, headers=headers)
-    if response.status_code != 200:
-        return ""
-    transcript_id = response.json().get('id')
-    if not transcript_id:
-        return ""
-    endpoint = base_url + "/v2/transcript/" + transcript_id
-    for _ in range(60):
-        result = requests.get(endpoint, headers=headers).json()
-        if result.get('status') == 'completed':
-            return result.get('text', '')
-        elif result.get('status') == 'error':
-            return ""
-        time.sleep(3)
-    return ""
-
-# ============================================
 # TEXT PREPROCESSING
 # ============================================
 
@@ -331,13 +283,13 @@ def extract_visual_metrics(video_path):
 
 def extract_audio_metrics(video_path):
     try:
-        audio_path = "/tmp/temp_audio_analysis.wav"
-        cmd = ["ffmpeg", "-v", "error", "-i", video_path, "-ac", "1", "-ar", "16000", audio_path, "-y"]
-        subprocess.run(cmd, capture_output=True)
-        if not os.path.exists(audio_path):
+        cmd = ["ffmpeg", "-v", "error", "-i", video_path, "-ac", "1", "-ar", "16000", "-f", "wav", "-"]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0 or not result.stdout:
             return None
+
         import soundfile as sf
-        audio, sr = sf.read(audio_path)
+        audio, sr = sf.read(BytesIO(result.stdout))
         if len(audio) == 0:
             return None
         duration = len(audio) / sr
@@ -371,7 +323,7 @@ def extract_audio_metrics(video_path):
             "long_pause_count": long_pause_count,
             "speech_clarity": round(1.0 - (long_pause_count / max(1, len(speech_starts))), 3)
         }
-    except Exception as e:
+    except Exception:
         return None
 
 def extract_text_metrics(transcript):
@@ -449,15 +401,25 @@ def load_all_models(device):
 # PREDICT FUNCTION
 # ============================================
 
-def predict_video(video_path, visual, audio, text, baseline, siamese, final, 
-                  vocab, nlp, smile, audio_mins, audio_denom, device):
-    
-    print(" Transcribing with AssemblyAI...")
-    transcript = transcribe_with_assemblyai(video_path, config.ASSEMBLYAI_API_KEY)
-    if transcript:
-        print(f" Transcript: {transcript[:150]}...")
-    else:
-        print(" No transcript available")
+def predict_video(
+    video_path,
+    visual,
+    audio,
+    text,
+    baseline,
+    siamese,
+    final,
+    vocab,
+    nlp,
+    smile,
+    audio_mins,
+    audio_denom,
+    device,
+    transcript_text: Optional[str] = None,
+    transcript_words: Optional[List[Dict[str, Any]]] = None,
+):
+    transcript_text = transcript_text or ""
+    transcript_words = transcript_words or []
     
     print(" Extracting video frames...")
     frames = extract_video_frames(video_path, device)
@@ -466,7 +428,7 @@ def predict_video(video_path, visual, audio, text, baseline, siamese, final,
     audio_tensor = extract_audio_features(video_path, device, smile, audio_mins, audio_denom)
     
     print(" Processing text...")
-    text_tensor = preprocess_text(transcript or "", vocab, nlp, config.MAX_TEXT_LEN).to(device)
+    text_tensor = preprocess_text(transcript_text or "", vocab, nlp, config.MAX_TEXT_LEN).to(device)
     
     print(" Running inference...")
     with torch.no_grad():
@@ -481,107 +443,4 @@ def predict_video(video_path, visual, audio, text, baseline, siamese, final,
         predictions = final(fused)
     
     preds = {config.TRAIT_DISPLAY[i]: float(predictions[0][i]) for i in range(5)}
-    return preds, transcript
-
-# ============================================
-# MAIN FUNCTION
-# ============================================
-
-def main():
-    print("=" * 60)
-    print(" PERSONALITY PREDICTION PIPELINE")
-    print("=" * 60)
-    print(" This pipeline uses the original model without calibration")
-    print("=" * 60)
-    
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    # Load models
-    vocab, nlp, smile, audio_mins, audio_denom, visual, audio, text, baseline, siamese, final = load_all_models(device)
-    
-    # Get video path
-    video_paths = glob.glob("/kaggle/input/datasets/shahdhossam9/test-videos/13kjwEtSyXc.003.mp4")
-    
-    if not video_paths:
-        print(" No videos found!")
-        return
-    
-    # Process all videos
-    all_results = []
-    
-    for video_path in video_paths:
-        video_name = os.path.basename(video_path)
-        print("\n" + "=" * 60)
-        print(f"📹 Processing: {video_name}")
-        print("=" * 60)
-        
-        try:
-            # Get predictions and transcript
-            predictions, transcript = predict_video(
-                video_path, visual, audio, text, baseline, siamese, final,
-                vocab, nlp, smile, audio_mins, audio_denom, device
-            )
-            
-            # Extract metrics
-            print(" Extracting metrics...")
-            visual_metrics = extract_visual_metrics(video_path)
-            audio_metrics = extract_audio_metrics(video_path)
-            text_metrics = extract_text_metrics(transcript)
-            ground_truth = get_ground_truth(video_name)
-            
-            # Calculate errors if ground truth available
-            errors = None
-            if ground_truth:
-                errors = {trait: predictions[trait] - ground_truth[trait] for trait in config.TRAIT_DISPLAY}
-            
-            # Prepare result
-            result = {
-                "video_name": video_name,
-                "predictions": predictions,
-                "visual_metrics": visual_metrics,
-                "audio_metrics": audio_metrics,
-                "text_metrics": text_metrics,
-                "transcript": transcript if transcript else None,
-                "has_ground_truth": ground_truth is not None
-            }
-            
-            if ground_truth:
-                result["ground_truth"] = ground_truth
-                result["errors"] = errors
-            
-            all_results.append(result)
-            
-            # Display summary
-            print(f"\n PREDICTIONS for {video_name}:")
-            for trait, score in predictions.items():
-                bar = " " * int(score * 30) + " " * (30 - int(score * 30))
-                print(f"  {trait}: {score:.3f} {bar}")
-            
-            if ground_truth:
-                print(f"\n Comparison with Ground Truth:")
-                for trait in config.TRAIT_DISPLAY:
-                    diff = predictions[trait] - ground_truth[trait]
-                    arrow = "↑" if diff > 0 else "↓"
-                    print(f"  {trait}: GT={ground_truth[trait]:.3f} | Pred={predictions[trait]:.3f} | {arrow} {abs(diff):.3f}")
-            
-        except Exception as e:
-            print(f" Error processing {video_name}: {e}")
-            all_results.append({
-                "video_name": video_name,
-                "error": str(e)
-            })
-    
-    # Save all results to JSON
-    output_path = "/kaggle/working/personality_predictions.json"
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(all_results, f, indent=2, ensure_ascii=False)
-    
-    print("\n" + "=" * 60)
-    print(f" Results saved to: {output_path}")
-    print("=" * 60)
-    print("\n JSON file ready for AI analysis!")
-    print("   You can copy and paste the content to ChatGPT/Claude/Gemini")
-
-if __name__ == "__main__":
-    import pickle
-    main()
+    return preds, transcript_text, transcript_words
