@@ -30,7 +30,7 @@ def _auth_headers() -> dict:
 def _start_session() -> dict:
     payload = {"role_name": ROLE_NAME}
     response = requests.post(
-        f"{API_BASE_URL}/mock-interview/sessions/start",
+        f"{API_BASE_URL}/mock-interview/sessions/start/behavioral",
         headers={**_auth_headers(), "Content-Type": "application/json"},
         data=json.dumps(payload),
         timeout=60,
@@ -106,11 +106,11 @@ def _notify_upload(session_id: str, blob_url: str) -> None:
         raise AssertionError("Expected status=processing")
 
 
-def _poll_analysis(session_id: str, timeout_seconds: int = 120) -> dict:
+def _poll_behavioral_report(session_id: str, timeout_seconds: int = 120) -> dict:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         response = requests.get(
-            f"{API_BASE_URL}/mock-interview/analysis/{session_id}",
+            f"{API_BASE_URL}/mock-interview/analysis/{session_id}/behavioral-report",
             headers=_auth_headers(),
             timeout=30,
         )
@@ -119,14 +119,35 @@ def _poll_analysis(session_id: str, timeout_seconds: int = 120) -> dict:
             continue
         response.raise_for_status()
         data = response.json()
-        if not data.get("behavioral_report") or not data.get("technical_report"):
+        if not data.get("behavioral_report"):
             time.sleep(5)
             continue
         if not data.get("analysis_metrics"):
             raise AssertionError("analysis_metrics is empty")
         return data
 
-    raise TimeoutError("Timed out waiting for analysis")
+    raise TimeoutError("Timed out waiting for behavioral report")
+
+
+def _poll_technical_report(session_id: str, timeout_seconds: int = 120) -> dict:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        response = requests.get(
+            f"{API_BASE_URL}/mock-interview/analysis/{session_id}/technical-report",
+            headers=_auth_headers(),
+            timeout=30,
+        )
+        if response.status_code == 404:
+            time.sleep(5)
+            continue
+        response.raise_for_status()
+        data = response.json()
+        if not data.get("technical_report"):
+            time.sleep(5)
+            continue
+        return data
+
+    raise TimeoutError("Timed out waiting for technical report")
 
 
 def run_flow() -> None:
@@ -135,10 +156,14 @@ def run_flow() -> None:
     _stream_audio(question_id)
     _upload_video(session_data["blob_url"], session_data["sas_token"])
     _notify_upload(session_data["session_id"], session_data["blob_url"])
-    analysis = _poll_analysis(session_data["session_id"])
+    behavioral_report = _poll_behavioral_report(session_data["session_id"])
+    technical_report = _poll_technical_report(session_data["session_id"])
 
     print("Flow completed successfully")
-    print(json.dumps(analysis, indent=2))
+    print("Behavioral report")
+    print(json.dumps(behavioral_report, indent=2))
+    print("Technical report")
+    print(json.dumps(technical_report, indent=2))
 
 
 if __name__ == "__main__":

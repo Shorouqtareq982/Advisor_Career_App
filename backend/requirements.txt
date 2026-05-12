@@ -40,12 +40,15 @@ pytesseract>=0.3.10
 pymupdf
 python-docx
 Pillow
+beautifulsoup4
+pandas
 
 # ===============================
 # AI / ML
 # ===============================
 scikit-learn
 google-genai
+openai-whisper
 
 # ===============================
 # Mock Interview ML (Inference + Notebooks)

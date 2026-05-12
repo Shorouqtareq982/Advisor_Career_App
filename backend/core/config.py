@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = ""
     GEMINI_EMBEDDING_MODEL: str = ""
+    GEMINI_REQUEST_DELAY_SECONDS: float = 2.0
     ASSEMBLYAI_API_KEY: str = Field(default="", validation_alias="AssemblyAI_API_KEY")
     ELEVENLABS_API_KEY: str = Field(default="", validation_alias="ElevenLabs_API_KEY")
     OPENAI_API_KEY: str = ""
@@ -74,6 +75,16 @@ class Settings(BaseSettings):
     # External APIs
     JOB_API_BASE_URL: str = ""
     JOB_API_KEY: str = ""
+
+    # Job Crawler Settings
+    WUZZUF_LIMIT: int = 5
+    ADZUNA_LIMIT: int = 10
+    ADZUNA_APP_ID: str = ""
+    ADZUNA_APP_KEY: str = ""
+    ADZUNA_API_KEYS: str = "[]"
+    API_KEYS: List[dict] = []
+    CRAWLER_USER_AGENT: str = "Mozilla/5.0"
+    CRAWLER_COUNTRIES: List[str] = ["gb", "us", "ca", "au", "de", "fr", "nl", "pl"]
 
     # Celery
     CELERY_BROKER_URL: str = ""
