@@ -76,6 +76,16 @@ class Settings(BaseSettings):
     JOB_API_BASE_URL: str = ""
     JOB_API_KEY: str = ""
 
+    # Job Crawler Settings
+    WUZZUF_LIMIT: int = 5
+    ADZUNA_LIMIT: int = 10
+    ADZUNA_APP_ID: str = ""
+    ADZUNA_APP_KEY: str = ""
+    ADZUNA_API_KEYS: str = "[]"
+    API_KEYS: List[dict] = []
+    CRAWLER_USER_AGENT: str = "Mozilla/5.0"
+    CRAWLER_COUNTRIES: List[str] = ["gb", "us", "ca", "au", "de", "fr", "nl", "pl"]
+
     # Celery
     CELERY_BROKER_URL: str = ""
     CELERY_RESULT_BACKEND: str = ""

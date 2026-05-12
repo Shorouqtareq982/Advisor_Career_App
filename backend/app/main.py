@@ -28,15 +28,22 @@ from shared.providers.storage.cloudinary_provider import configure_cloudinary
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan events with Supabase connection test."""
-    print(" Starting up GROWZA Career Advisor API...")
+    print("\n" + "="*60)
+    print("🚀 Starting GROWZA Career Advisor API...")
+    print("="*60)
+    sys.stdout.flush()
+    
     if supabase_client.test_connection():
-        print(" Supabase connected successfully")
+        print("✅ Supabase connected successfully")
     else:
-        print(" Supabase connection failed – check .env")
+        print("⚠️  Supabase connection failed – check .env")
 
     configure_cloudinary()  # Ensure Cloudinary is configured at startup
+    print("✅ Cloudinary configured")
+    sys.stdout.flush()
     yield
-    print(" Shutting down...")
+    print("\n🛑 Shutting down...\n")
+    sys.stdout.flush()
 
 
 def create_application() -> FastAPI:
@@ -99,6 +106,7 @@ def create_application() -> FastAPI:
     from features.career_builder.routers.career_router import router as level_router
     from features.career_builder.routers.llm_health_router import router as llm_health_router
     from features.mock_interview.routers.mock_interview_router import router as mock_interview_router
+    from features.market_insights.routers.market_router import router as market_router
     #from features.career_builder.routers.level_endpoints import router as level_router1
     #from features.career_builder.routers.testing_endpoints import router as testing_endpoints
 
@@ -106,6 +114,7 @@ def create_application() -> FastAPI:
     app.include_router(level_router, prefix=settings.API_V1_PREFIX)
     app.include_router(llm_health_router, prefix=settings.API_V1_PREFIX)
     app.include_router(mock_interview_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(market_router, prefix=settings.API_V1_PREFIX)
     #app.include_router(level_router1, prefix=settings.API_V1_PREFIX)
     #app.include_router(testing_endpoints, prefix=settings.API_V1_PREFIX)
     return app
@@ -118,7 +127,16 @@ def create_application() -> FastAPI:
 app = create_application()
 
 if __name__ == "__main__":
+    print("\n" + "="*60)
+    print("📡 Available Routes:")
+    print("="*60)
+    print("🏠 Home (Market Insights):      http://localhost:8000/api/v1/market/")
+    print("📊 Dashboard:                   http://localhost:8000/api/v1/market/dashboard?job=<job_name>")
+    print("📖 API Documentation:           http://localhost:8000/api/v1/docs")
+    print("="*60 + "\n")
+    sys.stdout.flush()
+    
     def open_browser():
-        webbrowser.open("http://localhost:8000/api/v1/docs")
+        webbrowser.open("http://localhost:8000/api/v1/market/")
     Timer(1.5, open_browser).start()
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
