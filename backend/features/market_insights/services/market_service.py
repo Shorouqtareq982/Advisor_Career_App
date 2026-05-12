@@ -38,8 +38,8 @@ class MarketInsightsService:
             {"app_id": "64b84881", "app_key": "3a47910b650649f4a9f1b8ab20c45ec1"},
             {"app_id": "9d91b03a", "app_key": "20dfa40d2c6d9a8db6a779c0167b39c0"}
         ]
-        self.wuzzuf_limit = 10
-        self.adzuna_limit = 10
+        self.wuzzuf_limit = 25
+        self.adzuna_limit = 100
 
     def fetch_wuzzuf(self, job: str, seen_urls: Set[str], limit: int, state: Dict[str, Any], sheet: str) -> List[Dict[str, Any]]:
         rows = []
