@@ -10,6 +10,8 @@ import time
 from shared.helpers.loggers import get_logger
 from shared.helpers.crawler_helpers import init_state
 from ..services.market_service import MarketInsightsService
+from collections import Counter
+from statistics import mean
 
 router = APIRouter(
     prefix="/market",
@@ -513,9 +515,212 @@ async def get_jobs():
         "jobs": JOB_LIST
     }
 
+# =========================================
+# MARKET ANALYTICS (FIXED SALARY MIN + CLEAN DATA)
+# =========================================
+@router.get("/market")
+async def market_analytics(job: str):
 
+    try:
+        sheet = job.strip().lower()[:31]
+
+        df = service.repo.load_jobs(sheet)
+
+        if df is None or df.empty:
+            return {
+                "status": "empty",
+                "job": job,
+                "total_jobs": 0,
+                "salary": {},
+                "top_skills": [],
+                "experience_distribution": {},
+                "avg_experience": 0,
+                "market_growth": 0,
+                "governorates": {},
+                "monthly_demand": {}
+            }
+
+        df = df.copy()
+
+        # =========================
+        # CLEAN SALARY DATA (FIXED)
+        # =========================
+        salary_values = []
+
+        for col in ["salary_min", "salary_max"]:
+            if col in df.columns:
+                vals = pd.to_numeric(df[col], errors="coerce")
+                vals = vals.dropna()
+
+                # ❌ remove zeros completely
+                vals = vals[vals > 0]
+
+                salary_values.extend(vals.tolist())
+
+        # ✅ FIX: proper min (ignore 0 entirely)
+        salary_min = min(salary_values) if salary_values else 0
+        salary_max = max(salary_values) if salary_values else 0
+        salary_avg = int(sum(salary_values) / len(salary_values)) if salary_values else 0
+
+        salary_data = {
+            "min": int(salary_min),
+            "max": int(salary_max),
+            "avg": salary_avg
+        }
+
+        # =========================
+        # TOP SKILLS
+        # =========================
+        skills_counter = Counter()
+
+        if "job_skills" in df.columns:
+            for row in df["job_skills"]:
+                if not isinstance(row, str):
+                    continue
+
+                cleaned = (
+                    row.replace("·", "|")
+                       .replace("•", "|")
+                       .replace("/", "|")
+                       .replace(",", "|")
+                )
+
+                skills = [s.strip() for s in cleaned.split("|") if s.strip()]
+                skills_counter.update(skills)
+
+        top_skills = [
+            {"skill": k, "count": v}
+            for k, v in skills_counter.most_common(10)
+        ]
+
+        # =========================
+        # EXPERIENCE
+        # =========================
+        exp_distribution = {
+            "Entry Level": 0,
+            "Junior": 0,
+            "Mid Level": 0,
+            "Senior": 0
+        }
+
+        avg_experience = 0
+
+        if {"min_experience", "max_experience"}.issubset(df.columns):
+
+            df["min_experience"] = pd.to_numeric(df["min_experience"], errors="coerce")
+            df["max_experience"] = pd.to_numeric(df["max_experience"], errors="coerce")
+
+            valid = df.dropna(subset=["min_experience", "max_experience"])
+
+            valid = valid[
+                (valid["min_experience"] >= 0) &
+                (valid["max_experience"] >= 0) &
+                (valid["min_experience"] <= valid["max_experience"])
+            ]
+
+            if not valid.empty:
+
+                avg_experience = round(
+                    ((valid["min_experience"] + valid["max_experience"]) / 2).mean(),
+                    2
+                )
+
+                exp_distribution = {
+                    "Entry Level": len(valid[valid["max_experience"] <= 1.5]),
+                    "Junior": len(valid[(valid["max_experience"] > 1.5) & (valid["max_experience"] <= 3)]),
+                    "Mid Level": len(valid[(valid["max_experience"] > 3) & (valid["max_experience"] <= 5)]),
+                    "Senior": len(valid[valid["max_experience"] > 5])
+                }
+
+        # =========================
+        # MARKET GROWTH
+        # =========================
+        market_growth = 0
+
+        if "time_posted" in df.columns:
+
+            dates = pd.to_datetime(df["time_posted"], errors="coerce").dropna()
+
+            if len(dates) > 1:
+
+                monthly = (
+                    dates.dt.to_period("M")
+                    .astype(str)
+                    .value_counts()
+                    .sort_index()
+                )
+
+                if len(monthly) >= 2:
+                    first = monthly.iloc[0]
+                    last = monthly.iloc[-1]
+
+                    if first != 0:
+                        market_growth = round(((last - first) / first) * 100, 2)
+
+        # =========================
+        # GOVERNORATES
+        # =========================
+        egypt_governorates = {
+            "Cairo", "Giza", "Alexandria", "Dakahlia", "Red Sea",
+            "Beheira", "Fayoum", "Gharbia", "Ismailia", "Menofia",
+            "Minya", "Qaliubiya", "New Valley", "Suez", "Aswan",
+            "Assiut", "Beni Suef", "Port Said", "Damietta",
+            "Sharkia", "South Sinai", "North Sinai", "Luxor"
+        }
+
+        governorates = {}
+
+        if "governorate" in df.columns:
+
+            gov = df["governorate"].astype(str).str.strip()
+
+            gov = gov[gov.isin(egypt_governorates)]
+
+            governorates = gov.value_counts().head(10).to_dict()
+
+        # =========================
+        # MONTHLY DEMAND
+        # =========================
+        monthly_demand = {}
+
+        if "time_posted" in df.columns:
+
+            dates = pd.to_datetime(df["time_posted"], errors="coerce").dropna()
+
+            monthly = (
+                dates.dt.to_period("M")
+                .astype(str)
+                .value_counts()
+                .sort_index()
+            )
+
+            monthly_demand = monthly.to_dict()
+
+        # =========================
+        # RESPONSE
+        # =========================
+        return {
+            "status": "success",
+            "job": job,
+            "total_jobs": len(df),
+
+            "salary": salary_data,
+            "top_skills": top_skills,
+
+            "experience_distribution": exp_distribution,
+            "avg_experience": avg_experience,
+
+            "market_growth": market_growth,
+
+            "governorates": governorates,
+            "monthly_demand": monthly_demand
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
 # =========================
-# DASHBOARD
+# DASHBOARD (FINAL FIXED)
 # =========================
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(job: str):
@@ -526,11 +731,11 @@ def dashboard(job: str):
     global CURRENT_JOB_NAME, CURRENT_JOB_DONE
     global SCRAPING_RUNNING, BATCH_PAUSED, BATCH_PAUSE_EVENT
 
-    should_start_thread = not SCRAPING_RUNNING or CURRENT_JOB_NAME != job_clean
+    should_start_thread = (
+        not SCRAPING_RUNNING
+        or CURRENT_JOB_NAME != job_clean
+    )
 
-    # =========================
-    # START JOB
-    # =========================
     PRIORITY_JOB = job_clean
     AUTO_RUNNING = False
     CURRENT_JOB_NAME = job_clean
@@ -538,9 +743,6 @@ def dashboard(job: str):
     BATCH_PAUSED = True
     BATCH_PAUSE_EVENT.clear()
 
-    # =========================
-    # START THREAD SAFELY
-    # =========================
     import threading
 
     if should_start_thread:
@@ -556,11 +758,9 @@ def dashboard(job: str):
     <head>
 
         <title>Dashboard</title>
-
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
         <style>
-
             * {{
                 margin:0;
                 padding:0;
@@ -575,14 +775,8 @@ def dashboard(job: str):
                 padding:30px;
             }}
 
-            h1 {{
-                margin-bottom:10px;
-            }}
-
-            h3 {{
-                color:#cbd5e1;
-                margin-bottom:20px;
-            }}
+            h1 {{ margin-bottom:10px; }}
+            h3 {{ color:#cbd5e1; margin-bottom:20px; }}
 
             button {{
                 padding:10px 20px;
@@ -592,11 +786,6 @@ def dashboard(job: str):
                 color:white;
                 cursor:pointer;
                 margin:5px;
-                transition:0.2s;
-            }}
-
-            button:hover {{
-                opacity:0.9;
             }}
 
             #count {{
@@ -608,10 +797,8 @@ def dashboard(job: str):
             .popup {{
                 display:none;
                 position:fixed;
-                top:0;
-                left:0;
-                width:100%;
-                height:100%;
+                top:0; left:0;
+                width:100%; height:100%;
                 background:rgba(0,0,0,0.7);
                 justify-content:center;
                 align-items:center;
@@ -622,8 +809,6 @@ def dashboard(job: str):
                 background:#1e293b;
                 padding:30px;
                 border-radius:12px;
-                min-width:320px;
-                box-shadow:0 0 20px rgba(0,0,0,0.4);
             }}
 
             .loader {{
@@ -632,27 +817,40 @@ def dashboard(job: str):
                 border:5px solid #334155;
                 border-top:5px solid #22c55e;
                 border-radius:50%;
-                margin:auto;
                 animation: spin 1s linear infinite;
-            }}
-
-            #status {{
-                margin-top:20px;
-                color:#cbd5e1;
             }}
 
             canvas {{
                 margin-top:30px;
                 max-width:900px;
-                max-height:400px;
+            }}
+
+            .analytics {{
+                display:grid;
+                grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+                gap:20px;
+                margin-top:40px;
+            }}
+
+            .card {{
+                background:#1e293b;
+                padding:20px;
+                border-radius:14px;
+                text-align:left;
+            }}
+
+            .card h2 {{
+                color:#22c55e;
+                margin-bottom:10px;
+            }}
+
+            .card p, .card li {{
+                color:#cbd5e1;
             }}
 
             @keyframes spin {{
-                100% {{
-                    transform:rotate(360deg);
-                }}
+                100% {{ transform:rotate(360deg); }}
             }}
-
         </style>
 
     </head>
@@ -660,205 +858,180 @@ def dashboard(job: str):
     <body>
 
         <h1>📊 Dashboard</h1>
-
         <h3>{job}</h3>
 
-        <button onclick="goHome()">
-            Change
-        </button>
-
-        <button onclick="resetJob()">
-            Reset
-        </button>
+        <button onclick="goHome()">Change</button>
+        <button onclick="resetJob()">Reset</button>
 
         <h2 id="count">0 jobs</h2>
 
         <canvas id="chart"></canvas>
 
-        <div class="popup" id="popup">
+        <div class="analytics">
 
-            <div class="box">
-
-                <div class="loader"></div>
-
-                <p id="status">
-                    Loading...
-                </p>
-
+            <div class="card">
+                <h2>📌 Total Jobs</h2>
+                <p id="total_jobs">0</p>
             </div>
 
+            <div class="card">
+                <h2>💰 Salary</h2>
+                <p id="salary">Loading...</p>
+            </div>
+
+            <div class="card">
+                <h2>📈 Market Growth</h2>
+                <p id="growth">Loading...</p>
+            </div>
+
+            <div class="card">
+                <h2>🛠️ Top Skills</h2>
+                <ul id="skills"></ul>
+            </div>
+
+            <div class="card">
+                <h2>📈 Experience Distribution</h2>
+                <ul id="experience"></ul>
+            </div>
+
+            <div class="card">
+                <h2>📊 Experience KPI</h2>
+                <p id="exp_kpi">Loading...</p>
+            </div>
+
+            <div class="card">
+                <h2>📍 Governorates</h2>
+                <ul id="governorates"></ul>
+            </div>
+
+        </div>
+
+        <canvas id="demandChart"></canvas>
+
+        <div class="popup" id="popup">
+            <div class="box">
+                <div class="loader"></div>
+                <p>Loading...</p>
+            </div>
         </div>
 
         <script>
 
             const job = "{job_clean}";
-
-            const popup =
-                document.getElementById("popup");
-
+            const popup = document.getElementById("popup");
             popup.style.display = "flex";
 
-            // =========================
-            // GO HOME
-            // =========================
             function goHome() {{
-
-                window.location.href =
-                    "/api/v1/market/";
+                window.location.href = "/api/v1/market/";
             }}
 
-            // =========================
-            // RESET JOB
-            // =========================
             function resetJob() {{
-
-                fetch(
-                    "/api/v1/market/reset-job?job="
-                    + encodeURIComponent(job),
-                    {{
-                        method: "POST"
-                    }}
-                )
-                .then(() => location.reload());
+                fetch("/api/v1/market/reset-job?job=" + encodeURIComponent(job), {{
+                    method: "POST"
+                }}).then(() => location.reload());
             }}
 
-            // =========================
-            // CHART
-            // =========================
-            const ctx =
-                document.getElementById("chart");
-
-            const chart = new Chart(ctx, {{
-
+            const chart = new Chart(document.getElementById("chart"), {{
                 type: "line",
-
                 data: {{
-
                     labels: [],
-
                     datasets: [{{
                         label: "Jobs Found",
                         data: [],
                         borderColor: "#22c55e",
-                        backgroundColor: "rgba(34,197,94,0.2)",
                         tension: 0.3
                     }}]
-                }},
-
-                options: {{
-
-                    responsive: true,
-
-                    scales: {{
-
-                        y: {{
-                            beginAtZero: true
-                        }}
-                    }}
                 }}
+            }});
+
+            const demandChart = new Chart(document.getElementById("demandChart"), {{
+                type: "bar",
+                data: {{ labels: [], datasets: [{{ label: "Monthly Demand", data: [] }}] }}
             }});
 
             let tick = 0;
 
-            // =========================
-            // CHECK STATUS
-            // =========================
+            async function loadAnalytics() {{
+
+                const res = await fetch("/api/v1/market/market?job=" + encodeURIComponent(job));
+                const data = await res.json();
+
+                // TOTAL JOBS
+                document.getElementById("total_jobs").innerText = data.total_jobs;
+
+                // SALARY (FIX MIN > 0)
+                document.getElementById("salary").innerHTML = `
+                    Min: $${{data.salary.min}} <br>
+                    Avg: $${{data.salary.avg}} <br>
+                    Max: $${{data.salary.max}}
+                `;
+
+                // MARKET GROWTH
+                document.getElementById("growth").innerText =
+                    (data.market_growth >= 0 ? "+" : "") + data.market_growth + "%";
+
+                // SKILLS
+                const skills = document.getElementById("skills");
+                skills.innerHTML = "";
+                (data.top_skills || []).forEach(s => {{
+                    skills.innerHTML += `<li>${{s.skill}} (${{s.count}})</li>`;
+                }});
+
+                // EXPERIENCE
+                const exp = document.getElementById("experience");
+                exp.innerHTML = "";
+                Object.entries(data.experience_distribution || {{}}).forEach(([k,v]) => {{
+                    exp.innerHTML += `<li>${{k}}: ${{v}}</li>`;
+                }});
+
+                // KPI
+                document.getElementById("exp_kpi").innerHTML =
+                    `Avg Experience: ${{data.avg_experience}} years`;
+
+                // GOVERNORATES
+                const gov = document.getElementById("governorates");
+                gov.innerHTML = "";
+                Object.entries(data.governorates || {{}}).forEach(([k,v]) => {{
+                    gov.innerHTML += `<li>${{k}}: ${{v}}</li>`;
+                }});
+
+                demandChart.data.labels = Object.keys(data.monthly_demand || {{}});
+
+                demandChart.data.datasets[0].data =
+                    Object.values(data.monthly_demand || {{}});
+
+                demandChart.update();
+            }}
+
             async function check() {{
+                const res = await fetch("/api/v1/market/job-status?job=" + encodeURIComponent(job));
+                const data = await res.json();
 
-                try {{
+                document.getElementById("count").innerText = data.rows + " jobs";
 
-                    const res = await fetch(
-                        "/api/v1/market/job-status?job="
-                        + encodeURIComponent(job)
-                    );
+                tick++;
+                chart.data.labels.push(tick);
+                chart.data.datasets[0].data.push(data.rows);
 
-                    const data =
-                        await res.json();
-
-                    // =========================
-                    // UPDATE COUNT
-                    // =========================
-                    document.getElementById(
-                        "count"
-                    ).innerText =
-                        data.rows + " jobs";
-
-                    // =========================
-                    // UPDATE STATUS
-                    // =========================
-                    document.getElementById(
-                        "status"
-                    ).innerText =
-                        "Loading... "
-                        + data.rows
-                        + " jobs found";
-
-                    // =========================
-                    // UPDATE CHART
-                    // =========================
-                    tick++;
-
-                    chart.data.labels.push(tick);
-
-                    chart.data.datasets[0].data.push(
-                        data.rows
-                    );
-
-                    // prevent huge arrays
-                    if(chart.data.labels.length > 20) {{
-
-                        chart.data.labels.shift();
-
-                        chart.data.datasets[0]
-                        .data
-                        .shift();
-                    }}
-
-                    chart.update();
-
-                    // =========================
-                    // LOADING POPUP
-                    // =========================
-                    if (data.done) {{
-
-                        popup.style.display =
-                            "none";
-
-                        document.getElementById(
-                            "status"
-                        ).innerText =
-                            "Completed";
-
-                    }} else {{
-
-                        popup.style.display =
-                            "flex";
-                    }}
-
+                if(chart.data.labels.length > 20){{
+                    chart.data.labels.shift();
+                    chart.data.datasets[0].data.shift();
                 }}
 
-                catch (err) {{
+                chart.update();
 
-                    console.log(err);
-
-                    document.getElementById(
-                        "status"
-                    ).innerText =
-                        "Connection error...";
+                if(data.done){{
+                    popup.style.display = "none";
+                    loadAnalytics();
                 }}
             }}
 
-            // =========================
-            // AUTO REFRESH
-            // =========================
             setInterval(check, 1500);
-
             check();
 
         </script>
 
     </body>
-
     </html>
     """
 
