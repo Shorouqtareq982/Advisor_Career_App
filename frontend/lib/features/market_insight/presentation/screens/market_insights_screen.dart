@@ -54,6 +54,22 @@ class _MarketInsightsScreenState extends ConsumerState<MarketInsightsScreen> {
     super.dispose();
   }
 
+  String _loadingText(MarketInsightsState state) {
+    if (state.isRefreshing) {
+      return 'Refreshing insights...\nPlease wait a few minutes.';
+    }
+
+    if (state.isLoadingAnalytics) {
+      return 'Preparing analytics...\nBuilding charts and insights\nPlease wait a few minutes.';
+    }
+
+    if (state.isPolling) {
+      return 'Collecting market data...\n${state.jobStatus?.rows ?? 0} jobs found\nPlease wait a few minutes while we collect the latest market data.';
+    }
+
+    return 'Starting market insights...\nPlease wait a few minutes.';
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<MarketInsightsState>(marketInsightsProvider, (previous, next) {
@@ -76,6 +92,8 @@ class _MarketInsightsScreenState extends ConsumerState<MarketInsightsScreen> {
     final notifier = ref.read(marketInsightsProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final backgroundColor = isDark ? AppColors.blue900 : AppColors.textDark;
+
     if (_controller.text != state.query) {
       _controller.value = _controller.value.copyWith(
         text: state.query,
@@ -87,66 +105,68 @@ class _MarketInsightsScreenState extends ConsumerState<MarketInsightsScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: isDark ? AppColors.blue900 : AppColors.textDark,
+        backgroundColor: backgroundColor,
         bottomNavigationBar: const MarketBottomNav(),
         body: SafeArea(
           child: Stack(
             children: [
-              SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: EdgeInsets.symmetric(
-                  horizontal: context.w(16),
-                  vertical: context.h(12),
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: context.contentConstraints,
-                    child: Column(
-                      children: [
-                        MarketInsightsHeader(
-                          onBack: () => context.go('/home'),
+              SizedBox.expand(
+                child: ColoredBox(
+                  color: backgroundColor,
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: context.w(16),
+                      vertical: context.h(12),
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: context.contentConstraints,
+                        child: Column(
+                          children: [
+                            MarketInsightsHeader(
+                              onBack: () => context.go('/home'),
+                            ),
+                            SizedBox(height: context.h(18)),
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 350),
+                              switchInCurve: Curves.easeOut,
+                              switchOutCurve: Curves.easeIn,
+                              child: state.hasData
+                                  ? MarketInsightsResultsSection(
+                                      key: const ValueKey('results'),
+                                      data: state.data!,
+                                      animationSeed: state.animationSeed,
+                                      onChangeRole: notifier.changeRole,
+                                      onRefresh: notifier.refresh,
+                                    )
+                                  : MarketInsightsSearchSection(
+                                      key: const ValueKey('search'),
+                                      state: state,
+                                      controller: _controller,
+                                      focusNode: _focusNode,
+                                      onChanged: notifier.setQuery,
+                                      onSuggestionTap: (value) {
+                                        notifier.selectSuggestion(value);
+                                        _focusNode.unfocus();
+                                      },
+                                      onViewInsights: () {
+                                        _focusNode.unfocus();
+                                        notifier.submit();
+                                      },
+                                    ),
+                            ),
+                            SizedBox(height: context.h(24)),
+                          ],
                         ),
-                        SizedBox(height: context.h(18)),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 350),
-                          switchInCurve: Curves.easeOut,
-                          switchOutCurve: Curves.easeIn,
-                          child: state.hasData
-                              ? MarketInsightsResultsSection(
-                                  key: const ValueKey('results'),
-                                  data: state.data!,
-                                  animationSeed: state.animationSeed,
-                                  onChangeRole: notifier.changeRole,
-                                  onRefresh: notifier.refresh,
-                                )
-                              : MarketInsightsSearchSection(
-                                  key: const ValueKey('search'),
-                                  state: state,
-                                  controller: _controller,
-                                  focusNode: _focusNode,
-                                  onChanged: notifier.setQuery,
-                                  onSuggestionTap: (value) {
-                                    notifier.selectSuggestion(value);
-                                    _focusNode.unfocus();
-                                  },
-                                  onViewInsights: () {
-                                    _focusNode.unfocus();
-                                    notifier.submit();
-                                  },
-                                ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
               if (state.isBusy)
                 MarketInsightsLoadingOverlay(
-                  text: state.isRefreshing
-                      ? 'Refreshing insights...\nPlease wait a few seconds'
-                      : state.isPolling
-                          ? 'Collecting market data...\n${state.jobStatus?.rows ?? 0} jobs found'
-                          : 'Starting market insights...',
+                  text: _loadingText(state),
                 ),
             ],
           ),

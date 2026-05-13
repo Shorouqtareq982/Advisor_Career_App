@@ -82,6 +82,10 @@ class ApiConstants {
   static const String marketReset = '$marketInsights/reset';
   static const String marketResetJob = '$marketInsights/reset-job';
 
+  // Market Analytics endpoint
+  // GET /api/v1/market/market?job=...
+  static const String marketAnalytics = '$marketInsights/market';
+
   // Headers
   static const String authorization = 'Authorization';
   static const String bearer = 'Bearer';
