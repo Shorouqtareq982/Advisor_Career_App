@@ -118,7 +118,7 @@ flutter:
     # Feature assets
     - assets/images/career_build/
     - assets/images/ai_protifilo/
-
+    - assets/images/market_insights/
     # Home icons
     - assets/images/home_icons/
 

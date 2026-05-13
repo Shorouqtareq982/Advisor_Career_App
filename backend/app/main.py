@@ -105,27 +105,17 @@ def create_application() -> FastAPI:
     # Include feature routers
     from features.career_builder.routers.career_router import router as level_router
     from features.career_builder.routers.llm_health_router import router as llm_health_router
-<<<<<<< HEAD
-    #from features.mock_interview.routers.mock_interview_router import router as mock_interview_router
-    from features.career_builder.routers.career_router import router as level_router1
-=======
     from features.mock_interview.routers.mock_interview_router import router as mock_interview_router
     from features.market_insights.routers.market_router import router as market_router
-    #from features.career_builder.routers.level_endpoints import router as level_router1
->>>>>>> c07ecce46c7f9e1f3996848a5cfe9fd26c070412
+    from features.career_builder.routers.career_router import router as level_router1
     #from features.career_builder.routers.testing_endpoints import router as testing_endpoints
 
 
     app.include_router(level_router, prefix=settings.API_V1_PREFIX)
     app.include_router(llm_health_router, prefix=settings.API_V1_PREFIX)
-<<<<<<< HEAD
-    ##app.include_router(mock_interview_router, prefix=settings.API_V1_PREFIX)
-    app.include_router(level_router1, prefix=settings.API_V1_PREFIX)
-=======
     app.include_router(mock_interview_router, prefix=settings.API_V1_PREFIX)
     app.include_router(market_router, prefix=settings.API_V1_PREFIX)
-    #app.include_router(level_router1, prefix=settings.API_V1_PREFIX)
->>>>>>> c07ecce46c7f9e1f3996848a5cfe9fd26c070412
+    app.include_router(level_router1, prefix=settings.API_V1_PREFIX)
     #app.include_router(testing_endpoints, prefix=settings.API_V1_PREFIX)
     return app
 
