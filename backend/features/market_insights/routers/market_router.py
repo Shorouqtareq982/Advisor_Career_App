@@ -516,7 +516,7 @@ async def get_jobs():
     }
 
 # =========================================
-# MARKET ANALYTICS (FIXED SALARY MIN + CLEAN DATA)
+# MARKET ANALYTICS (FIXED SALARY + EXPERIENCE_LEVEL)
 # =========================================
 @router.get("/market")
 async def market_analytics(job: str):
@@ -543,29 +543,20 @@ async def market_analytics(job: str):
         df = df.copy()
 
         # =========================
-        # CLEAN SALARY DATA (FIXED)
+        # CLEAN SALARY DATA
         # =========================
         salary_values = []
 
         for col in ["salary_min", "salary_max"]:
             if col in df.columns:
-                vals = pd.to_numeric(df[col], errors="coerce")
-                vals = vals.dropna()
-
-                # ❌ remove zeros completely
+                vals = pd.to_numeric(df[col], errors="coerce").dropna()
                 vals = vals[vals > 0]
-
                 salary_values.extend(vals.tolist())
 
-        # ✅ FIX: proper min (ignore 0 entirely)
-        salary_min = min(salary_values) if salary_values else 0
-        salary_max = max(salary_values) if salary_values else 0
-        salary_avg = int(sum(salary_values) / len(salary_values)) if salary_values else 0
-
         salary_data = {
-            "min": int(salary_min),
-            "max": int(salary_max),
-            "avg": salary_avg
+            "min": int(min(salary_values)) if salary_values else 0,
+            "max": int(max(salary_values)) if salary_values else 0,
+            "avg": int(sum(salary_values) / len(salary_values)) if salary_values else 0
         }
 
         # =========================
@@ -594,18 +585,45 @@ async def market_analytics(job: str):
         ]
 
         # =========================
-        # EXPERIENCE
+        # EXPERIENCE (FROM experience_level - FIXED)
         # =========================
         exp_distribution = {
             "Entry Level": 0,
             "Junior": 0,
             "Mid Level": 0,
-            "Senior": 0
+            "Senior": 0,
+            "Expert": 0
         }
 
         avg_experience = 0
 
-        if {"min_experience", "max_experience"}.issubset(df.columns):
+        if "experience_level" in df.columns:
+
+            levels = df["experience_level"].astype(str).str.strip().str.lower()
+
+            for lvl in levels:
+
+                if lvl in ["entry", "entry level", "intern", "trainee"]:
+                    exp_distribution["Entry Level"] += 1
+
+                elif lvl in ["junior", "jr", "junior level"]:
+                    exp_distribution["Junior"] += 1
+
+                elif lvl in ["mid", "mid level", "middle", "intermediate"]:
+                    exp_distribution["Mid Level"] += 1
+
+                elif lvl in ["senior", "sr", "senior level"]:
+                    exp_distribution["Senior"] += 1
+
+                elif lvl in ["expert", "lead", "principal", "staff", "architect"]:
+                    exp_distribution["Expert"] += 1
+
+                else:
+                    # لو قيمة جديدة مش معروفة نحطها في Junior افتراضي
+                    exp_distribution["Junior"] += 1
+
+        # fallback (optional) لو العمود مش موجود
+        elif {"min_experience", "max_experience"}.issubset(df.columns):
 
             df["min_experience"] = pd.to_numeric(df["min_experience"], errors="coerce")
             df["max_experience"] = pd.to_numeric(df["max_experience"], errors="coerce")
@@ -761,6 +779,7 @@ def dashboard(job: str):
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
         <style>
+
             * {{
                 margin:0;
                 padding:0;
@@ -775,8 +794,14 @@ def dashboard(job: str):
                 padding:30px;
             }}
 
-            h1 {{ margin-bottom:10px; }}
-            h3 {{ color:#cbd5e1; margin-bottom:20px; }}
+            h1 {{
+                margin-bottom:10px;
+            }}
+
+            h3 {{
+                color:#cbd5e1;
+                margin-bottom:20px;
+            }}
 
             button {{
                 padding:10px 20px;
@@ -797,8 +822,10 @@ def dashboard(job: str):
             .popup {{
                 display:none;
                 position:fixed;
-                top:0; left:0;
-                width:100%; height:100%;
+                top:0;
+                left:0;
+                width:100%;
+                height:100%;
                 background:rgba(0,0,0,0.7);
                 justify-content:center;
                 align-items:center;
@@ -851,6 +878,7 @@ def dashboard(job: str):
             @keyframes spin {{
                 100% {{ transform:rotate(360deg); }}
             }}
+
         </style>
 
     </head>
@@ -865,8 +893,10 @@ def dashboard(job: str):
 
         <h2 id="count">0 jobs</h2>
 
+        <!-- LIVE CHART -->
         <canvas id="chart"></canvas>
 
+        <!-- ANALYTICS -->
         <div class="analytics">
 
             <div class="card">
@@ -900,7 +930,7 @@ def dashboard(job: str):
             </div>
 
             <div class="card">
-                <h2>📍 Governorates</h2>
+                <h2>📍 Governorates (Egypt Only)</h2>
                 <ul id="governorates"></ul>
             </div>
 
@@ -959,7 +989,7 @@ def dashboard(job: str):
                 // TOTAL JOBS
                 document.getElementById("total_jobs").innerText = data.total_jobs;
 
-                // SALARY (FIX MIN > 0)
+                // SALARY (FIX: remove zero influence)
                 document.getElementById("salary").innerHTML = `
                     Min: $${{data.salary.min}} <br>
                     Avg: $${{data.salary.avg}} <br>
@@ -977,10 +1007,13 @@ def dashboard(job: str):
                     skills.innerHTML += `<li>${{s.skill}} (${{s.count}})</li>`;
                 }});
 
-                // EXPERIENCE
+                // EXPERIENCE (NOW SUPPORTS Expert + ANY LEVEL)
                 const exp = document.getElementById("experience");
                 exp.innerHTML = "";
-                Object.entries(data.experience_distribution || {{}}).forEach(([k,v]) => {{
+
+                const dist = data.experience_distribution || {{}};
+
+                Object.entries(dist).forEach(([k,v]) => {{
                     exp.innerHTML += `<li>${{k}}: ${{v}}</li>`;
                 }});
 
@@ -991,9 +1024,11 @@ def dashboard(job: str):
                 // GOVERNORATES
                 const gov = document.getElementById("governorates");
                 gov.innerHTML = "";
-                Object.entries(data.governorates || {{}}).forEach(([k,v]) => {{
-                    gov.innerHTML += `<li>${{k}}: ${{v}}</li>`;
-                }});
+
+                Object.entries(data.governorates || {{}})
+                    .forEach(([k,v]) => {{
+                        gov.innerHTML += `<li>${{k}}: ${{v}}</li>`;
+                    }});
 
                 demandChart.data.labels = Object.keys(data.monthly_demand || {{}});
 
