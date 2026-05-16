@@ -1,6 +1,6 @@
 class ApiConstants {
   // Base URL
-  static const String baseUrl = 'http://192.168.1.18:8000';
+  static const String baseUrl = 'http://192.168.1.6:8000';
 
   // Auth endpoints
   static const String verifyToken = '/auth/verify';
@@ -91,6 +91,22 @@ class ApiConstants {
 
   static String mockInterviewTechnicalReport(String sessionId) =>
       '$mockInterview/analysis/$sessionId/technical-report';
+  // ===============================
+  // Market Insights
+  // ===============================
+  static const String marketInsights = '/api/v1/market';
+
+  static const String marketJobs = '$marketInsights/jobs';
+  static const String marketRun = '$marketInsights/run';
+  static const String marketRunJob = '$marketInsights/run-job';
+  static const String marketStatus = '$marketInsights/status';
+  static const String marketJobStatus = '$marketInsights/job-status';
+  static const String marketReset = '$marketInsights/reset';
+  static const String marketResetJob = '$marketInsights/reset-job';
+
+  // Market Analytics endpoint
+  // GET /api/v1/market/market?job=...
+  static const String marketAnalytics = '$marketInsights/market';
 
   // Headers
   static const String authorization = 'Authorization';

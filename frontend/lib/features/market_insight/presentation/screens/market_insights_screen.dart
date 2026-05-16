@@ -1,137 +1,176 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
-import '../../../../shared/widgets/app_logo.dart';
-import '../../../../shared/widgets/background_curves.dart';
+import '../providers/market_insights_provider.dart';
+import '../widgets/market_bottom_nav.dart';
+import '../widgets/market_insights_header.dart';
+import '../widgets/market_insights_loading_overlay.dart';
+import '../widgets/market_insights_results_section.dart';
+import '../widgets/market_insights_search_section.dart';
 
-class MarketInsightsScreen extends StatelessWidget {
+class MarketInsightsScreen extends ConsumerStatefulWidget {
   const MarketInsightsScreen({super.key});
 
   @override
+  ConsumerState<MarketInsightsScreen> createState() =>
+      _MarketInsightsScreenState();
+}
+
+class _MarketInsightsScreenState extends ConsumerState<MarketInsightsScreen> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+  String? _lastShownError;
+
+  @override
+  void initState() {
+    super.initState();
+
+    debugPrint('✅ ENTERED MARKET INSIGHTS SCREEN');
+
+    ref.read(marketInsightsProvider.notifier).resetForEntry();
+
+    _controller = TextEditingController();
+    _focusNode = FocusNode();
+
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) {
+        ref.read(marketInsightsProvider.notifier).showSuggestions();
+      } else {
+        Future.delayed(const Duration(milliseconds: 120), () {
+          if (!mounted) return;
+          ref.read(marketInsightsProvider.notifier).hideSuggestions();
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  String _loadingText(MarketInsightsState state) {
+    if (state.isRefreshing) {
+      return 'Refreshing insights...\nPlease wait a few minutes.';
+    }
+
+    if (state.isLoadingAnalytics) {
+      return 'Preparing analytics...\nBuilding charts and insights\nPlease wait a few minutes.';
+    }
+
+    if (state.isPolling) {
+      return 'Collecting market data...\n${state.jobStatus?.rows ?? 0} jobs found\nPlease wait a few minutes while we collect the latest market data.';
+    }
+
+    return 'Starting market insights...\nPlease wait a few minutes.';
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.blue500,
-      body: Stack(
-        children: [
-          const BackgroundCurves(),
+    ref.listen<MarketInsightsState>(marketInsightsProvider, (previous, next) {
+      final error = next.errorMessage;
 
-          // App logo
-          Positioned(
-            top: context.h(60),
-            child: SizedBox(
-              width: context.screenWidth,
-              child: const Center(
-                child: AppLogo(),
-              ),
-            ),
-          ),
+      if (error == null || error.trim().isEmpty) return;
+      if (_lastShownError == error) return;
 
-          // White container
-          Positioned(
-            top: context.h(180),
-            left: 0,
-            right: 0,
-            child: Container(
-              height: context.screenHeight - context.h(180),
-              decoration: BoxDecoration(
-                color: AppColors.grey50,
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(context.r(50)),
-                ),
-              ),
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: context.w(24),
-                    vertical: context.h(30),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header with back button and title
-                      Row(
-                        children: [
-                          InkWell(
-                            onTap: () => context.pop(),
-                            borderRadius: BorderRadius.circular(context.r(8)),
-                            child: Container(
-                              padding: EdgeInsets.all(context.w(8)),
-                              child: Icon(
-                                Icons.arrow_back_ios_new,
-                                color: AppColors.blue900,
-                                size: context.icon(20),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Center(
-                              child: Text(
-                                'Market Insights',
-                                style: TextStyle(
-                                  fontFamily: 'Inter',
-                                  fontSize: context.sp(20),
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.blue900,
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: context.w(40)),
-                        ],
-                      ),
+      _lastShownError = error;
 
-                      SizedBox(height: context.h(40)),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    });
 
-                      // Coming Soon Content
-                      Center(
+    final state = ref.watch(marketInsightsProvider);
+    final notifier = ref.read(marketInsightsProvider.notifier);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final backgroundColor = isDark ? AppColors.blue900 : AppColors.textDark;
+
+    if (_controller.text != state.query) {
+      _controller.value = _controller.value.copyWith(
+        text: state.query,
+        selection: TextSelection.collapsed(offset: state.query.length),
+        composing: TextRange.empty,
+      );
+    }
+
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        backgroundColor: backgroundColor,
+        bottomNavigationBar: const MarketBottomNav(),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              SizedBox.expand(
+                child: ColoredBox(
+                  color: backgroundColor,
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: context.w(16),
+                      vertical: context.h(12),
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: context.contentConstraints,
                         child: Column(
                           children: [
-                            Container(
-                              width: context.w(150),
-                              height: context.w(150),
-                              decoration: BoxDecoration(
-                                color: AppColors.lightBlue700.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.trending_up_outlined,
-                                color: AppColors.lightBlue700,
-                                size: context.icon(80),
-                              ),
+                            MarketInsightsHeader(
+                              onBack: () => context.go('/home'),
+                            ),
+                            SizedBox(height: context.h(18)),
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 350),
+                              switchInCurve: Curves.easeOut,
+                              switchOutCurve: Curves.easeIn,
+                              child: state.hasData
+                                  ? MarketInsightsResultsSection(
+                                      key: const ValueKey('results'),
+                                      data: state.data!,
+                                      animationSeed: state.animationSeed,
+                                      onChangeRole: notifier.changeRole,
+                                      onRefresh: notifier.refresh,
+                                    )
+                                  : MarketInsightsSearchSection(
+                                      key: const ValueKey('search'),
+                                      state: state,
+                                      controller: _controller,
+                                      focusNode: _focusNode,
+                                      onChanged: notifier.setQuery,
+                                      onSuggestionTap: (value) {
+                                        notifier.selectSuggestion(value);
+                                        _focusNode.unfocus();
+                                      },
+                                      onViewInsights: () {
+                                        _focusNode.unfocus();
+                                        notifier.submit();
+                                      },
+                                    ),
                             ),
                             SizedBox(height: context.h(24)),
-                            Text(
-                              'Coming Soon!',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: context.sp(28),
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.lightBlue700,
-                              ),
-                            ),
-                            SizedBox(height: context.h(16)),
-                            Text(
-                              'Get real-time market trends, salary insights, and in-demand skills data.\n\nStay tuned!',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: context.sp(16),
-                                color: AppColors.grey800,
-                                height: 1.5,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
                           ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
+              if (state.isBusy)
+                MarketInsightsLoadingOverlay(
+                  text: _loadingText(state),
+                ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

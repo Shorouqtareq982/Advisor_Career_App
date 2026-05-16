@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,10 +16,12 @@ from core.config import settings
 from features.mock_interview.ml_model import behavioral_pipeline
 from features.mock_interview.repositories.mock_interview_repository import MockInterviewRepository
 from features.mock_interview.services.assemblyai_service import AssemblyAIService
+from features.mock_interview.services.whisper_service import WhisperTranscriptionService
 from features.mock_interview.services.behavioral_report_service import BehavioralReportService
 from features.mock_interview.services.elevenlabs_service import ElevenLabsService
 from features.mock_interview.services.technical_report_service import TechnicalReportService
 from shared.providers.llm_models.gemini import Gemini
+from shared.providers.llm_models.groq_provider import GroqProvider
 from shared.providers.storage.azure_blob_storage import get_azure_storage_provider
 
 logger = logging.getLogger(__name__)
@@ -29,16 +32,23 @@ class MockInterviewService:
         self.repo = repository
         self.tts = ElevenLabsService()
         self.gemini = Gemini(settings)
-        self.transcriber = AssemblyAIService()
+        self.groq = GroqProvider(settings) if settings.GROQ_API_KEY else None
+        self.assembly_transcriber = AssemblyAIService()
+        self.whisper_transcriber: Optional[WhisperTranscriptionService] = None
         self.prompts_dir = Path(__file__).resolve().parent.parent / "prompts"
-        self.behavioral_reports = BehavioralReportService(self.gemini, self.prompts_dir)
-        self.technical_reports = TechnicalReportService(self.gemini, self.prompts_dir)
+        self.behavioral_reports = BehavioralReportService(self.gemini, self.prompts_dir, self.groq)
+        self.technical_reports = TechnicalReportService(self.gemini, self.prompts_dir, self.groq)
 
     # ------------------------------------------------------------------ #
     #  Session creation                                                    #
     # ------------------------------------------------------------------ #
 
-    async def start_behavioral_session(self, role_name: str, user_id: UUID) -> Dict[str, Any]:
+    async def start_behavioral_session(
+        self,
+        role_name: str,
+        user_id: UUID,
+        language_preferred: Optional[str],
+    ) -> Dict[str, Any]:
         role = await self.repo.get_role_by_name(role_name)
         if not role:
             raise HTTPException(status_code=404, detail="Role not found")
@@ -52,6 +62,8 @@ class MockInterviewService:
             raise HTTPException(status_code=500, detail="Failed to create session")
 
         questions = await self.repo.list_behavioral_questions(role_name)
+        if self._is_arabic_preference(language_preferred):
+            questions = self._use_arabic_question_text(questions)
         sas_token, blob_url, sas_expires_at = await self._create_video_upload_sas(
             UUID(session["session_id"])
         )
@@ -62,9 +74,15 @@ class MockInterviewService:
             "sas_token": sas_token,
             "blob_url": blob_url,
             "sas_expires_at": sas_expires_at,
+            "language_preferred": language_preferred,
         }
 
-    async def start_technical_session(self, role_name: str, user_id: UUID) -> Dict[str, Any]:
+    async def start_technical_session(
+        self,
+        role_name: str,
+        user_id: UUID,
+        language_preferred: Optional[str],
+    ) -> Dict[str, Any]:
         role = await self.repo.get_role_by_name(role_name)
         if not role:
             raise HTTPException(status_code=404, detail="Role not found")
@@ -78,6 +96,8 @@ class MockInterviewService:
             raise HTTPException(status_code=500, detail="Failed to create session")
 
         questions = await self.repo.list_technical_questions(UUID(role["role_id"]))
+        if self._is_arabic_preference(language_preferred):
+            questions = self._use_arabic_question_text(questions)
         sas_token, blob_url, sas_expires_at = await self._create_audio_upload_sas(
             UUID(session["session_id"])
         )
@@ -88,14 +108,22 @@ class MockInterviewService:
             "sas_token": sas_token,
             "blob_url": blob_url,
             "sas_expires_at": sas_expires_at,
+            "language_preferred": language_preferred,
         }
 
     # ------------------------------------------------------------------ #
     #  Audio TTS                                                           #
     # ------------------------------------------------------------------ #
 
-    async def get_question_audio_bytes(self, question_id: UUID) -> bytes:
-        question_text = await self.repo.get_question_text(question_id)
+    async def get_question_audio_bytes(
+        self,
+        question_id: UUID,
+        language_preferred: Optional[str] = None,
+    ) -> bytes:
+        question_text = await self.repo.get_question_text_for_language(
+            question_id,
+            language_preferred,
+        )
         if not question_text:
             raise HTTPException(status_code=404, detail="Question not found")
         try:
@@ -112,23 +140,28 @@ class MockInterviewService:
         self,
         session_id: UUID,
         blob_url: str,
-        max_wait_seconds: int = 120,
-        poll_interval_seconds: int = 5,
-        min_size_bytes: int = 1024,
+        language_preferred: Optional[str] = None,
     ) -> None:
-        deadline = datetime.utcnow().timestamp() + max_wait_seconds
-        while datetime.utcnow().timestamp() < deadline:
-            if await self._is_blob_ready(blob_url, min_size_bytes=min_size_bytes):
-                await self._process_behavioral_upload(session_id, blob_url)
-                return
-            await asyncio.sleep(poll_interval_seconds)
+        """
+        Called as a background task from the notify-upload endpoint.
+        Frontend notifies only after upload completes, so processing starts immediately.
+        The blob is always deleted when processing finishes (success or failure).
+        Status is NOT set here — claim_session_for_processing is the single
+        place that transitions the session to in_progress, keeping the duplicate
+        guard reliable.
+        """
+        await self._process_behavioral_upload(session_id, blob_url, language_preferred)
 
-        logger.warning("Behavioral blob not available before timeout; session left as pending")
-
-    async def _process_behavioral_upload(self, session_id: UUID, blob_url: str) -> None:
-        user_id: Optional[str] = None
-        role_name: Optional[str] = None
-
+    async def _process_behavioral_upload(
+        self,
+        session_id: UUID,
+        blob_url: str,
+        language_preferred: Optional[str] = None,
+    ) -> None:
+        """
+        Downloads the video, runs the behavioral pipeline, saves results,
+        then deletes the blob from Azure. Does NOT call the technical pipeline.
+        """
         try:
             session = await self.repo.get_session(session_id)
             if not session:
@@ -140,8 +173,16 @@ class MockInterviewService:
                 logger.info("Behavioral: session already in_progress/completed, skipping duplicate run")
                 return
 
+            # Keep user_id for FCM notification (from HEAD)
             user_id = session.get("user_id")
 
+            # Blob readiness check (from origin/main)
+            if not await self._is_blob_ready(blob_url, min_size_bytes=1024):
+                logger.warning("Behavioral: blob missing or too small, skipping")
+                await self._safe_update_session_status(session_id, "pending")
+                return
+
+            role_name = None
             try:
                 role = await self.repo.get_role_by_id(UUID(session["role_id"]))
                 if role:
@@ -150,11 +191,20 @@ class MockInterviewService:
                 logger.warning(f"Behavioral: failed to resolve role: {e}")
 
             video_bytes = await self._download_blob_bytes(blob_url)
-            metrics = await asyncio.to_thread(self._run_behavioral_pipeline, video_bytes)
+            metrics = await asyncio.to_thread(
+                self._run_behavioral_pipeline,
+                video_bytes,
+                language_preferred,
+            )
 
             behavioral_metrics = self._extract_behavioral_metrics(metrics)
+            report_language = "ar" if self._is_arabic_preference(language_preferred) else "en"
+            if report_language != "ar" and self._prefers_arabic_report(session):
+                report_language = "ar"
             report = await self.behavioral_reports.build_report(
-                behavioral_metrics, role_name=role_name
+                behavioral_metrics,
+                role_name=role_name,
+                report_language=report_language,
             )
             transcript_text = cast(str, metrics.get("transcript") or "")
             behavioral_score = self._extract_score(behavioral_metrics)
@@ -198,22 +248,26 @@ class MockInterviewService:
         self,
         session_id: UUID,
         blob_url: str,
-        max_wait_seconds: int = 120,
-        poll_interval_seconds: int = 5,
-        min_size_bytes: int = 1024,
+        language_preferred: Optional[str] = None,
     ) -> None:
-        deadline = datetime.utcnow().timestamp() + max_wait_seconds
-        while datetime.utcnow().timestamp() < deadline:
-            if await self._is_blob_ready(blob_url, min_size_bytes=min_size_bytes):
-                await self._process_technical_upload(session_id, blob_url)
-                return
-            await asyncio.sleep(poll_interval_seconds)
+        """
+        Called as a background task from the technical notify-upload endpoint.
+        Frontend notifies only after upload completes, so processing starts immediately.
+        The blob is always deleted when processing finishes (success or failure).
+        """
+        await self._process_technical_upload(session_id, blob_url, language_preferred)
 
-        logger.warning("Technical blob not available before timeout; session left as pending")
-
-    async def _process_technical_upload(self, session_id: UUID, blob_url: str) -> None:
-        user_id: Optional[str] = None
-
+    async def _process_technical_upload(
+        self,
+        session_id: UUID,
+        blob_url: str,
+        language_preferred: Optional[str] = None,
+    ) -> None:
+        """
+        Downloads the audio, transcribes it, extracts audio/text metrics,
+        generates the technical report, saves results, then deletes the blob.
+        Does NOT call the behavioral pipeline.
+        """
         try:
             session = await self.repo.get_session(session_id)
             if not session:
@@ -225,7 +279,14 @@ class MockInterviewService:
                 logger.info("Technical: session already in_progress/completed, skipping duplicate run")
                 return
 
+            # Keep user_id for FCM notification (from HEAD)
             user_id = session.get("user_id")
+
+            # Blob readiness check (from origin/main)
+            if not await self._is_blob_ready(blob_url, min_size_bytes=1024):
+                logger.warning("Technical: blob missing or too small, skipping")
+                await self._safe_update_session_status(session_id, "pending")
+                return
 
             role = await self.repo.get_role_by_id(UUID(session["role_id"]))
             if not role:
@@ -234,14 +295,18 @@ class MockInterviewService:
                 return
 
             questions = await self.repo.list_technical_questions(UUID(session["role_id"]))
+            if self._is_arabic_preference(language_preferred):
+                questions = self._use_arabic_question_text(questions)
             if len(questions) < 5:
                 logger.error(f"Technical: insufficient questions for session {session_id}")
                 await self._safe_update_session_status(session_id, "pending")
                 return
 
             audio_bytes = await self._download_blob_bytes(blob_url)
-            transcript_text = await asyncio.to_thread(
-                self._transcribe_audio_bytes, audio_bytes
+            transcript_text, transcript_language = await asyncio.to_thread(
+                self._transcribe_audio_bytes,
+                audio_bytes,
+                language_preferred,
             )
 
             if not transcript_text or not transcript_text.strip():
@@ -254,17 +319,25 @@ class MockInterviewService:
                 or role.get("description")
                 or ""
             )
-            role_name = role.get("role_name") or "the role"
+            report_language = "ar" if self._is_arabic_preference(language_preferred) else "en"
+            if report_language != "ar" and self._prefers_arabic_report(session):
+                report_language = "ar"
+            transcript_for_analysis, was_translated = self._translate_if_needed(
+                transcript_text,
+                transcript_language,
+            )
             questions_list = [q.get("question_text", "") for q in questions]
             metrics = await asyncio.to_thread(
-                self._run_technical_audio_metrics, audio_bytes, transcript_text
+                self._run_technical_audio_metrics, audio_bytes, transcript_for_analysis
             )
             report = await self.technical_reports.build_report(
                 role_requirements=role_requirements,
                 questions=questions_list,
-                user_response=transcript_text,
+                user_response=transcript_for_analysis,
                 metrics=metrics,
-                role_name=role_name,
+                role_name=role.get("role_name") or "the role",
+                report_language=report_language,
+                was_translated=was_translated,
             )
 
             await self.repo.upsert_technical_analysis(
@@ -282,7 +355,7 @@ class MockInterviewService:
                     self._send_fcm_notification(
                         session_id=session_id,
                         user_id=user_id,
-                        role_name=role_name,
+                        role_name=role.get("role_name") if role else None,
                         session_type="technical",
                     )
                 )
@@ -444,6 +517,8 @@ class MockInterviewService:
         try:
             credential = settings.STORAGE_ACCOUNT_KEY or None
             blob_client = BlobClient.from_blob_url(blob_url, credential=credential)
+            if not blob_client.exists():
+                return False
             props = blob_client.get_blob_properties()
             size = getattr(props, "size", None)
             return size is not None and size >= min_size_bytes
@@ -480,29 +555,38 @@ class MockInterviewService:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as f:
                 f.write(video_bytes)
                 temp_path = f.name
-            transcript_text, _ = self.transcriber.transcribe_video_file(
-                temp_path, max_wait_seconds=900, poll_interval_seconds=5,
-            )
+            transcript_text, _, _ = self._transcribe_with_fallback(temp_path)
             return transcript_text or ""
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
 
-    def _transcribe_audio_bytes(self, audio_bytes: bytes) -> str:
+    def _transcribe_audio_bytes(
+        self,
+        audio_bytes: bytes,
+        language_preferred: Optional[str] = None,
+    ) -> tuple[str, str]:
+        """Write bytes to a temp file, transcribe, return text and language code."""
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
                 f.write(audio_bytes)
                 temp_path = f.name
-            transcript_text, _ = self.transcriber.transcribe_video_file(
-                temp_path, max_wait_seconds=900, poll_interval_seconds=5,
+            language_code = self._resolve_language_code(language_preferred)
+            transcript_text, _, detected_language = self._transcribe_with_fallback(
+                temp_path,
+                language_preferred,
             )
-            return transcript_text or ""
+            return transcript_text or "", detected_language or ""
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
 
-    def _run_behavioral_pipeline(self, video_bytes: bytes) -> Dict[str, Any]:
+    def _run_behavioral_pipeline(
+        self,
+        video_bytes: bytes,
+        language_preferred: Optional[str] = None,
+    ) -> Dict[str, Any]:
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as f:
@@ -517,17 +601,24 @@ class MockInterviewService:
                 visual, audio, text, baseline, siamese, final,
             ) = behavioral_pipeline.load_all_models(device)
 
-            transcript_text, transcript_words = self.transcriber.transcribe_video_file(
-                temp_path, max_wait_seconds=900, poll_interval_seconds=5,
+            language_code_override = self._resolve_language_code(language_preferred)
+            transcript_text, transcript_words, language_code = self._transcribe_with_fallback(
+                temp_path,
+                language_preferred,
             )
             if not transcript_text or not transcript_words:
                 raise RuntimeError("Transcription failed or missing word timestamps")
+
+            transcript_text_for_model, _ = self._translate_if_needed(
+                transcript_text,
+                language_code,
+            )
 
             predictions, transcript_text, transcript_words = behavioral_pipeline.predict_video(
                 temp_path,
                 visual, audio, text, baseline, siamese, final,
                 vocab, nlp, smile, audio_mins, audio_denom, device,
-                transcript_text=transcript_text,
+                transcript_text=transcript_text_for_model,
                 transcript_words=transcript_words,
             )
 
@@ -535,7 +626,7 @@ class MockInterviewService:
                 "predictions":    predictions,
                 "visual_metrics": behavioral_pipeline.extract_visual_metrics(temp_path),
                 "audio_metrics":  behavioral_pipeline.extract_audio_metrics(temp_path),
-                "text_metrics":   behavioral_pipeline.extract_text_metrics(transcript_text),
+                "text_metrics":   behavioral_pipeline.extract_text_metrics(transcript_text_for_model),
                 "transcript":     transcript_text or "",
             }
         finally:
@@ -556,6 +647,90 @@ class MockInterviewService:
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
+
+    def _translate_if_needed(self, transcript_text: str, language_code: str) -> tuple[str, bool]:
+        if not transcript_text.strip():
+            return transcript_text, False
+
+        if not self._is_arabic_language(language_code) and not self._contains_arabic(transcript_text):
+            return transcript_text, False
+
+        translated = self._translate_arabic_to_english(transcript_text)
+        return translated, translated != transcript_text
+
+    def _translate_arabic_to_english(self, text: str) -> str:
+        return self._translate_text(text, source="ar", target="en")
+
+    def _prefers_arabic_report(self, session: Dict[str, Any]) -> bool:
+        for key in ("language", "interview_language", "report_language"):
+            value = session.get(key)
+            if isinstance(value, str) and self._is_arabic_preference(value):
+                return True
+        return False
+
+    def _is_arabic_language(self, language_code: str) -> bool:
+        return (language_code or "").strip().lower().startswith("ar")
+
+    def _contains_arabic(self, text: str) -> bool:
+        return bool(re.search(r"[\u0600-\u06FF]", text))
+
+    def _is_arabic_preference(self, value: Optional[str]) -> bool:
+        if not value:
+            return False
+        return value.strip().lower() in {"ar", "arabic", "ar-eg", "ar-sa"}
+
+    def _resolve_language_code(self, value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        normalized = value.strip().lower()
+        if normalized in {"ar", "arabic", "ar-eg", "ar-sa"}:
+            return "ar"
+        if normalized in {"en", "english", "en-us", "en-gb"}:
+            return "en"
+        return None
+
+    def _transcribe_with_fallback(
+        self,
+        video_path: str,
+        language_preferred: Optional[str] = None,
+    ) -> tuple[str, list[Dict[str, Any]], str]:
+        try:
+            return self.assembly_transcriber.transcribe_video_file(video_path)
+        except Exception as exc:
+            logger.warning(f"AssemblyAI transcription failed, falling back to Whisper: {exc}")
+
+        if self.whisper_transcriber is None:
+            self.whisper_transcriber = WhisperTranscriptionService()
+
+        return self.whisper_transcriber.transcribe_video_file(video_path)
+
+    def _translate_text(self, text: str, source: str, target: str) -> str:
+        if not text.strip():
+            return text
+
+        try:
+            from deep_translator import GoogleTranslator
+        except Exception as exc:
+            logger.warning(f"deep-translator not available: {exc}")
+            return text
+
+        try:
+            return GoogleTranslator(source=source, target=target).translate(text) or text
+        except Exception as exc:
+            logger.warning(f"Translation failed: {exc}")
+            return text
+
+    def _use_arabic_question_text(self, questions: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+        updated_questions = []
+        for question in questions:
+            question_text_ar = question.get("question_text_ar", "")
+            if question_text_ar:
+                updated = dict(question)
+                updated["question_text"] = question_text_ar
+                updated_questions.append(updated)
+            else:
+                updated_questions.append(question)
+        return updated_questions
 
     # ------------------------------------------------------------------ #
     #  Internal helpers                                                    #

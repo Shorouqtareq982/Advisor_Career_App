@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     MISTRAL_API_KEY: Optional[str] = None
     MISTRAL_MODEL: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: Optional[str] = None
+    GROQ_REQUEST_DELAY_SECONDS: float = 2.0
+    WHISPER_MODEL_CACHE_DIR: str = ""
     #GitHub
     GITHUB_TOKEN: Optional[str] = None
     PORTFOLIO_GITHUB_TOKEN: Optional[str] = None
@@ -78,6 +82,16 @@ class Settings(BaseSettings):
     # External APIs
     JOB_API_BASE_URL: str = ""
     JOB_API_KEY: str = ""
+
+    # Job Crawler Settings
+    WUZZUF_LIMIT: int = 5
+    ADZUNA_LIMIT: int = 10
+    ADZUNA_APP_ID: str = ""
+    ADZUNA_APP_KEY: str = ""
+    ADZUNA_API_KEYS: str = "[]"
+    API_KEYS: List[dict] = []
+    CRAWLER_USER_AGENT: str = "Mozilla/5.0"
+    CRAWLER_COUNTRIES: List[str] = ["gb", "us", "ca", "au", "de", "fr", "nl", "pl"]
 
     # Celery
     CELERY_BROKER_URL: str = ""

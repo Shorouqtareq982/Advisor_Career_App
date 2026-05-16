@@ -37,16 +37,18 @@ azure-core
 pdfplumber>=0.10.0
 pdf2image>=1.16.0
 pytesseract>=0.3.10
-pymupdf
+PyMuPDF
 python-docx
 Pillow
+beautifulsoup4
+pandas
 
 # ===============================
 # AI / ML
 # ===============================
 scikit-learn
 google-genai
-openai-whisper
+groq
 firebase-admin>=6.0.0
 
 # ===============================
@@ -65,26 +67,30 @@ gensim
 matplotlib
 seaborn
 #install FFMPEG separately for decord to work
+
 # ===============================
 # Utilities
 # ===============================
 python-dateutil
 typing-extensions
 language-tool-python
+deep-translator
+faster-whisper
 celery
 redis
 
 # ===============================
 # Portfolio Feature
 # ===============================
-PyGithub 
+PyGithub
 gitpython
 Jinja2
 playwright
+
 # ===============================
 # PII Masking
 # ===============================
-presidio-analyzer 
+presidio-analyzer
 presidio-anonymizer
 
 # ===============================

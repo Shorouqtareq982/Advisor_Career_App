@@ -42,11 +42,14 @@ OUTPUT FORMAT (EXACTLY THIS, NO EXTRA SECTIONS):
 **Strengths**
 - <strength 1>
 - <strength 2>
+- <strength 3>
 
 **Weaknesses**
 - <weakness 1>
 - <weakness 2>
+- <weakness 3>
 
 **Suggestions**
 - <suggestion 1>
 - <suggestion 2>
+- <suggestion 3>

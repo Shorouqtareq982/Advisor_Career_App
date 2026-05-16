@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class StartSessionRequest(BaseModel):
     role_name: str
     user_id: UUID
+    language_preferred: Optional[str] = None
 
 
 class QuestionItem(BaseModel):
@@ -21,6 +22,7 @@ class StartSessionResponse(BaseModel):
     sas_token: str
     blob_url: str
     sas_expires_at: datetime
+    language_preferred: Optional[str] = None
 
 
 class TechnicalStartSessionResponse(BaseModel):
@@ -29,11 +31,13 @@ class TechnicalStartSessionResponse(BaseModel):
     sas_token: str
     blob_url: str
     sas_expires_at: datetime
+    language_preferred: Optional[str] = None
 
 
 class NotifyUploadRequest(BaseModel):
     session_id: UUID
     blob_url: str
+    language_preferred: Optional[str] = None
 
 
 class NotifyUploadResponse(BaseModel):

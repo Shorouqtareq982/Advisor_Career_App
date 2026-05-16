@@ -43,7 +43,10 @@ class SessionsRepository:
         return None
 
     async def create_session(
-        self, user_id: UUID, role_id: UUID, session_type: str = "behavioral"
+        self,
+        user_id: UUID,
+        role_id: UUID,
+        session_type: str = "behavioral",
     ) -> Optional[Dict[str, Any]]:
         try:
             table_name = self._resolve_session_table(session_type)
