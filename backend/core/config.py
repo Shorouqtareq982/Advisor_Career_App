@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     MISTRAL_API_KEY: Optional[str] = None
     MISTRAL_MODEL: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: Optional[str] = None
+    GROQ_REQUEST_DELAY_SECONDS: float = 2.0
+    WHISPER_MODEL_CACHE_DIR: str = ""
     #GitHub
     GITHUB_TOKEN: Optional[str] = None
     PORTFOLIO_GITHUB_TOKEN: Optional[str] = None

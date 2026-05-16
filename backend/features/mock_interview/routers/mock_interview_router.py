@@ -37,7 +37,11 @@ async def start_behavioral_session(
     payload: StartSessionRequest,
     service: MockInterviewService = Depends(get_service),
 ):
-    return await service.start_behavioral_session(payload.role_name, payload.user_id)
+    return await service.start_behavioral_session(
+        payload.role_name,
+        payload.user_id,
+        payload.language_preferred,
+    )
 
 
 @router.post("/sessions/start/technical", response_model=TechnicalStartSessionResponse)
@@ -45,7 +49,11 @@ async def start_technical_session(
     payload: StartSessionRequest,
     service: MockInterviewService = Depends(get_service),
 ):
-    return await service.start_technical_session(payload.role_name, payload.user_id)
+    return await service.start_technical_session(
+        payload.role_name,
+        payload.user_id,
+        payload.language_preferred,
+    )
 
 
 # ------------------------------------------------------------------ #
@@ -55,9 +63,10 @@ async def start_technical_session(
 @router.get("/questions/{question_id}/audio-stream")
 async def stream_question_audio(
     question_id: UUID,
+    language_preferred: str | None = None,
     service: MockInterviewService = Depends(get_service),
 ):
-    audio_bytes = await service.get_question_audio_bytes(question_id)
+    audio_bytes = await service.get_question_audio_bytes(question_id, language_preferred)
     return StreamingResponse(io.BytesIO(audio_bytes), media_type="audio/mpeg")
 
 
@@ -80,12 +89,14 @@ async def notify_upload(
             service.queue_technical_upload,
             payload.session_id,
             payload.blob_url,
+            payload.language_preferred,
         )
     else:
         background_tasks.add_task(
             service.queue_behavioral_upload,
             payload.session_id,
             payload.blob_url,
+            payload.language_preferred,
         )
 
     return UploadStatusResponse(status="processing")

@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 import subprocess
 import time
 from typing import List, Tuple, Optional, Dict, Any
@@ -22,9 +21,9 @@ class AssemblyAIService:
         video_path: str,
         max_wait_seconds: int = 600,
         poll_interval_seconds: int = 3,
-    ) -> Tuple[str, List[Dict[str, Any]]]:
+    ) -> Tuple[str, List[Dict[str, Any]], str]:
         if not self.api_key:
-            return self._fallback_transcribe(video_path, translate=True)
+            raise RuntimeError("ASSEMBLYAI_API_KEY is not set")
 
         duration_seconds = self._get_media_duration_seconds(video_path)
         if duration_seconds:
@@ -32,7 +31,7 @@ class AssemblyAIService:
 
         audio_bytes = self._extract_audio_wav(video_path)
         if not audio_bytes:
-            return self._fallback_transcribe(video_path, translate=True)
+            raise RuntimeError("Failed to extract audio for AssemblyAI")
 
         headers = {"authorization": self.api_key}
         upload_response = requests.post(
@@ -41,19 +40,17 @@ class AssemblyAIService:
             data=audio_bytes,
             timeout=180,
         )
-        if upload_response.status_code != 200:
-            return self._fallback_transcribe(video_path, translate=True)
+        upload_response.raise_for_status()
 
         audio_url = upload_response.json().get("upload_url")
         if not audio_url:
-            return self._fallback_transcribe(video_path, translate=True)
+            raise RuntimeError("AssemblyAI upload response missing upload_url")
 
         transcript_payload = {
             "audio_url": audio_url,
-            "language_detection": True,
             "punctuate": True,
-            "translate": True,
-            "speech_models": ["universal-3-pro", "universal-2"],
+            "language_detection": True,
+            "speech_models": ["universal"],
         }
         transcript_response = requests.post(
             f"{self.base_url}/v2/transcript",
@@ -61,12 +58,11 @@ class AssemblyAIService:
             headers=headers,
             timeout=60,
         )
-        if transcript_response.status_code != 200:
-            return self._fallback_transcribe(video_path, translate=True)
+        transcript_response.raise_for_status()
 
         transcript_id = transcript_response.json().get("id")
         if not transcript_id:
-            return self._fallback_transcribe(video_path, translate=True)
+            raise RuntimeError("AssemblyAI transcript response missing id")
 
         status_url = f"{self.base_url}/v2/transcript/{transcript_id}"
         deadline = time.time() + max_wait_seconds
@@ -75,58 +71,12 @@ class AssemblyAIService:
             status = result.get("status")
             if status == "completed":
                 language_code = (result.get("language_code") or "").lower()
-                if language_code.startswith("ar"):
-                    return self._fallback_transcribe(video_path, translate=True)
-                return result.get("text", ""), result.get("words") or []
+                return result.get("text", ""), result.get("words") or [], language_code
             if status == "error":
-                return self._fallback_transcribe(video_path, translate=True)
+                raise RuntimeError(result.get("error") or "AssemblyAI error")
             time.sleep(poll_interval_seconds)
 
-        return self._fallback_transcribe(video_path, translate=True)
-
-    def _fallback_transcribe(self, video_path: str, translate: bool) -> Tuple[str, List[Dict[str, Any]]]:
-        try:
-            import whisper  # type: ignore
-        except Exception as exc:
-            logger.error(f"Local transcription unavailable: {exc}")
-            return "", []
-
-        try:
-            model = whisper.load_model("tiny")
-            task = "translate" if translate else None
-            result = model.transcribe(
-                video_path,
-                word_timestamps=True,
-                fp16=False,
-                task=task,
-            )
-            text = result.get("text", "") or ""
-            words = self._collect_words(result)
-            return text, words
-        except Exception as exc:
-            logger.error(f"Local transcription failed: {exc}")
-            return "", []
-
-    def _collect_words(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
-        words: List[Dict[str, Any]] = []
-        for segment in result.get("segments", []) or []:
-            segment_words = segment.get("words")
-            if segment_words:
-                for word in segment_words:
-                    word_text = str(word.get("word", "")).strip()
-                    start = word.get("start")
-                    if word_text and start is not None:
-                        words.append({"text": word_text, "start": int(start * 1000)})
-            else:
-                segment_text = str(segment.get("text", "")).strip()
-                start = segment.get("start")
-                if segment_text and start is not None:
-                    for token in segment_text.split():
-                        words.append({"text": token, "start": int(start * 1000)})
-        return words
-
-    def _contains_arabic(self, text: str) -> bool:
-        return bool(re.search(r"[\u0600-\u06FF]", text))
+        raise RuntimeError("Timed out waiting for AssemblyAI transcription")
 
     def _extract_audio_wav(self, video_path: str) -> bytes:
         cmd = [
