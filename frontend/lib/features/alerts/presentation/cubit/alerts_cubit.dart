@@ -49,7 +49,6 @@ class AlertsCubit extends Cubit<AlertsState> {
     }
   }
 
-  //     aliases عشان الـ UI اللي كتبتيه
   Future<void> markAll() => onMarkAllRead();
   Future<void> markRead(String id) => onOpenAlert(id);
 }

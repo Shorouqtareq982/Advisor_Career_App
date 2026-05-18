@@ -47,12 +47,16 @@ Widget _actionRow({
             style: OutlinedButton.styleFrom(
               foregroundColor: textPrimary,
               side: BorderSide(
-                  color: isDark ? AppColors.blue300 : AppColors.grey400),
+                color: isDark ? AppColors.blue300 : AppColors.grey400,
+              ),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(context.r(50))),
+                borderRadius: BorderRadius.circular(context.r(50)),
+              ),
             ),
-            child: context.text(cancelLabel,
-                style: textTheme.bodyBold.copyWith(color: textPrimary)),
+            child: context.text(
+              cancelLabel,
+              style: textTheme.bodyBold.copyWith(color: textPrimary),
+            ),
           ),
         ),
       ),
@@ -67,10 +71,13 @@ Widget _actionRow({
               foregroundColor: AppColors.grey50,
               elevation: 0,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(context.r(50))),
+                borderRadius: BorderRadius.circular(context.r(50)),
+              ),
             ),
-            child: context.text(confirmLabel,
-                style: textTheme.bodyBold.copyWith(color: AppColors.grey50)),
+            child: context.text(
+              confirmLabel,
+              style: textTheme.bodyBold.copyWith(color: AppColors.grey50),
+            ),
           ),
         ),
       ),
@@ -81,9 +88,13 @@ Widget _actionRow({
 // ─── 1. Select Job Dialog ─────────────────────────────────────────────────────
 
 class SelectJobDialog extends ConsumerStatefulWidget {
-  /// Called with (roleName, roleId) when Start Interview is tapped
+  /// Called with (roleName, roleId, sessionType, languagePreferred)
   final void Function(
-      String roleName, String roleId, InterviewSessionType sessionType) onStart;
+    String roleName,
+    String roleId,
+    InterviewSessionType sessionType,
+    String languagePreferred,
+  ) onStart;
 
   /// If provided, pre-fills the job title (from job matching feature)
   final String? prefilledJobTitle;
@@ -102,6 +113,10 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
   InterviewRole? _selectedRole;
   String? _errorText;
   InterviewSessionType _sessionType = InterviewSessionType.behavioral;
+
+  // ──  language preference ──────────────────────────────────────────────
+  // 'en' = English  |  'ar' = Arabic
+  String _languagePreferred = 'en';
 
   @override
   void initState() {
@@ -125,225 +140,403 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(context.r(16)),
       ),
-      child: Padding(
-        padding: EdgeInsets.all(context.w(24)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Close button
-            Align(
-              alignment: Alignment.topRight,
-              child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Icon(Icons.close,
-                    color: AppColors.red500, size: context.icon(22)),
-              ),
-            ),
-            SizedBox(height: context.h(4)),
-            // Title
-            Center(
-              child: context.text(
-                'Select Job for New Interview',
-                style: textTheme.title1Bold.copyWith(color: textPrimary),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            SizedBox(height: context.h(8)),
-            Center(
-              child: context.text(
-                'Please choose the job you want to take the interview for.',
-                style: textTheme.bodyRegular.copyWith(color: textMuted),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            SizedBox(height: context.h(20)),
-
-            // Dropdown
-            Container(
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(context.r(12)),
-                border: Border.all(color: borderColor),
-              ),
-              padding: EdgeInsets.symmetric(
-                  horizontal: context.w(12), vertical: context.h(4)),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<InterviewRole>(
-                  isExpanded: true,
-                  value: _selectedRole,
-                  hint: context.text(
-                    'e.g.   ML Engineer, UI/UX Designer',
-                    style: textTheme.bodyRegular
-                        .copyWith(color: AppColors.grey700),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.all(context.w(24)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Close button
+              Align(
+                alignment: Alignment.topRight,
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Icon(
+                    Icons.close,
+                    color: AppColors.red500,
+                    size: context.icon(22),
                   ),
-                  dropdownColor: isDark ? AppColors.blue600 : AppColors.grey50,
-                  icon: Icon(Icons.keyboard_arrow_down_rounded,
-                      color: textMuted, size: context.icon(20)),
-                  items: InterviewRoles.roles
-                      .map((role) => DropdownMenuItem<InterviewRole>(
+                ),
+              ),
+              SizedBox(height: context.h(4)),
+
+              // Title
+              Center(
+                child: context.text(
+                  'Select Job for New Interview',
+                  style: textTheme.title1Bold.copyWith(color: textPrimary),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              SizedBox(height: context.h(8)),
+              Center(
+                child: context.text(
+                  'Please choose the job you want to take the interview for.',
+                  style: textTheme.bodyRegular.copyWith(color: textMuted),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              SizedBox(height: context.h(20)),
+
+              // ── Job Dropdown ────────────────────────────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(context.r(12)),
+                  border: Border.all(color: borderColor),
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.w(12),
+                  vertical: context.h(4),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<InterviewRole>(
+                    isExpanded: true,
+                    value: _selectedRole,
+                    hint: context.text(
+                      'e.g.   ML Engineer, UI/UX Designer',
+                      style: textTheme.bodyRegular.copyWith(
+                        color: AppColors.grey700,
+                      ),
+                    ),
+                    dropdownColor:
+                        isDark ? AppColors.blue600 : AppColors.grey50,
+                    icon: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: textMuted,
+                      size: context.icon(20),
+                    ),
+                    items: InterviewRoles.roles
+                        .map(
+                          (role) => DropdownMenuItem<InterviewRole>(
                             value: role,
                             child: context.text(
                               role.roleName,
-                              style: textTheme.bodyRegular
-                                  .copyWith(color: textPrimary),
+                              style: textTheme.bodyRegular.copyWith(
+                                color: textPrimary,
+                              ),
                             ),
-                          ))
-                      .toList(),
-                  onChanged: (role) {
-                    setState(() {
-                      _selectedRole = role;
-                      _errorText = null;
-                    });
-                  },
-                  selectedItemBuilder: (context) => InterviewRoles.roles
-                      .map((role) => Align(
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (role) {
+                      setState(() {
+                        _selectedRole = role;
+                        _errorText = null;
+                      });
+                    },
+                    selectedItemBuilder: (context) => InterviewRoles.roles
+                        .map(
+                          (role) => Align(
                             alignment: Alignment.centerLeft,
                             child: context.text(
                               role.roleName,
-                              style: textTheme.bodyRegular
-                                  .copyWith(color: textPrimary),
+                              style: textTheme.bodyRegular.copyWith(
+                                color: textPrimary,
+                              ),
                             ),
-                          ))
-                      .toList(),
-                ),
-              ),
-            ),
-
-            if (_errorText != null) ...[
-              SizedBox(height: context.h(6)),
-              context.text(_errorText!,
-                  style: textTheme.captionRegular
-                      .copyWith(color: AppColors.red500)),
-            ],
-
-            SizedBox(height: context.h(24)),
-            // ── Interview Type ──────────────────────────────────────────
-            context.text('Interview Type',
-                style: textTheme.bodyBold.copyWith(color: textPrimary)),
-            SizedBox(height: context.h(10)),
-            Row(
-              children: [
-                // Behavioral
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(
-                        () => _sessionType = InterviewSessionType.behavioral),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: EdgeInsets.all(context.w(12)),
-                      decoration: BoxDecoration(
-                        color: _sessionType == InterviewSessionType.behavioral
-                            ? AppColors.lightBlue500.withOpacity(0.1)
-                            : cardBg,
-                        borderRadius: BorderRadius.circular(context.r(12)),
-                        border: Border.all(
-                          color: _sessionType == InterviewSessionType.behavioral
-                              ? AppColors.lightBlue500
-                              : borderColor,
-                          width: _sessionType == InterviewSessionType.behavioral
-                              ? 2
-                              : 1,
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(Icons.videocam_rounded,
-                              color: _sessionType ==
-                                      InterviewSessionType.behavioral
-                                  ? AppColors.lightBlue500
-                                  : textMuted,
-                              size: context.icon(24)),
-                          SizedBox(height: context.h(6)),
-                          context.text('Behavioral',
-                              style: textTheme.bodyBold.copyWith(
-                                  color: _sessionType ==
-                                          InterviewSessionType.behavioral
-                                      ? AppColors.lightBlue500
-                                      : textPrimary)),
-                          SizedBox(height: context.h(2)),
-                          context.text('Video + voice',
-                              style: textTheme.captionRegular
-                                  .copyWith(color: textMuted),
-                              textAlign: TextAlign.center),
-                        ],
-                      ),
-                    ),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ),
-                SizedBox(width: context.w(10)),
-                // Technical
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(
-                        () => _sessionType = InterviewSessionType.technical),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: EdgeInsets.all(context.w(12)),
-                      decoration: BoxDecoration(
-                        color: _sessionType == InterviewSessionType.technical
-                            ? AppColors.lightBlue500.withOpacity(0.1)
-                            : cardBg,
-                        borderRadius: BorderRadius.circular(context.r(12)),
-                        border: Border.all(
-                          color: _sessionType == InterviewSessionType.technical
-                              ? AppColors.lightBlue500
-                              : borderColor,
-                          width: _sessionType == InterviewSessionType.technical
-                              ? 2
-                              : 1,
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(Icons.mic_rounded,
-                              color:
-                                  _sessionType == InterviewSessionType.technical
-                                      ? AppColors.lightBlue500
-                                      : textMuted,
-                              size: context.icon(24)),
-                          SizedBox(height: context.h(6)),
-                          context.text('Technical',
-                              style: textTheme.bodyBold.copyWith(
-                                  color: _sessionType ==
-                                          InterviewSessionType.technical
-                                      ? AppColors.lightBlue500
-                                      : textPrimary)),
-                          SizedBox(height: context.h(2)),
-                          context.text('Audio only',
-                              style: textTheme.captionRegular
-                                  .copyWith(color: textMuted),
-                              textAlign: TextAlign.center),
-                        ],
-                      ),
-                    ),
+              ),
+
+              if (_errorText != null) ...[
+                SizedBox(height: context.h(6)),
+                context.text(
+                  _errorText!,
+                  style: textTheme.captionRegular.copyWith(
+                    color: AppColors.red500,
                   ),
                 ),
               ],
-            ),
-            SizedBox(height: context.h(4)),
 
-            // Start Interview button
-            SizedBox(
-              width: double.infinity,
-              height: context.h(50),
-              child: ElevatedButton(
-                onPressed: _handleStart,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.lightBlue500,
-                  foregroundColor: AppColors.blue700,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(context.r(50))),
-                ),
-                child: context.text(
-                  'Start Interview',
-                  style:
-                      textTheme.title2Bold.copyWith(color: AppColors.blue700),
+              SizedBox(height: context.h(20)),
+
+              // ── Interview Type ──────────────────────────────────────────
+              context.text(
+                'Interview Type',
+                style: textTheme.bodyBold.copyWith(color: textPrimary),
+              ),
+              SizedBox(height: context.h(10)),
+              Row(
+                children: [
+                  // Behavioral
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(
+                        () => _sessionType = InterviewSessionType.behavioral,
+                      ),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: EdgeInsets.all(context.w(12)),
+                        decoration: BoxDecoration(
+                          color: _sessionType == InterviewSessionType.behavioral
+                              ? isDark
+                                  ? AppColors.lightBlue500
+                                  : AppColors.lightBlue700.withOpacity(0.1)
+                              : cardBg,
+                          borderRadius: BorderRadius.circular(context.r(12)),
+                          border: Border.all(
+                            color:
+                                _sessionType == InterviewSessionType.behavioral
+                                    ? isDark
+                                        ? AppColors.lightBlue500
+                                        : AppColors.lightBlue700
+                                    : borderColor,
+                            width:
+                                _sessionType == InterviewSessionType.behavioral
+                                    ? 2
+                                    : 1,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.videocam_rounded,
+                              color: _sessionType ==
+                                      InterviewSessionType.behavioral
+                                  ? isDark
+                                      ? AppColors.lightBlue500
+                                      : AppColors.lightBlue700
+                                  : textMuted,
+                              size: context.icon(24),
+                            ),
+                            SizedBox(height: context.h(6)),
+                            context.text(
+                              'Behavioral',
+                              style: textTheme.bodyBold.copyWith(
+                                color: _sessionType ==
+                                        InterviewSessionType.behavioral
+                                    ? isDark
+                                        ? AppColors.lightBlue500
+                                        : AppColors.lightBlue700
+                                    : textPrimary,
+                              ),
+                            ),
+                            SizedBox(height: context.h(2)),
+                            context.text(
+                              'Video + voice',
+                              style: textTheme.captionRegular.copyWith(
+                                color: textMuted,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: context.w(10)),
+                  // Technical
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(
+                        () => _sessionType = InterviewSessionType.technical,
+                      ),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: EdgeInsets.all(context.w(12)),
+                        decoration: BoxDecoration(
+                          color: _sessionType == InterviewSessionType.technical
+                              ? isDark
+                                  ? AppColors.lightBlue500
+                                  : AppColors.lightBlue700.withOpacity(0.1)
+                              : cardBg,
+                          borderRadius: BorderRadius.circular(context.r(12)),
+                          border: Border.all(
+                            color:
+                                _sessionType == InterviewSessionType.technical
+                                    ? isDark
+                                        ? AppColors.lightBlue500
+                                        : AppColors.lightBlue700
+                                    : borderColor,
+                            width:
+                                _sessionType == InterviewSessionType.technical
+                                    ? 2
+                                    : 1,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.mic_rounded,
+                              color:
+                                  _sessionType == InterviewSessionType.technical
+                                      ? isDark
+                                          ? AppColors.lightBlue500
+                                          : AppColors.lightBlue700
+                                      : textMuted,
+                              size: context.icon(24),
+                            ),
+                            SizedBox(height: context.h(6)),
+                            context.text(
+                              'Technical',
+                              style: textTheme.bodyBold.copyWith(
+                                color: _sessionType ==
+                                        InterviewSessionType.technical
+                                    ? isDark
+                                        ? AppColors.lightBlue500
+                                        : AppColors.lightBlue700
+                                    : textPrimary,
+                              ),
+                            ),
+                            SizedBox(height: context.h(2)),
+                            context.text(
+                              'Audio only',
+                              style: textTheme.captionRegular.copyWith(
+                                color: textMuted,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              SizedBox(height: context.h(20)),
+
+              // ── Interview Language ──────────────────────────────────────
+              context.text(
+                'Interview Language',
+                style: textTheme.bodyBold.copyWith(color: textPrimary),
+              ),
+              SizedBox(height: context.h(10)),
+              Row(
+                children: [
+                  // English
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _languagePreferred = 'en'),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.w(8),
+                          vertical: context.h(12),
+                        ),
+                        decoration: BoxDecoration(
+                          color: _languagePreferred == 'en'
+                              ? isDark
+                                  ? AppColors.lightBlue500
+                                  : AppColors.lightBlue700.withOpacity(0.1)
+                              : cardBg,
+                          borderRadius: BorderRadius.circular(context.r(12)),
+                          border: Border.all(
+                            color: _languagePreferred == 'en'
+                                ? isDark
+                                    ? AppColors.lightBlue500
+                                    : AppColors.lightBlue700
+                                : borderColor,
+                            width: _languagePreferred == 'en' ? 2 : 1,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              '🇬🇧',
+                              style: TextStyle(fontSize: context.sp(22)),
+                            ),
+                            SizedBox(height: context.h(6)),
+                            context.text(
+                              'English',
+                              style: textTheme.bodyBold.copyWith(
+                                color: _languagePreferred == 'en'
+                                    ? isDark
+                                        ? AppColors.lightBlue500
+                                        : AppColors.lightBlue700
+                                    : textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: context.w(10)),
+                  // Arabic
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _languagePreferred = 'ar'),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.w(8),
+                          vertical: context.h(12),
+                        ),
+                        decoration: BoxDecoration(
+                          color: _languagePreferred == 'ar'
+                              ? isDark
+                                  ? AppColors.lightBlue500
+                                  : AppColors.lightBlue700.withOpacity(0.1)
+                              : cardBg,
+                          borderRadius: BorderRadius.circular(context.r(12)),
+                          border: Border.all(
+                            color: _languagePreferred == 'ar'
+                                ? isDark
+                                    ? AppColors.lightBlue500
+                                    : AppColors.lightBlue700
+                                : borderColor,
+                            width: _languagePreferred == 'ar' ? 2 : 1,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              '🇪🇬',
+                              style: TextStyle(fontSize: context.sp(22)),
+                            ),
+                            SizedBox(height: context.h(6)),
+                            context.text(
+                              'العربية',
+                              style: textTheme.bodyBold.copyWith(
+                                color: _languagePreferred == 'ar'
+                                    ? isDark
+                                        ? AppColors.lightBlue500
+                                        : AppColors.lightBlue700
+                                    : textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              SizedBox(height: context.h(20)),
+
+              // ── Start Interview button ──────────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                height: context.h(50),
+                child: ElevatedButton(
+                  onPressed: _handleStart,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isDark
+                        ? AppColors.lightBlue500
+                        : AppColors.lightBlue700,
+                    foregroundColor: AppColors.blue700,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(context.r(50)),
+                    ),
+                  ),
+                  child: context.text(
+                    'Start Interview',
+                    style: textTheme.title2Bold.copyWith(
+                      color: textPrimary,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -356,7 +549,11 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
     }
     Navigator.of(context).pop();
     widget.onStart(
-        _selectedRole!.roleName, _selectedRole!.roleId, _sessionType);
+      _selectedRole!.roleName,
+      _selectedRole!.roleId,
+      _sessionType,
+      _languagePreferred,
+    );
   }
 }
 
@@ -380,9 +577,11 @@ class DeleteInterviewFeedbackDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          context.text('Delete Interview Feedback',
-              style: textTheme.title2Bold.copyWith(color: textPrimary),
-              textAlign: TextAlign.center),
+          context.text(
+            'Delete Interview Feedback',
+            style: textTheme.title2Bold.copyWith(color: textPrimary),
+            textAlign: TextAlign.center,
+          ),
           SizedBox(height: context.h(12)),
           context.text(
             'Are you sure you want to delete this interview feedback? You won\'t be able to recover it later.',
@@ -434,9 +633,11 @@ class CameraRequiredDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          context.text('Camera Required',
-              style: textTheme.title2Bold.copyWith(color: textPrimary),
-              textAlign: TextAlign.center),
+          context.text(
+            'Camera Required',
+            style: textTheme.title2Bold.copyWith(color: textPrimary),
+            textAlign: TextAlign.center,
+          ),
           SizedBox(height: context.h(12)),
           context.text(
             'Your camera is turned off.\n\nThe interview is paused and cannot continue until you enable your camera.',
@@ -447,7 +648,6 @@ class CameraRequiredDialog extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Home
               _CircleIconButton(
                 icon: Icons.home_rounded,
                 color: AppColors.lightBlue600,
@@ -457,7 +657,6 @@ class CameraRequiredDialog extends StatelessWidget {
                 },
               ),
               SizedBox(width: context.w(24)),
-              // Enable camera
               _CircleIconButton(
                 icon: Icons.videocam_rounded,
                 color: AppColors.red400,
@@ -500,9 +699,11 @@ class MicrophoneRequiredDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          context.text('Microphone Required',
-              style: textTheme.title2Bold.copyWith(color: textPrimary),
-              textAlign: TextAlign.center),
+          context.text(
+            'Microphone Required',
+            style: textTheme.title2Bold.copyWith(color: textPrimary),
+            textAlign: TextAlign.center,
+          ),
           SizedBox(height: context.h(12)),
           context.text(
             'Your microphone is turned off.\n\nThe interview is paused and cannot continue until you enable your microphone.',
@@ -565,13 +766,16 @@ class PauseDialog extends StatelessWidget {
     return Dialog(
       backgroundColor: bgColor,
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(context.r(16))),
+        borderRadius: BorderRadius.circular(context.r(16)),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
             padding: EdgeInsets.symmetric(
-                horizontal: context.w(24), vertical: context.h(16)),
+              horizontal: context.w(24),
+              vertical: context.h(16),
+            ),
             child: context.text(
               'pause',
               style: textTheme.title2Bold.copyWith(color: textPrimary),
@@ -581,11 +785,12 @@ class PauseDialog extends StatelessWidget {
           Divider(height: 1, color: dividerColor),
           Padding(
             padding: EdgeInsets.symmetric(
-                horizontal: context.w(24), vertical: context.h(20)),
+              horizontal: context.w(24),
+              vertical: context.h(20),
+            ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                // Home
                 _CircleIconButton(
                   icon: Icons.home_rounded,
                   color: AppColors.lightBlue600,
@@ -594,7 +799,6 @@ class PauseDialog extends StatelessWidget {
                     onGoHome();
                   },
                 ),
-                // Restart
                 _CircleIconButton(
                   icon: Icons.refresh_rounded,
                   color: AppColors.lightBlue600,
@@ -603,7 +807,6 @@ class PauseDialog extends StatelessWidget {
                     onRestart();
                   },
                 ),
-                // Resume (play)
                 _CircleIconButton(
                   icon: Icons.play_arrow_rounded,
                   color: AppColors.lightBlue600,
@@ -643,9 +846,11 @@ class LeaveInterviewDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          context.text('Are you sure you want to leave?',
-              style: textTheme.title2Bold.copyWith(color: textPrimary),
-              textAlign: TextAlign.center),
+          context.text(
+            'Are you sure you want to leave?',
+            style: textTheme.title2Bold.copyWith(color: textPrimary),
+            textAlign: TextAlign.center,
+          ),
           SizedBox(height: context.h(12)),
           context.text(
             'If you exit now, your progress will be lost and we won\'t be able to generate your feedback.',
@@ -692,9 +897,11 @@ class RestartInterviewDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          context.text('Are you sure you want to restart this interview?',
-              style: textTheme.title2Bold.copyWith(color: textPrimary),
-              textAlign: TextAlign.center),
+          context.text(
+            'Are you sure you want to restart this interview?',
+            style: textTheme.title2Bold.copyWith(color: textPrimary),
+            textAlign: TextAlign.center,
+          ),
           SizedBox(height: context.h(12)),
           context.text(
             'Your current progress will be lost and a new interview will begin.',
@@ -722,6 +929,7 @@ class RestartInterviewDialog extends StatelessWidget {
 }
 
 // ─── 8. Interview Completed Dialog ────────────────────────────────────────────
+
 class InterviewCompletedDialog extends StatelessWidget {
   final VoidCallback onGoHome;
   final VoidCallback onStartNew;
@@ -753,13 +961,18 @@ class InterviewCompletedDialog extends StatelessWidget {
               color: AppColors.green500.withOpacity(0.15),
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.check_circle_outline_rounded,
-                color: AppColors.green500, size: context.icon(36)),
+            child: Icon(
+              Icons.check_circle_outline_rounded,
+              color: AppColors.green500,
+              size: context.icon(36),
+            ),
           ),
           SizedBox(height: context.h(16)),
-          context.text('Interview Completed! 🎉',
-              style: textTheme.title2Bold.copyWith(color: textPrimary),
-              textAlign: TextAlign.center),
+          context.text(
+            'Interview Completed! 🎉',
+            style: textTheme.title2Bold.copyWith(color: textPrimary),
+            textAlign: TextAlign.center,
+          ),
           SizedBox(height: context.h(8)),
           context.text(
             "We're analyzing your session.\nYou'll receive a notification once your feedback is ready.",
@@ -777,13 +990,16 @@ class InterviewCompletedDialog extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: textPrimary,
                       side: BorderSide(
-                          color:
-                              isDark ? AppColors.blue300 : AppColors.grey400),
+                        color: isDark ? AppColors.blue300 : AppColors.grey400,
+                      ),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(context.r(50))),
+                        borderRadius: BorderRadius.circular(context.r(50)),
+                      ),
                     ),
-                    child: context.text('Go Home',
-                        style: textTheme.bodyBold.copyWith(color: textPrimary)),
+                    child: context.text(
+                      'Go Home',
+                      style: textTheme.bodyBold.copyWith(color: textPrimary),
+                    ),
                   ),
                 ),
               ),
@@ -798,17 +1014,65 @@ class InterviewCompletedDialog extends StatelessWidget {
                       foregroundColor: AppColors.grey50,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(context.r(50))),
+                        borderRadius: BorderRadius.circular(context.r(50)),
+                      ),
                     ),
-                    child: context.text('New Interview',
-                        style: textTheme.bodyBold
-                            .copyWith(color: AppColors.grey50)),
+                    child: context.text(
+                      'New Interview',
+                      style: textTheme.bodyBold.copyWith(
+                        color: AppColors.grey50,
+                      ),
+                    ),
                   ),
                 ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── 9. Processing Dialog ─────────────────────────────────────────────────────
+
+class ProcessingDialog extends StatelessWidget {
+  const ProcessingDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF1A2535),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(context.r(16)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(context.w(28)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: AppColors.lightBlue500),
+            SizedBox(height: context.h(20)),
+            Text(
+              'Saving your interview...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: context.sp(16),
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Inter',
+              ),
+            ),
+            SizedBox(height: context.h(8)),
+            Text(
+              'Please wait a moment',
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: context.sp(14),
+                fontFamily: 'Inter',
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

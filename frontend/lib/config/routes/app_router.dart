@@ -537,6 +537,7 @@ class AppRouter {
             roleId: extra['roleId'] as String,
             sessionType: extra['sessionType'] as InterviewSessionType? ??
                 InterviewSessionType.behavioral,
+            languagePreferred: extra['languagePreferred'] as String?,
           );
         },
       ),

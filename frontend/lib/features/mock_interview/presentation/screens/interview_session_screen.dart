@@ -43,15 +43,20 @@ class InterviewIntroScreen extends StatelessWidget {
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(
-              horizontal: context.w(24), vertical: context.h(20)),
+            horizontal: context.w(24),
+            vertical: context.h(20),
+          ),
           child: Column(
             children: [
               Align(
                 alignment: Alignment.centerLeft,
                 child: GestureDetector(
                   onTap: () => context.pop(),
-                  child: Icon(Icons.arrow_back_ios_new_rounded,
-                      color: Colors.white, size: context.icon(20)),
+                  child: Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white,
+                    size: context.icon(20),
+                  ),
                 ),
               ),
               const Spacer(),
@@ -73,7 +78,9 @@ class InterviewIntroScreen extends StatelessWidget {
               SizedBox(height: context.h(8)),
               Container(
                 padding: EdgeInsets.symmetric(
-                    horizontal: context.w(12), vertical: context.h(4)),
+                  horizontal: context.w(12),
+                  vertical: context.h(4),
+                ),
                 decoration: BoxDecoration(
                   color: isBehavioral
                       ? AppColors.lightBlue600
@@ -96,19 +103,23 @@ class InterviewIntroScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     _InfoRow(
-                        icon: Icons.help_outline_rounded,
-                        text: '5 questions',
-                        sub: 'prepared for you'),
+                      icon: Icons.help_outline_rounded,
+                      text: 'Multiple questions',
+                      sub: 'prepared for you',
+                    ),
                     Divider(
-                        color: Colors.white.withOpacity(0.1),
-                        height: context.h(20)),
+                      color: Colors.white.withOpacity(0.1),
+                      height: context.h(20),
+                    ),
                     _InfoRow(
-                        icon: Icons.timer_outlined,
-                        text: '30 seconds',
-                        sub: 'per question to answer'),
+                      icon: Icons.timer_outlined,
+                      text: '45 seconds',
+                      sub: 'per question to answer',
+                    ),
                     Divider(
-                        color: Colors.white.withOpacity(0.1),
-                        height: context.h(20)),
+                      color: Colors.white.withOpacity(0.1),
+                      height: context.h(20),
+                    ),
                     _InfoRow(
                       icon: isBehavioral
                           ? Icons.videocam_rounded
@@ -121,12 +132,14 @@ class InterviewIntroScreen extends StatelessWidget {
                           : 'audio will be recorded',
                     ),
                     Divider(
-                        color: Colors.white.withOpacity(0.1),
-                        height: context.h(20)),
+                      color: Colors.white.withOpacity(0.1),
+                      height: context.h(20),
+                    ),
                     _InfoRow(
-                        icon: Icons.psychology_outlined,
-                        text: 'AI Analysis',
-                        sub: 'feedback ready after interview'),
+                      icon: Icons.psychology_outlined,
+                      text: 'AI Analysis',
+                      sub: 'feedback ready after interview',
+                    ),
                   ],
                 ),
               ),
@@ -149,12 +162,16 @@ class InterviewIntroScreen extends StatelessWidget {
                     children: [
                       context.text(
                         "Let's Start",
-                        style: textTheme.title2Bold
-                            .copyWith(color: AppColors.blue900),
+                        style: textTheme.title2Bold.copyWith(
+                          color: AppColors.blue900,
+                        ),
                       ),
                       SizedBox(width: context.w(8)),
-                      Icon(Icons.arrow_forward_rounded,
-                          color: AppColors.blue900, size: context.icon(20)),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        color: AppColors.blue900,
+                        size: context.icon(20),
+                      ),
                     ],
                   ),
                 ),
@@ -187,18 +204,24 @@ class _InfoRow extends StatelessWidget {
             color: AppColors.lightBlue500.withOpacity(0.15),
             shape: BoxShape.circle,
           ),
-          child:
-              Icon(icon, color: AppColors.lightBlue400, size: context.icon(20)),
+          child: Icon(
+            icon,
+            color: AppColors.lightBlue400,
+            size: context.icon(20),
+          ),
         ),
         SizedBox(width: context.w(12)),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            context.text(text,
-                style: textTheme.bodyBold.copyWith(color: Colors.white)),
-            context.text(sub,
-                style:
-                    textTheme.captionRegular.copyWith(color: Colors.white60)),
+            context.text(
+              text,
+              style: textTheme.bodyBold.copyWith(color: Colors.white),
+            ),
+            context.text(
+              sub,
+              style: textTheme.captionRegular.copyWith(color: Colors.white60),
+            ),
           ],
         ),
       ],
@@ -214,12 +237,14 @@ class InterviewSessionScreen extends ConsumerStatefulWidget {
   final String roleName;
   final String roleId;
   final InterviewSessionType sessionType;
+  final String? languagePreferred; // ← NEW
 
   const InterviewSessionScreen({
     super.key,
     required this.roleName,
     required this.roleId,
     required this.sessionType,
+    this.languagePreferred, // ← NEW
   });
 
   @override
@@ -269,6 +294,7 @@ class _InterviewSessionScreenState
             roleName: widget.roleName,
             roleId: widget.roleId,
             sessionType: widget.sessionType,
+            languagePreferred: widget.languagePreferred, // ← NEW
           );
     }
   }
@@ -308,8 +334,9 @@ class _InterviewSessionScreenState
       if (xfile != null) {
         final info = await VideoCompress.compressVideo(
           xfile.path,
-          quality: VideoQuality.MediumQuality,
+          quality: VideoQuality.LowQuality,
           deleteOrigin: true,
+          includeAudio: true,
         );
         _recordedFile = info?.file ?? File(xfile.path);
       }
@@ -322,7 +349,13 @@ class _InterviewSessionScreenState
       _audioRecordingPath =
           '${dir.path}/interview_${DateTime.now().millisecondsSinceEpoch}.mp3';
       await _audioRecorder.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc, sampleRate: 44100),
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          sampleRate: 44100,
+          androidConfig: AndroidRecordConfig(
+            audioSource: AndroidAudioSource.voiceCommunication,
+          ),
+        ),
         path: _audioRecordingPath!,
       );
     } catch (_) {}
@@ -339,23 +372,46 @@ class _InterviewSessionScreenState
 
   // ── TTS ────────────────────────────────────────────────────────────────────
 
+  bool _ttsPlaybackPaused = false;
+
   Future<void> _playQuestionAudio(List<int> bytes) async {
     try {
+      _ttsPlaybackPaused = false;
+
+      if (_isBehavioral) {
+        await _cameraController?.pauseVideoRecording();
+      } else {
+        await _audioRecorder.pause();
+      }
+
       final dir = await getTemporaryDirectory();
-      final file =
-          File('${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.mp3');
+      final file = File(
+        '${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
+      );
       await file.writeAsBytes(bytes);
       await _ttsPlayer.setFilePath(file.path);
       await _ttsPlayer.play();
 
       await _ttsPlayer.playerStateStream.firstWhere(
-        (s) => s.processingState == ProcessingState.completed,
+        (s) {
+          if (s.processingState == ProcessingState.completed ||
+              s.processingState == ProcessingState.idle) return true;
+          if (_ttsPlaybackPaused) return true;
+          return false;
+        },
       );
     } catch (_) {
     } finally {
-      if (mounted) {
+      if (mounted && !_ttsPlaybackPaused) {
+        if (_isBehavioral) {
+          await _cameraController?.resumeVideoRecording();
+        } else {
+          await _audioRecorder.resume();
+        }
+
         final currentStatus = ref.read(mockInterviewProvider).sessionStatus;
-        if (currentStatus == InterviewSessionStatus.active) {
+        if (currentStatus == InterviewSessionStatus.active ||
+            currentStatus == InterviewSessionStatus.paused) {
           ref.read(mockInterviewProvider.notifier).startQuestionTimer();
         }
       }
@@ -394,8 +450,8 @@ class _InterviewSessionScreenState
         session != null && state.currentQuestionIndex < session.questions.length
             ? session.questions[state.currentQuestionIndex]
             : null;
-    final totalQuestions = session?.questions.length ?? 5;
-    final progress = totalQuestions > 0 ? state.remainingSeconds / 30.0 : 0.0;
+    final totalQuestions = session?.questions.length ?? 0;
+    final progress = totalQuestions > 0 ? state.remainingSeconds / 45.0 : 0.0;
 
     return WillPopScope(
       onWillPop: () async {
@@ -445,11 +501,16 @@ class _InterviewSessionScreenState
                           decoration: BoxDecoration(
                             color: AppColors.purple500.withOpacity(0.85),
                             shape: BoxShape.circle,
-                            border:
-                                Border.all(color: Colors.white24, width: 1.5),
+                            border: Border.all(
+                              color: Colors.white24,
+                              width: 1.5,
+                            ),
                           ),
-                          child: Icon(Icons.mic_rounded,
-                              color: Colors.white, size: context.icon(26)),
+                          child: Icon(
+                            Icons.mic_rounded,
+                            color: Colors.white,
+                            size: context.icon(26),
+                          ),
                         ),
                       ),
                     Positioned(
@@ -457,7 +518,11 @@ class _InterviewSessionScreenState
                       right: context.w(16),
                       bottom: context.h(8),
                       child: _buildQuestionCard(
-                          context, state, currentQuestion, textTheme),
+                        context,
+                        state,
+                        currentQuestion,
+                        textTheme,
+                      ),
                     ),
                   ],
                 ),
@@ -471,34 +536,69 @@ class _InterviewSessionScreenState
   }
 
   Widget _buildTopBar(
-      BuildContext context, MockInterviewState state, AppTextTheme textTheme) {
+    BuildContext context,
+    MockInterviewState state,
+    AppTextTheme textTheme,
+  ) {
     final session = state.session;
-    final total = session?.questions.length ?? 5;
+    final total = session?.questions.length ?? 0;
     final current = state.currentQuestionIndex + 1;
 
     return Padding(
       padding: EdgeInsets.symmetric(
-          horizontal: context.w(16), vertical: context.h(12)),
+        horizontal: context.w(16),
+        vertical: context.h(12),
+      ),
       child: Row(
         children: [
           GestureDetector(
             onTap: _showLeaveDialog,
-            child: Icon(Icons.arrow_back_ios_new_rounded,
-                color: Colors.white, size: context.icon(20)),
+            child: Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: Colors.white,
+              size: context.icon(20),
+            ),
           ),
           const Spacer(),
-          Container(
-            padding: EdgeInsets.symmetric(
-                horizontal: context.w(10), vertical: context.h(4)),
-            decoration: BoxDecoration(
-              color:
-                  _isBehavioral ? AppColors.lightBlue600 : AppColors.purple500,
-              borderRadius: BorderRadius.circular(context.r(20)),
-            ),
-            child: context.text(
-              _isBehavioral ? 'Behavioral' : 'Technical',
-              style: textTheme.captionBold.copyWith(color: Colors.white),
-            ),
+          Column(
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.w(10),
+                  vertical: context.h(4),
+                ),
+                decoration: BoxDecoration(
+                  color: _isBehavioral
+                      ? AppColors.lightBlue600
+                      : AppColors.purple500,
+                  borderRadius: BorderRadius.circular(context.r(20)),
+                ),
+                child: context.text(
+                  _isBehavioral ? 'Behavioral' : 'Technical',
+                  style: textTheme.captionBold.copyWith(color: Colors.white),
+                ),
+              ),
+              // ── Language badge ────────────────────────────────────────
+              if (widget.languagePreferred != null) ...[
+                SizedBox(height: context.h(4)),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: context.w(8),
+                    vertical: context.h(2),
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(context.r(12)),
+                  ),
+                  child: context.text(
+                    widget.languagePreferred == 'ar' ? '🇪🇬 AR' : '🇬🇧 EN',
+                    style: textTheme.captionRegular.copyWith(
+                      color: Colors.white70,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           const Spacer(),
           Column(
@@ -510,11 +610,13 @@ class _InterviewSessionScreenState
               ),
               Row(
                 children: [
-                  Icon(Icons.timer_outlined,
-                      color: state.remainingSeconds <= 10
-                          ? AppColors.red400
-                          : Colors.white,
-                      size: context.icon(14)),
+                  Icon(
+                    Icons.timer_outlined,
+                    color: state.remainingSeconds <= 10
+                        ? AppColors.red400
+                        : Colors.white,
+                    size: context.icon(14),
+                  ),
                   SizedBox(width: context.w(2)),
                   context.text(
                     '${state.remainingSeconds}s',
@@ -534,11 +636,16 @@ class _InterviewSessionScreenState
   }
 
   Widget _buildProgressBar(
-      BuildContext context, MockInterviewState state, double progress) {
+    BuildContext context,
+    MockInterviewState state,
+    double progress,
+  ) {
     final isLow = state.remainingSeconds <= 10;
     return Padding(
       padding: EdgeInsets.symmetric(
-          horizontal: context.w(16), vertical: context.h(4)),
+        horizontal: context.w(16),
+        vertical: context.h(4),
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(context.r(4)),
         child: LinearProgressIndicator(
@@ -553,8 +660,12 @@ class _InterviewSessionScreenState
     );
   }
 
-  Widget _buildQuestionCard(BuildContext context, MockInterviewState state,
-      InterviewQuestionEntity? currentQuestion, AppTextTheme textTheme) {
+  Widget _buildQuestionCard(
+    BuildContext context,
+    MockInterviewState state,
+    InterviewQuestionEntity? currentQuestion,
+    AppTextTheme textTheme,
+  ) {
     if (state.sessionStatus == InterviewSessionStatus.starting ||
         state.session == null) {
       return Container(
@@ -571,11 +682,15 @@ class _InterviewSessionScreenState
               width: context.w(18),
               height: context.w(18),
               child: const CircularProgressIndicator(
-                  color: AppColors.lightBlue400, strokeWidth: 2),
+                color: AppColors.lightBlue400,
+                strokeWidth: 2,
+              ),
             ),
             SizedBox(width: context.w(12)),
-            context.text('Preparing your interview...',
-                style: textTheme.bodyRegular.copyWith(color: Colors.white70)),
+            context.text(
+              'Preparing your interview...',
+              style: textTheme.bodyRegular.copyWith(color: Colors.white70),
+            ),
           ],
         ),
       );
@@ -603,14 +718,18 @@ class _InterviewSessionScreenState
                   color: AppColors.lightBlue500.withOpacity(0.2),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.record_voice_over_outlined,
-                    color: AppColors.lightBlue400, size: context.icon(14)),
+                child: Icon(
+                  Icons.record_voice_over_outlined,
+                  color: AppColors.lightBlue400,
+                  size: context.icon(14),
+                ),
               ),
               SizedBox(width: context.w(8)),
               context.text(
                 isWaiting ? 'Loading question...' : 'Question',
-                style: textTheme.captionBold
-                    .copyWith(color: AppColors.lightBlue400),
+                style: textTheme.captionBold.copyWith(
+                  color: AppColors.lightBlue400,
+                ),
               ),
               if (isWaiting) ...[
                 SizedBox(width: context.w(8)),
@@ -618,7 +737,9 @@ class _InterviewSessionScreenState
                   width: context.w(12),
                   height: context.w(12),
                   child: const CircularProgressIndicator(
-                      color: AppColors.lightBlue400, strokeWidth: 1.5),
+                    color: AppColors.lightBlue400,
+                    strokeWidth: 1.5,
+                  ),
                 ),
               ],
             ],
@@ -627,8 +748,10 @@ class _InterviewSessionScreenState
           if (currentQuestion != null)
             context.text(
               currentQuestion.questionText,
-              style: textTheme.title2Bold
-                  .copyWith(color: Colors.white, height: 1.4),
+              style: textTheme.title2Bold.copyWith(
+                color: Colors.white,
+                height: 1.4,
+              ),
               textAlign: TextAlign.center,
             ),
           SizedBox(height: context.h(8)),
@@ -649,7 +772,9 @@ class _InterviewSessionScreenState
         ),
         child: const Center(
           child: CircularProgressIndicator(
-              color: AppColors.lightBlue500, strokeWidth: 2),
+            color: AppColors.lightBlue500,
+            strokeWidth: 2,
+          ),
         ),
       );
     }
@@ -671,7 +796,9 @@ class _InterviewSessionScreenState
     return Container(
       color: Colors.black.withOpacity(0.5),
       padding: EdgeInsets.symmetric(
-          horizontal: context.w(24), vertical: context.h(16)),
+        horizontal: context.w(24),
+        vertical: context.h(16),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
@@ -713,36 +840,62 @@ class _InterviewSessionScreenState
 
   void _toggleCamera() {
     if (_cameraEnabled) {
+      _ttsPlaybackPaused = true;
+      _ttsPlayer.pause();
       ref.read(mockInterviewProvider.notifier).pauseInterview();
       setState(() => _cameraEnabled = false);
       _showCameraDialog();
     } else {
+      _ttsPlaybackPaused = false;
       setState(() => _cameraEnabled = true);
+      _ttsPlayer.play();
       ref.read(mockInterviewProvider.notifier).resumeInterview();
     }
   }
 
   void _toggleMic() {
     if (_micEnabled) {
+      _ttsPlaybackPaused = true;
+      _ttsPlayer.pause();
       ref.read(mockInterviewProvider.notifier).pauseInterview();
       setState(() => _micEnabled = false);
       _showMicDialog();
     } else {
+      _ttsPlaybackPaused = false;
       setState(() => _micEnabled = true);
+      _ttsPlayer.play();
       ref.read(mockInterviewProvider.notifier).resumeInterview();
     }
   }
 
   void _showPauseDialog() {
+    _ttsPlaybackPaused = true;
+    _ttsPlayer.pause();
     ref.read(mockInterviewProvider.notifier).pauseInterview();
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => PauseDialog(
         onGoHome: _showLeaveDialog,
         onRestart: _showRestartDialog,
-        onResume: () =>
-            ref.read(mockInterviewProvider.notifier).resumeInterview(),
+        onResume: () {
+          _ttsPlaybackPaused = false;
+          ref.read(mockInterviewProvider.notifier).resumeInterview();
+
+          final playerState = _ttsPlayer.processingState;
+          if (playerState == ProcessingState.ready ||
+              playerState == ProcessingState.buffering ||
+              playerState == ProcessingState.loading) {
+            _ttsPlayer.play();
+          } else {
+            Future.microtask(() {
+              if (mounted) {
+                ref.read(mockInterviewProvider.notifier).startQuestionTimer();
+              }
+            });
+          }
+        },
       ),
     );
   }
@@ -806,7 +959,30 @@ class _InterviewSessionScreenState
   Future<void> _onSessionFinished() async {
     if (_sessionFinishedHandled) return;
     _sessionFinishedHandled = true;
+
     if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const ProcessingDialog(),
+      );
+    }
+
+    if (_isBehavioral) {
+      await _stopVideoRecording();
+    } else {
+      await _stopAudioRecording();
+    }
+
+    if (_recordedFile != null) {
+      await ref.read(mockInterviewProvider.notifier).uploadAndNotify(
+            mediaFile: _recordedFile!,
+            roleName: widget.roleName,
+          );
+    }
+
+    if (mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -821,17 +997,6 @@ class _InterviewSessionScreenState
           },
         ),
       );
-    }
-    if (_isBehavioral) {
-      await _stopVideoRecording();
-    } else {
-      await _stopAudioRecording();
-    }
-    if (_recordedFile != null) {
-      ref.read(mockInterviewProvider.notifier).uploadAndNotify(
-            mediaFile: _recordedFile!,
-            roleName: widget.roleName,
-          );
     }
   }
 }

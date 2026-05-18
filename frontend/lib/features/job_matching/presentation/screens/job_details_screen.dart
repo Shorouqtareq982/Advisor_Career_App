@@ -121,11 +121,12 @@ class _JobDetailsScreenState extends ConsumerState<JobDetailsScreen> {
       context: context,
       builder: (_) => SelectJobDialog(
         prefilledJobTitle: widget.job.title,
-        onStart: (roleName, roleId, sessionType) {
+        onStart: (roleName, roleId, sessionType, languagePreferred) {
           context.push('/interview-session', extra: {
             'roleName': roleName,
             'roleId': roleId,
             'sessionType': sessionType,
+            'languagePreferred': languagePreferred,
           });
         },
       ),
@@ -531,13 +532,11 @@ class _JobMatchingResumeUploadDialogState
   File? _selectedFile;
   String? _selectedFileName;
 
-  // ── FIX 2: track whether we're using existing CV ──────────────────────────
   bool _useExistingCv = false;
 
   @override
   void initState() {
     super.initState();
-    // لو فيه CV موجود → نفعّله تلقائياً
     if (widget.currentCvUrl != null && widget.currentCvUrl!.isNotEmpty) {
       _useExistingCv = true;
       _selectedFileName = widget.currentCvFileName ?? 'CV.pdf';
@@ -565,12 +564,11 @@ class _JobMatchingResumeUploadDialogState
       setState(() {
         _selectedFile = File(file.path!);
         _selectedFileName = file.name;
-        _useExistingCv = false; // اختار ملف جديد
+        _useExistingCv = false;
       });
     }
   }
 
-  /// لو بنستخدم الـ existing CV URL، نعمل download مؤقت عشان نحوله لـ File
   Future<File?> _downloadExistingCv() async {
     try {
       final cvUrl = widget.currentCvUrl!;
@@ -719,7 +717,6 @@ class _JobMatchingResumeUploadDialogState
               width: double.infinity,
               height: context.h(52),
               child: ElevatedButton(
-                // ── FIX 2: يتفعل لو hasCV ──────────────────────────────────
                 onPressed: !hasCV
                     ? null
                     : () async {

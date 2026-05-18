@@ -7,10 +7,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/datasources/interview_roles.dart';
 import '../../data/repositories/mock_interview_repository_impl.dart';
-import '../../domain/entities/interview_entities.dart';
 import '../../../mock_interview/presentation/providers/notification_helper.dart';
-import '../../data/models/interview_models.dart';
 import '../../../alerts/data/datasources/alerts_local_datasource.dart';
+import '../../domain/entities/interview_entities.dart';
+import '../../data/models/interview_models.dart' hide ReportParser;
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +42,7 @@ class MockInterviewState {
   final bool isLoadingDetail;
   final double uploadProgress;
   final String? errorMessage;
+  final String? languagePreferred;
 
   const MockInterviewState({
     this.feedbackList = const [],
@@ -49,7 +50,7 @@ class MockInterviewState {
     this.session,
     this.sessionStatus = InterviewSessionStatus.idle,
     this.currentQuestionIndex = 0,
-    this.remainingSeconds = 30,
+    this.remainingSeconds = 45,
     this.audioBytes,
     this.isLoadingAudio = false,
     this.waitingForAudio = false,
@@ -57,6 +58,7 @@ class MockInterviewState {
     this.isLoadingDetail = false,
     this.uploadProgress = 0.0,
     this.errorMessage,
+    this.languagePreferred,
   });
 
   MockInterviewState copyWith({
@@ -73,10 +75,12 @@ class MockInterviewState {
     bool? isLoadingDetail,
     double? uploadProgress,
     String? errorMessage,
+    String? languagePreferred,
     bool clearError = false,
     bool clearSession = false,
     bool clearAudio = false,
     bool clearDetail = false,
+    bool clearLanguage = false,
   }) {
     return MockInterviewState(
       feedbackList: feedbackList ?? this.feedbackList,
@@ -93,6 +97,8 @@ class MockInterviewState {
       isLoadingDetail: isLoadingDetail ?? this.isLoadingDetail,
       uploadProgress: uploadProgress ?? this.uploadProgress,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      languagePreferred:
+          clearLanguage ? null : (languagePreferred ?? this.languagePreferred),
     );
   }
 }
@@ -102,6 +108,7 @@ class MockInterviewState {
 class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
   final MockInterviewRepositoryImpl _repo;
   Timer? _questionTimer;
+  final Set<String> _completedPolling = {};
 
   static const String _notifiedSessionsKey = 'notified_interview_sessions';
 
@@ -111,34 +118,25 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
 
   Future<void> loadFeedbackList() async {
     state = state.copyWith(
-        feedbackStatus: FeedbackLoadStatus.loading, clearError: true);
+      feedbackStatus: FeedbackLoadStatus.loading,
+      clearError: true,
+    );
+
     try {
       final sessions = await _repo.getLocalSessions();
 
-      final readySessions = <Map<String, dynamic>>[];
       final Set<String> seenIds = {};
-
+      final uniqueSessions = <Map<String, dynamic>>[];
       for (final s in sessions) {
-        final sessionId = s['session_id'] as String;
-
-        if (seenIds.contains(sessionId)) continue;
-        seenIds.add(sessionId);
-
-        final sessionType = s['session_type'] as String? ?? '';
-        try {
-          String report;
-          if (sessionType == 'technical') {
-            report = await _repo.getTechnicalReport(sessionId);
-          } else {
-            report = await _repo.getBehavioralReport(sessionId);
-          }
-          if (report.isNotEmpty) {
-            readySessions.add(s);
-          }
-        } catch (_) {}
+        final id = s['session_id'] as String;
+        if (!seenIds.contains(id)) {
+          seenIds.add(id);
+          uniqueSessions.add(s);
+        }
       }
 
-      final summaries = readySessions
+      // ← اعرض اللي محفوظ locally فورًا (offline-first)
+      final localSummaries = uniqueSessions
           .map((s) => InterviewFeedbackSummary(
                 sessionId: s['session_id'] as String,
                 roleName: s['role_name'] as String,
@@ -147,13 +145,17 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
                     : InterviewSessionType.behavioral,
                 createdAt: DateTime.tryParse(s['created_at'] as String) ??
                     DateTime.now(),
+                languagePreferred: s['language_preferred'] as String?,
               ))
           .toList();
 
       state = state.copyWith(
-        feedbackList: summaries,
+        feedbackList: localSummaries,
         feedbackStatus: FeedbackLoadStatus.success,
       );
+
+      // ← verify من السيرفر في background بدون ما تمسح حاجة لو فشل
+      _verifyWithServerInBackground(uniqueSessions);
     } catch (e) {
       state = state.copyWith(
         feedbackStatus: FeedbackLoadStatus.error,
@@ -162,33 +164,143 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
     }
   }
 
+  // ── Verify With Server ─────────────────────────────────────────────────────
+  // FIX: لو الريبورت فاضي، امسح الـ session من Supabase والـ cache مش بس من الليست
+
+  Future<void> _verifyWithServerInBackground(
+      List<Map<String, dynamic>> sessions) async {
+    try {
+      final futures = sessions.map((s) async {
+        final sessionId = s['session_id'] as String;
+        final sessionType = s['session_type'] as String? ?? '';
+        try {
+          String report;
+          if (sessionType == 'technical') {
+            report = await _repo.getTechnicalReport(sessionId);
+          } else {
+            report = await _repo.getBehavioralReport(sessionId);
+          }
+
+          if (_isReportReady(report)) {
+            return s; // ريبورت جاهز: احتفظ
+          } else {
+            // FIX: ريبورت فاضي = session مش مكتملة، امسحها فعلياً
+            await _repo.deleteLocalSession(sessionId);
+            return null;
+          }
+        } on SocketException {
+          return s; // مفيش نت: احتفظ
+        } on HttpException {
+          return s; // server error: احتفظ
+        } catch (_) {
+          return s; // أي error غير متوقع: احتفظ (safe default)
+        }
+      });
+
+      final results = await Future.wait(futures);
+      final verifiedSessions =
+          results.whereType<Map<String, dynamic>>().toList();
+
+      final summaries = verifiedSessions
+          .map((s) => InterviewFeedbackSummary(
+                sessionId: s['session_id'] as String,
+                roleName: s['role_name'] as String,
+                sessionType: (s['session_type'] as String) == 'technical'
+                    ? InterviewSessionType.technical
+                    : InterviewSessionType.behavioral,
+                createdAt: DateTime.tryParse(s['created_at'] as String) ??
+                    DateTime.now(),
+                languagePreferred: s['language_preferred'] as String?,
+              ))
+          .toList();
+
+      if (mounted) {
+        state = state.copyWith(feedbackList: summaries);
+      }
+    } catch (_) {}
+  }
+
+  // FIX: helper يتحقق إن الريبورت فيه محتوى حقيقي
+  bool _isReportReady(String report) {
+    final trimmed = report.trim();
+    if (trimmed.isEmpty) return false;
+    if (trimmed == '{}') return false;
+    if (trimmed == 'null') return false;
+    if (trimmed == '""') return false;
+    // لازم يكون فيه على الأقل نص حقيقي (أكتر من 10 حروف)
+    return trimmed.length > 10;
+  }
+
   // ── Load Feedback Detail ───────────────────────────────────────────────────
 
   Future<void> loadFeedbackDetail(String sessionId) async {
     state = state.copyWith(isLoadingDetail: true, clearError: true);
     try {
       final sessions = await _repo.getLocalSessions();
+
+      // مؤقت للـ debug
+      print('🔍 sessions found: ${sessions.length}');
+      print('🔍 looking for: $sessionId');
+      print('🔍 all ids: ${sessions.map((s) => s['session_id']).toList()}');
+
       final session = sessions.firstWhere(
         (s) => s['session_id'] == sessionId,
         orElse: () => {},
       );
 
-      final sessionType = (session['session_type'] as String?) == 'technical'
-          ? InterviewSessionType.technical
-          : InterviewSessionType.behavioral;
+      print('🔍 session found: $session');
+
       final roleName = session['role_name'] as String? ?? '';
+      final sessionTypeStr = session['session_type'] as String? ?? '';
+      final languagePreferred = session['language_preferred'] as String?;
 
       String? behavioralReport;
       String? technicalReport;
+      InterviewSessionType sessionType;
 
-      if (sessionType == InterviewSessionType.behavioral) {
+      if (sessionTypeStr == 'technical') {
+        sessionType = InterviewSessionType.technical;
+        technicalReport = await _repo.getTechnicalReport(sessionId);
+      } else if (sessionTypeStr == 'behavioral') {
+        sessionType = InterviewSessionType.behavioral;
         behavioralReport = await _repo.getBehavioralReport(sessionId);
       } else {
+        // النوع مش معروف، جرب technical الأول
+        sessionType = InterviewSessionType.technical;
         technicalReport = await _repo.getTechnicalReport(sessionId);
+        if (!_isReportReady(technicalReport)) {
+          technicalReport = null;
+          sessionType = InterviewSessionType.behavioral;
+          behavioralReport = await _repo.getBehavioralReport(sessionId);
+        }
       }
 
       final report = behavioralReport ?? technicalReport ?? '';
+      print('🔍 report length: ${report.length}');
+      print('🔍 report ready: ${_isReportReady(report)}');
+      print(
+          '🔍 report preview: ${report.substring(0, report.length > 100 ? 100 : report.length)}');
       final strongPoints = ReportParser.extractStrengths(report);
+      print('🔍 strongPoints: $strongPoints');
+
+      // FIX: لو الريبورت لسه مش جاهز، حط detail فاضي (pending state)
+      if (!_isReportReady(report)) {
+        final detail = InterviewFeedbackDetailEntity(
+          sessionId: sessionId,
+          roleName: roleName,
+          sessionType: sessionType,
+          createdAt:
+              DateTime.tryParse(session['created_at'] as String? ?? '') ??
+                  DateTime.now(),
+          strongPoints: [],
+          areasForImprovement: [],
+          suggestions: '',
+          languagePreferred: languagePreferred,
+        );
+        state = state.copyWith(feedbackDetail: detail, isLoadingDetail: false);
+        return;
+      }
+
       final areasForImprovement = ReportParser.extractWeaknesses(report);
       final suggestions = ReportParser.extractSuggestions(report);
 
@@ -203,6 +315,7 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
         suggestions: suggestions,
         behavioralReport: behavioralReport,
         technicalReport: technicalReport,
+        languagePreferred: languagePreferred,
       );
 
       state = state.copyWith(feedbackDetail: detail, isLoadingDetail: false);
@@ -223,7 +336,9 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
     int maxAttempts = 30,
     int intervalSeconds = 15,
   }) async {
+    if (_completedPolling.contains(sessionId)) return;
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      if (state.feedbackList.any((f) => f.sessionId == sessionId)) return;
       await Future.delayed(Duration(seconds: intervalSeconds));
 
       try {
@@ -234,25 +349,48 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
           report = await _repo.getBehavioralReport(sessionId);
         }
 
-        if (report.isNotEmpty) {
-          await _sendNotificationOnce(sessionId: sessionId, roleName: roleName);
+        // FIX: استخدم _isReportReady بدل report.isNotEmpty
+        if (_isReportReady(report)) {
+          _completedPolling.add(sessionId);
+          final sessions = await _repo.getLocalSessions();
+          final sessionData = sessions.firstWhere(
+            (s) => s['session_id'] == sessionId,
+            orElse: () => {},
+          );
 
-          final alreadyInList =
-              state.feedbackList.any((f) => f.sessionId == sessionId);
+          if (sessionData.isEmpty) {
+            await _repo.saveSessionLocally(
+              sessionId: sessionId,
+              roleName: roleName,
+              sessionType: sessionType,
+            );
+          }
+          await _sendNotificationOnce(
+            sessionId: sessionId,
+            roleName: roleName,
+            sessionType: sessionType,
+          );
+
+          final alreadyInList = state.feedbackList.any(
+            (f) => f.sessionId == sessionId,
+          );
           if (!alreadyInList) {
-            final sessions = await _repo.getLocalSessions();
-            final sessionData = sessions.firstWhere(
+            final sessions2 = await _repo.getLocalSessions();
+            final sessionData2 = sessions2.firstWhere(
               (s) => s['session_id'] == sessionId,
               orElse: () => {},
             );
-            if (sessionData.isNotEmpty) {
+            if (sessionData2.isNotEmpty) {
               final newSummary = InterviewFeedbackSummary(
                 sessionId: sessionId,
                 roleName: roleName,
                 sessionType: sessionType,
                 createdAt: DateTime.tryParse(
-                        sessionData['created_at'] as String? ?? '') ??
+                      sessionData2['created_at'] as String? ?? '',
+                    ) ??
                     DateTime.now(),
+                languagePreferred:
+                    sessionData2['language_preferred'] as String?,
               );
               state = state.copyWith(
                 feedbackList: [newSummary, ...state.feedbackList],
@@ -263,15 +401,17 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
         }
       } catch (_) {}
     }
+    _completedPolling.add(sessionId);
 
     await _repo.deleteLocalSession(sessionId);
   }
 
-  // ── Notification  ──────────────────────────────
+  // ── Notification ──────────────────────────────────────────────────────────
 
   Future<void> _sendNotificationOnce({
     required String sessionId,
     required String roleName,
+    required InterviewSessionType sessionType,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -286,6 +426,9 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
       await AlertsStore.instance.addInterviewFeedbackAlert(
         roleName: roleName,
         sessionId: sessionId,
+        sessionType: sessionType == InterviewSessionType.technical
+            ? 'technical'
+            : 'behavioral',
       );
 
       notified.add(sessionId);
@@ -318,11 +461,13 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
     required String roleName,
     required String roleId,
     required InterviewSessionType sessionType,
+    String? languagePreferred,
   }) async {
     state = state.copyWith(
       sessionStatus: InterviewSessionStatus.starting,
       clearError: true,
       currentQuestionIndex: 0,
+      languagePreferred: languagePreferred,
     );
 
     try {
@@ -333,29 +478,28 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
         session = await _repo.startBehavioralSession(
           roleName: roleName,
           userId: userId,
+          languagePreferred: languagePreferred,
         );
       } else {
         session = await _repo.startTechnicalSession(
           roleName: roleName,
           userId: userId,
+          languagePreferred: languagePreferred,
         );
       }
-
-      await _repo.saveSessionLocally(
-        sessionId: session.sessionId,
-        roleName: roleName,
-        sessionType: sessionType,
-      );
 
       state = state.copyWith(
         session: session,
         sessionStatus: InterviewSessionStatus.active,
-        remainingSeconds: 30,
+        remainingSeconds: 45,
         waitingForAudio: true,
       );
 
       if (session.questions.isNotEmpty) {
-        await _loadQuestionAudio(session.questions.first.questionId);
+        await _loadQuestionAudio(
+          session.questions.first.questionId,
+          languagePreferred: languagePreferred,
+        );
       }
     } catch (e) {
       state = state.copyWith(
@@ -404,19 +548,28 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
 
     state = state.copyWith(
       currentQuestionIndex: nextIndex,
-      remainingSeconds: 30,
+      remainingSeconds: 45,
       clearAudio: true,
       waitingForAudio: true,
     );
-    _loadQuestionAudioAndNotify(session.questions[nextIndex].questionId);
+    _loadQuestionAudioAndNotify(
+      session.questions[nextIndex].questionId,
+      languagePreferred: state.languagePreferred,
+    );
   }
 
   // ── Load Audio ─────────────────────────────────────────────────────────────
 
-  Future<void> _loadQuestionAudio(String questionId) async {
+  Future<void> _loadQuestionAudio(
+    String questionId, {
+    String? languagePreferred,
+  }) async {
     state = state.copyWith(isLoadingAudio: true);
     try {
-      final bytes = await _repo.getQuestionAudio(questionId);
+      final bytes = await _repo.getQuestionAudio(
+        questionId,
+        languagePreferred: languagePreferred,
+      );
       if (bytes.isEmpty) {
         state = state.copyWith(isLoadingAudio: false, waitingForAudio: false);
         startQuestionTimer();
@@ -429,10 +582,16 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
     }
   }
 
-  Future<void> _loadQuestionAudioAndNotify(String questionId) async {
+  Future<void> _loadQuestionAudioAndNotify(
+    String questionId, {
+    String? languagePreferred,
+  }) async {
     state = state.copyWith(isLoadingAudio: true);
     try {
-      final bytes = await _repo.getQuestionAudio(questionId);
+      final bytes = await _repo.getQuestionAudio(
+        questionId,
+        languagePreferred: languagePreferred,
+      );
       if (bytes.isEmpty) {
         state = state.copyWith(isLoadingAudio: false, waitingForAudio: false);
         startQuestionTimer();
@@ -454,9 +613,8 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
 
   void resumeInterview() {
     state = state.copyWith(sessionStatus: InterviewSessionStatus.active);
-    if (!state.waitingForAudio) {
-      startQuestionTimer();
-    }
+    // ← امسح الـ startQuestionTimer من هنا خالص
+    // الـ UI هو اللي هيقرر يشغّل الـ timer بعد ما الصوت يخلص
   }
 
   void skipToNext() {
@@ -471,12 +629,15 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
     state = state.copyWith(
       sessionStatus: InterviewSessionStatus.active,
       currentQuestionIndex: 0,
-      remainingSeconds: 30,
+      remainingSeconds: 45,
       clearAudio: true,
       waitingForAudio: true,
     );
     if (session.questions.isNotEmpty) {
-      _loadQuestionAudio(session.questions.first.questionId);
+      _loadQuestionAudio(
+        session.questions.first.questionId,
+        languagePreferred: state.languagePreferred,
+      );
     }
   }
 
@@ -489,6 +650,12 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
     final session = state.session;
     if (session == null) return;
 
+    final sessionId = session.sessionId;
+    final blobUrl = session.blobUrl;
+    final sasToken = session.sasToken;
+    final sessionType = session.sessionType;
+    final languagePreferred = state.languagePreferred;
+
     state = state.copyWith(
       sessionStatus: InterviewSessionStatus.uploading,
       uploadProgress: 0.0,
@@ -497,27 +664,38 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
     try {
       await _repo.uploadToAzure(
         file: mediaFile,
-        blobUrl: session.blobUrl,
-        sasToken: session.sasToken,
-        sessionType: session.sessionType,
+        blobUrl: blobUrl,
+        sasToken: sasToken,
+        sessionType: sessionType,
       );
 
       state = state.copyWith(uploadProgress: 0.8);
 
       await _repo.notifyUploadComplete(
-        sessionId: session.sessionId,
-        blobUrl: session.blobUrl,
+        sessionId: sessionId,
+        blobUrl: blobUrl,
+        languagePreferred: languagePreferred,
       );
 
+      // حفظ الـ session بس بعد ما الـ upload ينجح فعلاً
+      await _repo.saveSessionLocally(
+        sessionId: sessionId,
+        roleName: roleName,
+        sessionType: sessionType,
+        languagePreferred: languagePreferred,
+      );
+
+      // FIX: حوّل لـ finished فوراً بعد الـ notify، مش بعد الـ processing
       state = state.copyWith(
         sessionStatus: InterviewSessionStatus.finished,
         uploadProgress: 1.0,
       );
 
+      // الـ polling يحصل في background بدون ما يأثر على الـ UI
       _pollForReport(
-        sessionId: session.sessionId,
+        sessionId: sessionId,
         roleName: roleName,
-        sessionType: session.sessionType,
+        sessionType: sessionType,
       );
     } catch (e) {
       state = state.copyWith(
@@ -537,6 +715,7 @@ class MockInterviewNotifier extends StateNotifier<MockInterviewState> {
       currentQuestionIndex: 0,
       clearAudio: true,
       clearError: true,
+      clearLanguage: true,
       uploadProgress: 0.0,
       waitingForAudio: false,
     );

@@ -82,44 +82,57 @@ class InterviewSessionModel {
 // - suggestion 2
 
 class ReportParser {
+  // ← English
   static List<String> extractStrengths(String report) =>
-      _extractSection(report, 'Strengths');
+      _extractSection(report, ['Strengths', 'نقاط القوة']);
 
   static List<String> extractWeaknesses(String report) =>
-      _extractSection(report, 'Weaknesses');
+      _extractSection(report, ['Weaknesses', 'نقاط الضعف']);
 
   static String extractSuggestions(String report) =>
-      _extractSectionText(report, 'Suggestions');
+      _extractSectionText(report, ['Suggestions', 'التوصيات', 'الاقتراحات']);
 
-  static List<String> _extractSection(String report, String section) {
-    final pattern = RegExp(
-      r'\*{1,2}' + section + r'\*{1,2}\s*\n(.*?)(?=\n\s*\*{1,2}|\s*$)',
-      dotAll: true,
-      caseSensitive: false,
-    );
-    final match = pattern.firstMatch(report);
-    if (match == null) return [];
-    return match
-        .group(1)!
-        .split('\n')
-        .map((l) => l.trim().replaceFirst(RegExp(r'^[-•*]\s*'), ''))
-        .where((l) => l.isNotEmpty)
-        .toList();
+  static List<String> _extractSection(String report, List<String> headings) {
+    for (final heading in headings) {
+      final pattern = RegExp(
+        r'\*{1,2}' +
+            RegExp.escape(heading) +
+            r'\*{1,2}\s*\n(.*?)(?=\n\s*\*{1,2}|\s*$)',
+        dotAll: true,
+        caseSensitive: false,
+      );
+      final match = pattern.firstMatch(report);
+      if (match != null) {
+        return match
+            .group(1)!
+            .split('\n')
+            .map((l) => l.trim().replaceFirst(RegExp(r'^[-•*]\s*'), ''))
+            .where((l) => l.isNotEmpty)
+            .toList();
+      }
+    }
+    return [];
   }
 
-  static String _extractSectionText(String report, String section) {
-    final pattern = RegExp(
-      r'\*{1,2}' + section + r'\*{1,2}\s*\n(.*?)(?=\n\s*\*{1,2}|\s*$)',
-      dotAll: true,
-      caseSensitive: false,
-    );
-    final match = pattern.firstMatch(report);
-    if (match == null) return '';
-    return match
-        .group(1)!
-        .split('\n')
-        .map((l) => l.trim().replaceFirst(RegExp(r'^[-•*]\s*'), ''))
-        .where((l) => l.isNotEmpty)
-        .join('\n');
+  static String _extractSectionText(String report, List<String> headings) {
+    for (final heading in headings) {
+      final pattern = RegExp(
+        r'\*{1,2}' +
+            RegExp.escape(heading) +
+            r'\*{1,2}\s*\n(.*?)(?=\n\s*\*{1,2}|\s*$)',
+        dotAll: true,
+        caseSensitive: false,
+      );
+      final match = pattern.firstMatch(report);
+      if (match != null) {
+        return match
+            .group(1)!
+            .split('\n')
+            .map((l) => l.trim().replaceFirst(RegExp(r'^[-•*]\s*'), ''))
+            .where((l) => l.isNotEmpty)
+            .join('\n');
+      }
+    }
+    return '';
   }
 }

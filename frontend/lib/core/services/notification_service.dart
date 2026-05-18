@@ -16,8 +16,23 @@ class NotificationService {
 
   static const _prefNotificationsEnabled = 'notifications_enabled';
 
+  static bool _launchHandled = false;
+
   // ── Navigation callback ────────────────────────────────────────────────────
   static void Function(String payload)? onNotificationTapCallback;
+
+  static final List<String> _pendingPayloads = [];
+
+  static void setCallback(void Function(String payload) callback) {
+    onNotificationTapCallback = callback;
+    if (_pendingPayloads.isNotEmpty) {
+      final pending = List<String>.from(_pendingPayloads);
+      _pendingPayloads.clear();
+      for (final payload in pending) {
+        Future.microtask(() => callback(payload));
+      }
+    }
+  }
 
   // ── Init ───────────────────────────────────────────────────────────────────
 
@@ -42,11 +57,14 @@ class NotificationService {
       onDidReceiveBackgroundNotificationResponse: _onNotificationTapBackground,
     );
 
+    // ── Create high-importance channel with sound ──────────────────────────
     const channel = AndroidNotificationChannel(
       _channelId,
       _channelName,
       description: _channelDescription,
-      importance: Importance.high,
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
     );
 
     await _plugin
@@ -54,13 +72,23 @@ class NotificationService {
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
-    // ── Handle notification tap that launched the app ──────────────────────
+    // ── Handle notification tap that launched the app (cold launch) ────────
     final launchDetails = await _plugin.getNotificationAppLaunchDetails();
-    if (launchDetails?.didNotificationLaunchApp == true) {
+    if (launchDetails?.didNotificationLaunchApp == true && !_launchHandled) {
+      _launchHandled = true;
       final payload = launchDetails!.notificationResponse?.payload ?? 'alerts';
-      Future.delayed(const Duration(milliseconds: 2000), () {
-        onNotificationTapCallback?.call(payload);
+
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        _dispatchPayload(payload);
       });
+    }
+  }
+
+  static void _dispatchPayload(String payload) {
+    if (onNotificationTapCallback != null) {
+      onNotificationTapCallback!(payload);
+    } else {
+      _pendingPayloads.add(payload);
     }
   }
 
@@ -90,8 +118,11 @@ class NotificationService {
   }
 
   Future<bool> isNotificationsEnabled() async {
+    final systemGranted = await isSystemPermissionGranted();
+    if (!systemGranted) return false;
+
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_prefNotificationsEnabled) ?? false;
+    return prefs.getBool(_prefNotificationsEnabled) ?? true;
   }
 
   Future<bool> isSystemPermissionGranted() async {
@@ -102,7 +133,7 @@ class NotificationService {
       return await androidPlugin.areNotificationsEnabled() ?? false;
     }
 
-    return false;
+    return true;
   }
 
   // ── Show notifications ─────────────────────────────────────────────────────
@@ -138,9 +169,12 @@ class NotificationService {
       _channelId,
       _channelName,
       channelDescription: _channelDescription,
-      importance: Importance.high,
-      priority: Priority.high,
+      importance: Importance.max,
+      priority: Priority.max,
       icon: '@mipmap/ic_launcher',
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
     );
 
     const iosDetails = DarwinNotificationDetails(
@@ -170,14 +204,10 @@ class NotificationService {
     _isHandlingTap = true;
 
     final payload = response.payload ?? '';
-    if (payload.startsWith('interview_feedback:')) {
-      final sessionId = payload.replaceFirst('interview_feedback:', '');
-      onNotificationTapCallback?.call('interview_feedback:$sessionId');
-    } else if (payload == 'career_plan') {
-      onNotificationTapCallback?.call('career_plan');
-    } else {
-      onNotificationTapCallback?.call('alerts');
-    }
+
+    Future.delayed(const Duration(milliseconds: 300), () {
+      _dispatchPayload(payload);
+    });
 
     Future.delayed(const Duration(seconds: 1), () {
       _isHandlingTap = false;

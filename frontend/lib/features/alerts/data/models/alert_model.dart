@@ -39,8 +39,22 @@ class AlertModel extends AlertEntity {
       body: (json['body'] ?? '').toString(),
       createdAt: DateTime.parse(
         (json['createdAt'] ?? DateTime.now().toIso8601String()).toString(),
-      ),
+      ).toLocal(),
       isRead: (json['isRead'] ?? false) == true,
+      type: _parseType((json['type'] ?? 'jobs').toString()),
+      route: json['route'] as String?,
+    );
+  }
+
+  factory AlertModel.fromSupabase(Map<String, dynamic> json) {
+    return AlertModel(
+      id: (json['id'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      body: (json['body'] ?? '').toString(),
+      createdAt: DateTime.parse(
+        (json['created_at'] ?? DateTime.now().toIso8601String()).toString(),
+      ).toLocal(),
+      isRead: (json['is_read'] ?? false) == true,
       type: _parseType((json['type'] ?? 'jobs').toString()),
       route: json['route'] as String?,
     );
@@ -66,7 +80,7 @@ class AlertModel extends AlertEntity {
       'id': id,
       'title': title,
       'body': body,
-      'createdAt': createdAt.toIso8601String(),
+      'createdAt': createdAt.toUtc().toIso8601String(),
       'isRead': isRead,
       'type': type.toString().split('.').last,
       'route': route,
