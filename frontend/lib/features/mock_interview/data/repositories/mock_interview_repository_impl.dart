@@ -14,22 +14,23 @@ class MockInterviewRepositoryImpl {
   final Dio _dio = apiClient.dio;
 
   static const String _base = '/api/v1/mock-interview';
-  static const String _cacheKey = 'mock_interview_sessions';
+  String get _cacheKey {
+    final userId = Supabase.instance.client.auth.currentUser?.id ?? 'guest';
+    return 'mock_interview_sessions_$userId';
+  }
 
   // ─── Start Behavioral Session ──────────────────────────────────────
-  // POST /api/v1/mock-interview/sessions/start/behavioral
-  // Body: { role_name, user_id }
-  // Returns: { session_id, questions, sas_token, blob_url, sas_expires_at }
-
   Future<InterviewSessionEntity> startBehavioralSession({
     required String roleName,
     required String userId,
+    String? languagePreferred,
   }) async {
     final response = await _dio.post(
       '$_base/sessions/start/behavioral',
       data: {
         'role_name': roleName,
         'user_id': userId,
+        if (languagePreferred != null) 'language_preferred': languagePreferred,
       },
     );
     return InterviewSessionModel.fromJson(
@@ -38,19 +39,17 @@ class MockInterviewRepositoryImpl {
   }
 
   // ─── Start Technical Session  ───────────────────────────────────
-  // POST /api/v1/mock-interview/sessions/start/technical
-  // Body: { role_name, user_id }
-  // Returns: { session_id, questions, sas_token, blob_url, sas_expires_at }
-
   Future<InterviewSessionEntity> startTechnicalSession({
     required String roleName,
     required String userId,
+    String? languagePreferred,
   }) async {
     final response = await _dio.post(
       '$_base/sessions/start/technical',
       data: {
         'role_name': roleName,
         'user_id': userId,
+        if (languagePreferred != null) 'language_preferred': languagePreferred,
       },
     );
     return InterviewSessionModel.fromJson(
@@ -59,62 +58,63 @@ class MockInterviewRepositoryImpl {
   }
 
   // ─── Get Question Audio ────────────────────────────────────────────────────
-  // GET /api/v1/mock-interview/questions/{question_id}/audio-stream
-  // Returns: audio/mpeg bytes stream
-
-  Future<List<int>> getQuestionAudio(String questionId) async {
+  Future<List<int>> getQuestionAudio(
+    String questionId, {
+    String? languagePreferred,
+  }) async {
     final response = await _dio.get<List<int>>(
       '$_base/questions/$questionId/audio-stream',
+      queryParameters: languagePreferred != null
+          ? {'language_preferred': languagePreferred}
+          : null,
       options: Options(responseType: ResponseType.bytes),
     );
     return response.data ?? [];
   }
 
   // ─── Notify Upload Complete ────────────────────────────────────────────────
-  // POST /api/v1/mock-interview/notify-upload
-  // Body: { session_id, blob_url }
-  // Works for both behavioral AND technical sessions
-
   Future<void> notifyUploadComplete({
     required String sessionId,
     required String blobUrl,
+    String? languagePreferred,
   }) async {
     await _dio.post(
       '$_base/notify-upload',
       data: {
         'session_id': sessionId,
         'blob_url': blobUrl,
+        if (languagePreferred != null) 'language_preferred': languagePreferred,
       },
     );
   }
 
   // ─── Get Behavioral Report ─────────────────────────────────────────────────
-  // GET /api/v1/mock-interview/analysis/{session_id}/behavioral-report
-  // Returns: String (markdown text)
-
   Future<String> getBehavioralReport(String sessionId) async {
     final response = await _dio.get<dynamic>(
       '$_base/analysis/$sessionId/behavioral-report',
+      options: Options(responseType: ResponseType.plain),
     );
-    return response.data?.toString() ?? '';
+    final raw = response.data?.toString() ?? '';
+    if (raw.startsWith('"') && raw.endsWith('"')) {
+      return jsonDecode(raw) as String;
+    }
+    return raw;
   }
 
   // ─── Get Technical Report ──────────────────────────────────────────────────
-  // GET /api/v1/mock-interview/analysis/{session_id}/technical-report
-  // Returns: String (markdown text)
-
   Future<String> getTechnicalReport(String sessionId) async {
     final response = await _dio.get<dynamic>(
       '$_base/analysis/$sessionId/technical-report',
+      options: Options(responseType: ResponseType.plain),
     );
-    return response.data?.toString() ?? '';
+    final raw = response.data?.toString() ?? '';
+    if (raw.startsWith('"') && raw.endsWith('"')) {
+      return jsonDecode(raw) as String;
+    }
+    return raw;
   }
 
   // ─── Upload to Azure Blob ──────────────────────────────────────────────────
-  // الباك بيبعت blob_url كامل + sas_token
-  // إحنا بنعمل PUT على الـ blob_url مباشرة مع الـ sas_token في الـ URL
-  // الفرق: behavioral → video/mp4 | technical → audio/mp3
-
   Future<void> uploadToAzure({
     required File file,
     required String blobUrl,
@@ -124,7 +124,6 @@ class MockInterviewRepositoryImpl {
     final isVideo = sessionType == InterviewSessionType.behavioral;
     final contentType = isVideo ? 'video/mp4' : 'audio/mpeg';
 
-    // Build upload URL: blob_url?sas_token
     final uploadUrl =
         blobUrl.contains('?') ? '$blobUrl&$sasToken' : '$blobUrl?$sasToken';
 
@@ -152,6 +151,7 @@ class MockInterviewRepositoryImpl {
     required String sessionId,
     required String roleName,
     required InterviewSessionType sessionType,
+    String? languagePreferred,
   }) async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
 
@@ -163,6 +163,8 @@ class MockInterviewRepositoryImpl {
           'role_name': roleName,
           'session_type': sessionType.name,
           'created_at': DateTime.now().toIso8601String(),
+          if (languagePreferred != null)
+            'language_preferred': languagePreferred,
         });
       } catch (e) {
         debugPrint('Supabase session save failed: $e');
@@ -180,6 +182,7 @@ class MockInterviewRepositoryImpl {
       'role_name': roleName,
       'session_type': sessionType.name,
       'created_at': DateTime.now().toIso8601String(),
+      if (languagePreferred != null) 'language_preferred': languagePreferred,
     });
     await prefs.setString(_cacheKey, jsonEncode(sessions));
   }

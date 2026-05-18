@@ -36,22 +36,29 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
 
     print('AuthService init: ${_authService.runtimeType}');
 
-    // ── Notification tap → navigate to alerts ──────────────────────────────
-    NotificationService.onNotificationTapCallback = (payload) {
+    // ── Notification tap → navigate ────────────────────────────────────────
+    // FIX: استخدم setCallback بدل الـ direct assignment عشان يشغّل أي
+    //      payloads كانت معلقة من قبل ما الـ widget يتبنى
+    NotificationService.setCallback((payload) {
       if (_isNavigating) return;
+
+      final currentLocation =
+          AppRouter.router.routerDelegate.currentConfiguration.uri.toString();
+      if (currentLocation.contains('interview-feedback-detail')) return;
+
       _isNavigating = true;
       if (payload.startsWith('interview_feedback:')) {
         final sessionId = payload.replaceFirst('interview_feedback:', '');
-        AppRouter.router.push(
-          '/interview-feedback-detail',
-          extra: sessionId,
-        );
+        AppRouter.router.push('/interview-feedback-detail', extra: sessionId);
       } else if (payload == 'career_plan') {
         AppRouter.router.push('/career-build/plans');
       } else {
         AppRouter.router.go('/alerts');
       }
-    };
+      Future.delayed(const Duration(seconds: 2), () {
+        _isNavigating = false;
+      });
+    });
 
     _initDeepLinks();
 

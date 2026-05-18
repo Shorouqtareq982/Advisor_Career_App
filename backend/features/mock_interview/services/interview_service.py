@@ -57,6 +57,7 @@ class MockInterviewService:
             user_id=user_id,
             role_id=UUID(role["role_id"]),
             session_type="behavioral",
+            language_preferred=language_preferred,
         )
         if not session:
             raise HTTPException(status_code=500, detail="Failed to create session")
@@ -91,6 +92,7 @@ class MockInterviewService:
             user_id=user_id,
             role_id=UUID(role["role_id"]),
             session_type="technical",
+            language_preferred=language_preferred,
         )
         if not session:
             raise HTTPException(status_code=500, detail="Failed to create session")

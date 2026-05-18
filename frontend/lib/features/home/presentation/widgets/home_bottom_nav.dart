@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../core/theme/app_text_theme.dart';
+import '../../../alerts/data/datasources/alerts_local_datasource.dart';
+import '../../../alerts/data/repositories/alerts_repository_impl.dart';
+import '../../../alerts/domain/usecases/get_alerts.dart';
+import '../../../alerts/domain/usecases/mark_all_read.dart';
+import '../../../alerts/domain/usecases/mark_alert_read.dart';
+import '../../../alerts/presentation/cubit/alerts_cubit.dart';
+import '../../../alerts/presentation/cubit/alerts_state.dart';
+import 'dart:async';
 
-class HomeBottomNav extends StatelessWidget {
+class HomeBottomNav extends StatefulWidget {
   final String currentRoute;
 
   const HomeBottomNav({
@@ -14,101 +23,150 @@ class HomeBottomNav extends StatelessWidget {
   });
 
   @override
+  State<HomeBottomNav> createState() => _HomeBottomNavState();
+}
+
+class _HomeBottomNavState extends State<HomeBottomNav> {
+  late final AlertsCubit _alertsCubit;
+  late final _LifecycleObserver _observer;
+  StreamSubscription<void>? _alertsSub;
+
+  @override
+  void initState() {
+    super.initState();
+    final ds = AlertsLocalDataSourceImpl();
+    final repo = AlertsRepositoryImpl(ds);
+    _alertsCubit = AlertsCubit(
+      getAlerts: GetAlerts(repo),
+      markAllRead: MarkAllRead(repo),
+      markAlertRead: MarkAlertRead(repo),
+    )..load();
+
+    _observer = _LifecycleObserver(_alertsCubit);
+    WidgetsBinding.instance.addObserver(_observer);
+
+    _alertsSub = AlertsNotifier.instance.onAlertsChanged.listen((_) {
+      _alertsCubit.load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _alertsSub?.cancel();
+    WidgetsBinding.instance.removeObserver(_observer);
+    _alertsCubit.close();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return SafeArea(
-      top: false,
-      child: Container(
-        height: context.h(70),
-        padding: EdgeInsets.only(
-          left: context.w(24),
-          right: context.w(24),
-          bottom: context.h(3),
-        ),
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.blue900 : AppColors.textDark,
-          border: Border(
-            top: BorderSide(
-              color: isDark
-                  ? AppColors.blue200.withOpacity(0.3)
-                  : AppColors.grey800.withOpacity(0.3),
-              width: 1,
+    return BlocProvider.value(
+      value: _alertsCubit,
+      child: BlocBuilder<AlertsCubit, AlertsState>(
+        builder: (context, alertsState) {
+          final unreadCount = alertsState.unreadCount;
+
+          return SafeArea(
+            top: false,
+            child: Container(
+              height: context.h(70),
+              padding: EdgeInsets.only(
+                left: context.w(24),
+                right: context.w(24),
+                bottom: context.h(3),
+              ),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.blue900 : AppColors.textDark,
+                border: Border(
+                  top: BorderSide(
+                    color: isDark
+                        ? AppColors.blue200.withOpacity(0.3)
+                        : AppColors.grey800.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: isDark
+                        ? AppColors.blue200.withOpacity(0.25)
+                        : AppColors.grey800.withOpacity(0.25),
+                    offset: const Offset(0, 0),
+                    blurRadius: 4,
+                    spreadRadius: 0,
+                  ),
+                ],
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: context.contentConstraints,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _NavItem(
+                        iconBuilder: (stroke, fill, w, h) => _HomeIcon(
+                            strokeColor: stroke,
+                            fillColor: fill,
+                            width: w,
+                            height: h),
+                        label: 'Home',
+                        isActive: widget.currentRoute == '/home',
+                        onTap: () => context.go('/home'),
+                        isDark: isDark,
+                        nativeW: 31,
+                        nativeH: 27,
+                      ),
+                      _NavItem(
+                        iconBuilder: (stroke, fill, w, h) => _JobsIcon(
+                            strokeColor: stroke,
+                            fillColor: fill,
+                            width: w,
+                            height: h),
+                        label: 'Jobs',
+                        isActive: widget.currentRoute == '/jobs',
+                        onTap: () => context.go('/jobs'),
+                        isDark: isDark,
+                        nativeW: 24,
+                        nativeH: 24,
+                      ),
+                      _NavItem(
+                        iconBuilder: (stroke, fill, w, h) => _AlertsIcon(
+                            strokeColor: stroke,
+                            fillColor: fill,
+                            width: w,
+                            height: h),
+                        label: 'Alerts',
+                        isActive: widget.currentRoute == '/alerts',
+                        onTap: () async {
+                          await context.push('/alerts');
+                          _alertsCubit.load();
+                        },
+                        isDark: isDark,
+                        nativeW: 24,
+                        nativeH: 24,
+                        badgeCount: unreadCount,
+                      ),
+                      _NavItem(
+                        iconBuilder: (stroke, fill, w, h) => _ProfileIcon(
+                            strokeColor: stroke,
+                            fillColor: fill,
+                            width: w,
+                            height: h),
+                        label: 'Profile',
+                        isActive: widget.currentRoute == '/profile',
+                        onTap: () => context.go('/profile'),
+                        isDark: isDark,
+                        nativeW: 18,
+                        nativeH: 21,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isDark
-                  ? AppColors.blue200.withOpacity(0.25)
-                  : AppColors.grey800.withOpacity(0.25),
-              offset: const Offset(0, 0),
-              blurRadius: 4,
-              spreadRadius: 0,
-            ),
-          ],
-        ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: context.contentConstraints,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _NavItem(
-                  iconBuilder: (stroke, fill, w, h) => _HomeIcon(
-                      strokeColor: stroke,
-                      fillColor: fill,
-                      width: w,
-                      height: h),
-                  label: 'Home',
-                  isActive: currentRoute == '/home',
-                  onTap: () => context.go('/home'),
-                  isDark: isDark,
-                  nativeW: 31,
-                  nativeH: 27,
-                ),
-                _NavItem(
-                  iconBuilder: (stroke, fill, w, h) => _JobsIcon(
-                      strokeColor: stroke,
-                      fillColor: fill,
-                      width: w,
-                      height: h),
-                  label: 'Jobs',
-                  isActive: currentRoute == '/jobs',
-                  onTap: () => context.go('/jobs'),
-                  isDark: isDark,
-                  nativeW: 24,
-                  nativeH: 24,
-                ),
-                _NavItem(
-                  iconBuilder: (stroke, fill, w, h) => _AlertsIcon(
-                      strokeColor: stroke,
-                      fillColor: fill,
-                      width: w,
-                      height: h),
-                  label: 'Alerts',
-                  isActive: currentRoute == '/alerts',
-                  onTap: () => context.go('/alerts'),
-                  isDark: isDark,
-                  nativeW: 24,
-                  nativeH: 24,
-                ),
-                _NavItem(
-                  iconBuilder: (stroke, fill, w, h) => _ProfileIcon(
-                      strokeColor: stroke,
-                      fillColor: fill,
-                      width: w,
-                      height: h),
-                  label: 'Profile',
-                  isActive: currentRoute == '/profile',
-                  onTap: () => context.go('/profile'),
-                  isDark: isDark,
-                  nativeW: 18,
-                  nativeH: 21,
-                ),
-              ],
-            ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -125,6 +183,7 @@ class _NavItem extends StatelessWidget {
   final bool isDark;
   final double nativeW;
   final double nativeH;
+  final int badgeCount;
 
   const _NavItem({
     required this.iconBuilder,
@@ -134,6 +193,7 @@ class _NavItem extends StatelessWidget {
     required this.isDark,
     required this.nativeW,
     required this.nativeH,
+    this.badgeCount = 0,
   });
 
   @override
@@ -167,7 +227,47 @@ class _NavItem extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            iconBuilder(strokeColor, fillColor, finalW, finalH),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                iconBuilder(strokeColor, fillColor, finalW, finalH),
+                if (badgeCount > 0)
+                  Positioned(
+                    top: -context.h(4),
+                    right: -context.w(6),
+                    child: Container(
+                      constraints: BoxConstraints(
+                        minWidth: context.w(16),
+                        minHeight: context.w(16),
+                      ),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: context.w(3),
+                        vertical: context.h(1),
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.red500,
+                        borderRadius: BorderRadius.circular(context.r(8)),
+                        border: Border.all(
+                          color:
+                              isDark ? AppColors.blue900 : AppColors.textDark,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        badgeCount > 9 ? '9+' : '$badgeCount',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: context.sp(9),
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Inter',
+                          height: 1,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             SizedBox(height: context.h(2)),
             Text(
               label,
@@ -244,14 +344,12 @@ class _HomeIconPainter extends CustomPainter {
       ..close();
     canvas.drawPath(fill, fillPaint);
 
-    // Stroke — roof
     final roof = Path()
       ..moveTo(1, 16)
       ..lineTo(15.5, 1)
       ..lineTo(30, 16);
     canvas.drawPath(roof, strokePaint);
 
-    // Stroke — house outline
     final house = Path()
       ..moveTo(5.45652, 11.6481)
       ..lineTo(5, 26)
@@ -319,7 +417,6 @@ class _JobsIconPainter extends CustomPainter {
       ..color = fillColor
       ..style = PaintingStyle.fill;
 
-    // Fill — bag body
     final bodyFill = Path();
     bodyFill.moveTo(2, 9);
     bodyFill.cubicTo(2, 7.89543, 2.89543, 7, 4, 7);
@@ -331,11 +428,9 @@ class _JobsIconPainter extends CustomPainter {
     bodyFill.cubicTo(2.89543, 22, 2, 21.1046, 2, 20);
     bodyFill.lineTo(2, 9);
     bodyFill.close();
-
     canvas.drawPath(bodyFill, fillPaint);
     canvas.drawPath(bodyFill, strokePaint);
 
-    // Stroke — handle
     final handle = Path();
     handle.moveTo(16, 7);
     handle.lineTo(16, 4);
@@ -345,7 +440,6 @@ class _JobsIconPainter extends CustomPainter {
     handle.lineTo(8, 7);
     canvas.drawPath(handle, strokePaint);
 
-    // Stroke — middle shelf line
     final shelf = Path();
     shelf.moveTo(22, 12);
     shelf.lineTo(12.3922, 13.9216);
@@ -408,7 +502,6 @@ class _AlertsIconPainter extends CustomPainter {
       ..color = fillColor
       ..style = PaintingStyle.fill;
 
-    // Bell body path
     final bell = Path();
     bell.moveTo(3.26176, 15.326);
     bell.cubicTo(3.13112, 15.4692, 3.04491, 15.6472, 3.01361, 15.8385);
@@ -427,11 +520,9 @@ class _AlertsIconPainter extends CustomPainter {
     bell.cubicTo(6.6319, 4.88258, 5.99976, 6.4087, 5.99976, 8);
     bell.cubicTo(5.99976, 12.499, 4.58876, 13.956, 3.26176, 15.326);
     bell.close();
-
     canvas.drawPath(bell, fillPaint);
     canvas.drawPath(bell, strokePaint);
 
-    // Stroke — clapper
     final clapper = Path();
     clapper.moveTo(10.2681, 21);
     clapper.cubicTo(10.4436, 21.304, 10.6961, 21.5565, 11.0001, 21.732);
@@ -494,7 +585,6 @@ class _ProfileIconPainter extends CustomPainter {
       ..color = fillColor
       ..style = PaintingStyle.fill;
 
-    // Head circle
     final head = Path();
     head.moveTo(13.5714, 5.70588);
     head.cubicTo(13.5714, 8.30487, 11.5247, 10.4118, 9, 10.4118);
@@ -505,7 +595,6 @@ class _ProfileIconPainter extends CustomPainter {
     canvas.drawPath(head, fillPaint);
     canvas.drawPath(head, strokePaint);
 
-    // Shoulders (stroke only)
     final shoulders = Path();
     shoulders.moveTo(1, 21);
     shoulders.lineTo(1, 19.8235);
@@ -521,4 +610,16 @@ class _ProfileIconPainter extends CustomPainter {
   @override
   bool shouldRepaint(_ProfileIconPainter old) =>
       old.strokeColor != strokeColor || old.fillColor != fillColor;
+}
+
+class _LifecycleObserver extends WidgetsBindingObserver {
+  final AlertsCubit cubit;
+  _LifecycleObserver(this.cubit);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      cubit.load();
+    }
+  }
 }

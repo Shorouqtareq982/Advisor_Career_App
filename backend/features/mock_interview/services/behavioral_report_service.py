@@ -128,10 +128,13 @@ class BehavioralReportService:
             return prompt
 
         return (
-            f"{prompt}\n\n"
-            "Respond using the headings **Strengths**, **Weaknesses**, and **Suggestions**, "
-            "but write the content in Arabic."
-        )
+        f"{prompt}\n\n"
+        "IMPORTANT: You MUST use exactly these English headings (do not translate them):\n"
+        "**Strengths**\n"
+        "**Weaknesses**\n"
+        "**Suggestions**\n"
+        "Write the content under each heading in Arabic, but keep the headings exactly as shown above."
+    )
 
     def _format_feedback(self, feedback: BehavioralGeminiFeedback, report_language: str) -> str:
         """Format the parsed feedback as a readable report (no raw metrics included)."""

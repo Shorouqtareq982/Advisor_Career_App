@@ -24,7 +24,11 @@ class _InterviewFeedbackScreenState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(mockInterviewProvider.notifier).loadFeedbackList();
+      final state = ref.read(mockInterviewProvider);
+      if (state.feedbackStatus == FeedbackLoadStatus.idle ||
+          state.feedbackStatus == FeedbackLoadStatus.error) {
+        ref.read(mockInterviewProvider.notifier).loadFeedbackList();
+      }
     });
   }
 
@@ -47,7 +51,9 @@ class _InterviewFeedbackScreenState
             // ── App Bar ──────────────────────────────────────────────────
             Padding(
               padding: EdgeInsets.symmetric(
-                  horizontal: context.w(8), vertical: context.h(8)),
+                horizontal: context.w(8),
+                vertical: context.h(8),
+              ),
               child: Row(
                 children: [
                   IconButton(
@@ -58,8 +64,11 @@ class _InterviewFeedbackScreenState
                         context.go('/home');
                       }
                     },
-                    icon: Icon(Icons.arrow_back_ios_new_rounded,
-                        color: textPrimary, size: context.icon(20)),
+                    icon: Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: textPrimary,
+                      size: context.icon(20),
+                    ),
                   ),
                   Expanded(
                     child: Center(
@@ -68,11 +77,12 @@ class _InterviewFeedbackScreenState
                         width: context.logo(40),
                         height: context.logo(40),
                         errorBuilder: (_, __, ___) => Icon(
-                            Icons.shield_outlined,
-                            color: isDark
-                                ? AppColors.lightBlue500
-                                : AppColors.lightBlue700,
-                            size: context.icon(40)),
+                          Icons.shield_outlined,
+                          color: isDark
+                              ? AppColors.lightBlue500
+                              : AppColors.lightBlue700,
+                          size: context.icon(40),
+                        ),
                       ),
                     ),
                   ),
@@ -90,9 +100,10 @@ class _InterviewFeedbackScreenState
                     SizedBox(height: context.h(8)),
 
                     // Title
-                    context.text('Interview Feedback',
-                        style:
-                            textTheme.title1Bold.copyWith(color: textPrimary)),
+                    context.text(
+                      'Interview Feedback',
+                      style: textTheme.title1Bold.copyWith(color: textPrimary),
+                    ),
                     SizedBox(height: context.h(8)),
                     context.text(
                       'Review your past interviews and get personalized insights to improve your performance.',
@@ -115,16 +126,17 @@ class _InterviewFeedbackScreenState
                             borderRadius: BorderRadius.circular(context.r(50)),
                           ),
                         ),
-                        icon: Icon(Icons.add,
-                            size: context.icon(20),
-                            color:
-                                isDark ? AppColors.blue900 : AppColors.grey50),
+                        icon: Icon(
+                          Icons.add,
+                          size: context.icon(20),
+                          color: isDark ? AppColors.blue900 : AppColors.grey50,
+                        ),
                         label: context.text(
                           'Start New Interview',
                           style: textTheme.title2Bold.copyWith(
-                              color: isDark
-                                  ? AppColors.blue900
-                                  : AppColors.grey50),
+                            color:
+                                isDark ? AppColors.blue900 : AppColors.grey50,
+                          ),
                         ),
                       ),
                     ),
@@ -132,7 +144,13 @@ class _InterviewFeedbackScreenState
 
                     // Body
                     Expanded(
-                        child: _buildBody(context, state, isDark, textTheme)),
+                      child: _buildBody(
+                        context,
+                        state,
+                        isDark,
+                        textTheme,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -143,11 +161,16 @@ class _InterviewFeedbackScreenState
     );
   }
 
-  Widget _buildBody(BuildContext context, MockInterviewState state, bool isDark,
-      AppTextTheme textTheme) {
+  Widget _buildBody(
+    BuildContext context,
+    MockInterviewState state,
+    bool isDark,
+    AppTextTheme textTheme,
+  ) {
     if (state.feedbackStatus == FeedbackLoadStatus.loading) {
       return const Center(
-          child: CircularProgressIndicator(color: AppColors.lightBlue500));
+        child: CircularProgressIndicator(color: AppColors.lightBlue500),
+      );
     }
 
     if (state.feedbackList.isEmpty) {
@@ -174,7 +197,10 @@ class _InterviewFeedbackScreenState
   }
 
   Widget _buildEmptyState(
-      BuildContext context, bool isDark, AppTextTheme textTheme) {
+    BuildContext context,
+    bool isDark,
+    AppTextTheme textTheme,
+  ) {
     final textPrimary = isDark ? AppColors.grey50 : AppColors.blue900;
     final textMuted = isDark ? AppColors.grey400 : AppColors.grey800;
     final iconBg = isDark
@@ -190,12 +216,17 @@ class _InterviewFeedbackScreenState
             width: context.w(80),
             height: context.w(80),
             decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
-            child: Icon(Icons.rocket_launch_outlined,
-                color: iconColor, size: context.icon(40)),
+            child: Icon(
+              Icons.rocket_launch_outlined,
+              color: iconColor,
+              size: context.icon(40),
+            ),
           ),
           SizedBox(height: context.h(20)),
-          context.text('No feedback yet.',
-              style: textTheme.title2Bold.copyWith(color: textPrimary)),
+          context.text(
+            'No feedback yet.',
+            style: textTheme.title2Bold.copyWith(color: textPrimary),
+          ),
           SizedBox(height: context.h(8)),
           context.text(
             'Start your first interview to see\npersonalized insights!',
@@ -211,11 +242,13 @@ class _InterviewFeedbackScreenState
     showDialog(
       context: context,
       builder: (_) => SelectJobDialog(
-        onStart: (roleName, roleId, sessionType) {
+        // ── Updated signature: now receives languagePreferred ──────────
+        onStart: (roleName, roleId, sessionType, languagePreferred) {
           context.push('/interview-session', extra: {
             'roleName': roleName,
             'roleId': roleId,
             'sessionType': sessionType,
+            'languagePreferred': languagePreferred,
           });
         },
       ),
@@ -233,7 +266,7 @@ class _InterviewFeedbackScreenState
   }
 }
 
-// ─── Feedback Card — بدون Score ───────────────────────────────────────────────
+// ─── Feedback Card ────────────────────────────────────────────────────────────
 
 class _FeedbackCard extends StatelessWidget {
   final InterviewFeedbackSummary feedback;
@@ -279,10 +312,11 @@ class _FeedbackCard extends StatelessWidget {
                 ),
               ),
               SizedBox(width: context.w(12)),
-              // Session type badge فقط — بدون score
               Container(
                 padding: EdgeInsets.symmetric(
-                    horizontal: context.w(10), vertical: context.h(4)),
+                  horizontal: context.w(10),
+                  vertical: context.h(4),
+                ),
                 decoration: BoxDecoration(
                   color: isBehavioral
                       ? AppColors.lightBlue500.withOpacity(0.15)
@@ -305,8 +339,11 @@ class _FeedbackCard extends StatelessWidget {
           // ── Date ─────────────────────────────────────────────────────
           Row(
             children: [
-              Icon(Icons.calendar_today_outlined,
-                  color: dateColor, size: context.icon(14)),
+              Icon(
+                Icons.calendar_today_outlined,
+                color: dateColor,
+                size: context.icon(14),
+              ),
               SizedBox(width: context.w(4)),
               context.text(
                 DateFormat('MMMM d, y').format(feedback.createdAt),
@@ -314,6 +351,26 @@ class _FeedbackCard extends StatelessWidget {
               ),
             ],
           ),
+
+          if (feedback.languagePreferred != null) ...[
+            SizedBox(height: context.h(6)),
+            Row(
+              children: [
+                Icon(
+                  Icons.language_outlined,
+                  color: dateColor,
+                  size: context.icon(14),
+                ),
+                SizedBox(width: context.w(4)),
+                context.text(
+                  feedback.languagePreferred == 'ar'
+                      ? 'Arabic session'
+                      : 'English session',
+                  style: textTheme.captionRegular.copyWith(color: dateColor),
+                ),
+              ],
+            ),
+          ],
           SizedBox(height: context.h(12)),
 
           // ── Actions ───────────────────────────────────────────────────
@@ -331,11 +388,15 @@ class _FeedbackCard extends StatelessWidget {
                       foregroundColor: AppColors.blue700,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(context.r(50))),
+                        borderRadius: BorderRadius.circular(context.r(50)),
+                      ),
                     ),
-                    child: context.text('View Details',
-                        style: textTheme.bodyBold
-                            .copyWith(color: AppColors.blue700)),
+                    child: context.text(
+                      'View Details',
+                      style: textTheme.bodyBold.copyWith(
+                        color: AppColors.blue700,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -351,8 +412,11 @@ class _FeedbackCard extends StatelessWidget {
                     color: AppColors.red500,
                     borderRadius: BorderRadius.circular(context.r(8)),
                   ),
-                  child: Icon(Icons.delete_outline_rounded,
-                      color: Colors.white, size: context.icon(20)),
+                  child: Icon(
+                    Icons.delete_outline_rounded,
+                    color: Colors.white,
+                    size: context.icon(20),
+                  ),
                 ),
               ),
             ],

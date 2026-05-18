@@ -25,24 +25,24 @@ class _InterviewFeedbackDetailScreenState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(mockInterviewProvider.notifier)
-          .loadFeedbackDetail(widget.sessionId);
+      final currentDetail = ref.read(mockInterviewProvider).feedbackDetail;
+      if (currentDetail?.sessionId != widget.sessionId) {
+        ref
+            .read(mockInterviewProvider.notifier)
+            .loadFeedbackDetail(widget.sessionId);
+      }
     });
-  }
-
-  bool get _hasReport {
-    final detail = ref.read(mockInterviewProvider).feedbackDetail;
-    if (detail == null) return false;
-    return detail.strongPoints.isNotEmpty ||
-        detail.areasForImprovement.isNotEmpty ||
-        detail.suggestions.isNotEmpty;
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final state = ref.watch(mockInterviewProvider);
+    final detail = state.feedbackDetail;
+    final hasReport = detail != null &&
+        (detail.strongPoints.isNotEmpty ||
+            detail.areasForImprovement.isNotEmpty ||
+            detail.suggestions.isNotEmpty);
     final bgColor = isDark ? AppColors.blue900 : AppColors.grey100;
     final textPrimary = isDark ? AppColors.grey50 : AppColors.blue900;
     final textTheme = context.appTextTheme;
@@ -94,16 +94,16 @@ class _InterviewFeedbackDetailScreenState
                             EdgeInsets.symmetric(horizontal: context.w(20)),
                         sliver: SliverList(
                           delegate: SliverChildListDelegate([
-                            // Summary card — دايماً يظهر
+                            // Summary card
                             _buildSummaryCard(context, isDark, textTheme),
                             SizedBox(height: context.h(16)),
 
-                            // لو الريبورت فاضي → pending state
-                            if (!_hasReport)
+                            // → pending state
+                            if (!hasReport)
                               _buildPendingState(context, isDark, textTheme),
 
-                            // لو في ريبورت → sections
-                            if (_hasReport) ...[
+                            //  sections
+                            if (hasReport) ...[
                               // Strengths
                               _buildSection(
                                 context: context,

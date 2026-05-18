@@ -18,7 +18,7 @@ class ElevenLabsService:
         if not self.api_key:
             raise ValueError("ElevenLabs API key is not configured")
 
-        voice = voice_id or "Q7mpUIoMitJqe4vetS2P"
+        voice = voice_id or "EXAVITQu4vr4xnSDxMaL"
         url = f"{self.base_url}/text-to-speech/{voice}"
         headers = {
             "xi-api-key": self.api_key,

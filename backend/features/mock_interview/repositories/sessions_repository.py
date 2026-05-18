@@ -47,14 +47,16 @@ class SessionsRepository:
         user_id: UUID,
         role_id: UUID,
         session_type: str = "behavioral",
+        language_preferred: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         try:
             table_name = self._resolve_session_table(session_type)
             payload = {
-                "user_id": str(user_id),
-                "role_id": str(role_id),
-                "status": "pending",
-            }
+    "user_id": str(user_id),
+    "role_id": str(role_id),
+    "status": "pending",
+    "language_preferred": language_preferred,
+}
             result = self.client.table(table_name).insert(payload).execute()
             return result.data[0] if result.data else None
         except Exception as e:

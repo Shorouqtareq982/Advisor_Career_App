@@ -41,9 +41,9 @@ class InterviewFeedbackSummary {
   final String roleName;
   final InterviewSessionType sessionType;
   final DateTime createdAt;
-  // Shown in the card — null until report is fetched
   final int? score;
   final String recommendation;
+  final String? languagePreferred;
 
   const InterviewFeedbackSummary({
     required this.sessionId,
@@ -52,6 +52,7 @@ class InterviewFeedbackSummary {
     required this.createdAt,
     this.score,
     this.recommendation = '',
+    this.languagePreferred,
   });
 }
 
@@ -69,6 +70,7 @@ class InterviewFeedbackDetailEntity {
   final String suggestions;
   final String? behavioralReport;
   final String? technicalReport;
+  final String? languagePreferred;
 
   const InterviewFeedbackDetailEntity({
     required this.sessionId,
@@ -82,6 +84,7 @@ class InterviewFeedbackDetailEntity {
     required this.suggestions,
     this.behavioralReport,
     this.technicalReport,
+    this.languagePreferred,
   });
 }
 
@@ -92,4 +95,88 @@ class InterviewRole {
   final String roleName;
 
   const InterviewRole({required this.roleId, required this.roleName});
+}
+
+// ─── Report Parser ────────────────────────────────────────────────────────────
+
+class ReportParser {
+  static List<String> extractStrengths(String report) {
+    return _extractSection(
+      report,
+      englishHeaders: ['**Strengths**', '## Strengths', '# Strengths'],
+      arabicHeaders: ['**نقاط القوة**', '## نقاط القوة'],
+    );
+  }
+
+  /// يستخرج نقاط الضعف - يفهم English و Arabic
+  static List<String> extractWeaknesses(String report) {
+    return _extractSection(
+      report,
+      englishHeaders: ['**Weaknesses**', '## Weaknesses', '# Weaknesses'],
+      arabicHeaders: ['**نقاط الضعف**', '## نقاط الضعف'],
+    );
+  }
+
+  static String extractSuggestions(String report) {
+    final items = _extractSection(
+      report,
+      englishHeaders: ['**Suggestions**', '## Suggestions', '# Suggestions'],
+      arabicHeaders: [
+        '**التوصيات**',
+        '## التوصيات',
+        '**اقتراحات**',
+        '## اقتراحات'
+      ],
+    );
+    return items.join('\n');
+  }
+
+  static List<String> _extractSection(
+    String report, {
+    required List<String> englishHeaders,
+    required List<String> arabicHeaders,
+  }) {
+    if (report.trim().isEmpty) return [];
+
+    final allHeaders = [...englishHeaders, ...arabicHeaders];
+    final lines = report.split('\n');
+    final items = <String>[];
+    bool inSection = false;
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+
+      final trimmedClean =
+          trimmed.replaceAll('**', '').replaceAll('#', '').trim();
+
+      final isTargetHeader = allHeaders.any((h) {
+        final hClean = h.replaceAll('**', '').replaceAll('#', '').trim();
+        return trimmedClean == hClean;
+      });
+
+      if (isTargetHeader) {
+        inSection = true;
+        continue;
+      }
+
+      if (inSection) {
+        if (trimmed.startsWith('- ') ||
+            trimmed.startsWith('• ') ||
+            trimmed.startsWith('* ')) {
+          final content = trimmed.substring(2).trim();
+          if (content.isNotEmpty) items.add(content);
+          continue;
+        }
+
+        final isOtherHeader = (trimmed.startsWith('**') &&
+                trimmed.endsWith('**') &&
+                trimmed.length > 4) ||
+            trimmed.startsWith('#');
+        if (isOtherHeader) break;
+      }
+    }
+
+    return items;
+  }
 }
