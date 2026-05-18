@@ -30,13 +30,13 @@ class _MarketInsightsScreenState extends ConsumerState<MarketInsightsScreen> {
 
     debugPrint('✅ ENTERED MARKET INSIGHTS SCREEN');
 
-    _controller = TextEditingController();
-    _focusNode = FocusNode();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future(() {
       if (!mounted) return;
       ref.read(marketInsightsProvider.notifier).resetForEntry();
     });
+
+    _controller = TextEditingController();
+    _focusNode = FocusNode();
 
     _focusNode.addListener(() {
       if (_focusNode.hasFocus) {
