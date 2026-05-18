@@ -78,7 +78,7 @@ class AlertsLocalDataSourceImpl implements AlertsLocalDataSource {
         .update({'is_read': true}).eq('user_id', uid);
   }
 
-  // ─── Cache (SharedPreferences fallback) ──────────────────────────────────────
+  // ─── Cache (SharedPreferences fallback) ──────────────────────
 
   Future<List<AlertModel>> _loadCache() async {
     try {
@@ -86,10 +86,13 @@ class AlertsLocalDataSourceImpl implements AlertsLocalDataSource {
       final raw = prefs.getString(_cacheKey);
       if (raw == null || raw.trim().isEmpty) return [];
       final list = jsonDecode(raw) as List<dynamic>;
-      return list
+      final alerts = list
           .whereType<Map<String, dynamic>>()
           .map(AlertModel.fromJson)
           .toList();
+
+      alerts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return alerts;
     } catch (_) {
       return [];
     }
@@ -105,13 +108,14 @@ class AlertsLocalDataSourceImpl implements AlertsLocalDataSource {
     } catch (_) {}
   }
 
-  // ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Public API ───────────────────────────────────────────────
 
   @override
   Future<List<AlertModel>> fetchAlerts() async {
     try {
       final alerts = await _fetchFromSupabase();
-      await _saveCache(alerts); // ← update cache
+      alerts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      await _saveCache(alerts);
       return alerts;
     } catch (_) {
       return _loadCache();
@@ -150,6 +154,7 @@ class AlertsLocalDataSourceImpl implements AlertsLocalDataSource {
       await _upsertToSupabase(alert);
     } catch (_) {
       cached.insert(0, alert);
+      cached.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       await _saveCache(cached);
       AlertsNotifier.instance.notify();
       return cached;

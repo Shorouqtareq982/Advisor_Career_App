@@ -349,7 +349,13 @@ class _InterviewSessionScreenState
       _audioRecordingPath =
           '${dir.path}/interview_${DateTime.now().millisecondsSinceEpoch}.mp3';
       await _audioRecorder.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc, sampleRate: 44100),
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          sampleRate: 44100,
+          androidConfig: AndroidRecordConfig(
+            audioSource: AndroidAudioSource.voiceCommunication,
+          ),
+        ),
         path: _audioRecordingPath!,
       );
     } catch (_) {}
@@ -371,6 +377,13 @@ class _InterviewSessionScreenState
   Future<void> _playQuestionAudio(List<int> bytes) async {
     try {
       _ttsPlaybackPaused = false;
+
+      if (_isBehavioral) {
+        await _cameraController?.pauseVideoRecording();
+      } else {
+        await _audioRecorder.pause();
+      }
+
       final dir = await getTemporaryDirectory();
       final file = File(
         '${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
@@ -379,15 +392,10 @@ class _InterviewSessionScreenState
       await _ttsPlayer.setFilePath(file.path);
       await _ttsPlayer.play();
 
-      // انتظر completed أو إن الـ session اتغيرت لـ paused/idle
       await _ttsPlayer.playerStateStream.firstWhere(
         (s) {
-          // لو الصوت خلص
           if (s.processingState == ProcessingState.completed ||
-              s.processingState == ProcessingState.idle) {
-            return true;
-          }
-          // لو اتعمل pause من بره (عبر _ttsPlaybackPaused flag)
+              s.processingState == ProcessingState.idle) return true;
           if (_ttsPlaybackPaused) return true;
           return false;
         },
@@ -395,8 +403,13 @@ class _InterviewSessionScreenState
     } catch (_) {
     } finally {
       if (mounted && !_ttsPlaybackPaused) {
+        if (_isBehavioral) {
+          await _cameraController?.resumeVideoRecording();
+        } else {
+          await _audioRecorder.resume();
+        }
+
         final currentStatus = ref.read(mockInterviewProvider).sessionStatus;
-        // ← أضيف active أو paused لأن resume ممكن يكون اتعمل بس الصوت لسه شغال
         if (currentStatus == InterviewSessionStatus.active ||
             currentStatus == InterviewSessionStatus.paused) {
           ref.read(mockInterviewProvider.notifier).startQuestionTimer();
