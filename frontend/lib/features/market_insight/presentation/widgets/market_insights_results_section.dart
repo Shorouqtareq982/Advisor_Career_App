@@ -55,7 +55,7 @@ class MarketInsightsResultsSection extends StatelessWidget {
             SizedBox(height: context.h(16)),
             _AnimatedEntry(
               delay: 80,
-              child: _BackendResultCard(
+              child: _CrawlerResultCard(
                 jobTitle: data.jobTitle,
                 jobOpenings: data.jobOpenings,
               ),
@@ -216,7 +216,7 @@ class _ResultsHeader extends StatelessWidget {
                 child: _ActionButton(
                   filled: true,
                   icon: Icons.refresh_rounded,
-                  text: 'Refresh',
+                  text: 'Refresh Insights',
                   onTap: onRefresh,
                 ),
               ),
@@ -260,11 +260,9 @@ class _ActionButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(context.r(50)),
       child: Container(
-        constraints: BoxConstraints(
-          minHeight: context.h(40),
-        ),
+        constraints: BoxConstraints(minHeight: context.h(40)),
         padding: EdgeInsets.symmetric(
-          horizontal: context.w(12),
+          horizontal: context.w(10),
           vertical: context.h(9),
         ),
         decoration: BoxDecoration(
@@ -278,16 +276,18 @@ class _ActionButton extends StatelessWidget {
             Icon(icon, size: context.icon(16), color: textColor),
             SizedBox(width: context.w(7)),
             Flexible(
-              child: Text(
-                text,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                style: TextStyle(
-                  color: textColor,
-                  fontFamily: 'Inter',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  height: 1.15,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: textColor,
+                    fontFamily: 'Inter',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1.15,
+                  ),
                 ),
               ),
             ),
@@ -298,11 +298,11 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-class _BackendResultCard extends StatelessWidget {
+class _CrawlerResultCard extends StatelessWidget {
   final String jobTitle;
   final int jobOpenings;
 
-  const _BackendResultCard({
+  const _CrawlerResultCard({
     required this.jobTitle,
     required this.jobOpenings,
   });
@@ -340,7 +340,7 @@ class _BackendResultCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Backend crawler completed',
+                  'Crawler completed',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -386,90 +386,62 @@ class _ResultsOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 360;
-
-        final metricCards = [
-          _MiniMetricCard(
-            iconPath: 'assets/images/market_insights/job_open.png',
-            title: 'Job Openings',
-            value: _AnimatedNumberText(
-              value: data.jobOpenings.toDouble(),
-              animationSeed: animationSeed,
-              formatCommas: true,
-              style: _valueStyle(context),
-            ),
-          ),
-          _MiniMetricCard(
-            iconPath: 'assets/images/market_insights/market_growth.png',
-            title: 'Market Growth',
-            value: Text(
-              data.marketGrowthPercent > 0
-                  ? '+${data.marketGrowthPercent}%'
-                  : 'N/A',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: _valueStyle(context),
-            ),
-          ),
-          _MiniMetricCard(
-            iconPath: 'assets/images/market_insights/avg_exp.png',
-            title: 'Avg. Experience',
-            value: Text(
-              data.avgExperienceYears > 0
-                  ? '${data.avgExperienceYears.toStringAsFixed(1)} Years'
-                  : 'N/A',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: _valueStyle(context),
-            ),
-          ),
-        ];
-
-        if (isCompact) {
-          return Column(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 92,
+          child: Column(
             children: [
-              for (int i = 0; i < metricCards.length; i++) ...[
-                metricCards[i],
-                SizedBox(height: context.h(12)),
-              ],
-              _SalaryInsightsCard(
-                data: data.salaryInsights,
-                animationSeed: animationSeed,
-                hasData: hasSalaryData,
+              _MiniMetricCard(
+                iconPath: 'assets/images/market_insights/job_open.png',
+                title: 'Job Openings',
+                value: _AnimatedNumberText(
+                  value: data.jobOpenings.toDouble(),
+                  animationSeed: animationSeed,
+                  formatCommas: true,
+                  style: _valueStyle(context),
+                ),
+              ),
+              SizedBox(height: context.h(12)),
+              _MiniMetricCard(
+                iconPath: 'assets/images/market_insights/market_growth.png',
+                title: 'Market Growth',
+                value: Text(
+                  data.marketGrowthPercent > 0
+                      ? '+${data.marketGrowthPercent}%'
+                      : 'N/A',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _valueStyle(context),
+                ),
+              ),
+              SizedBox(height: context.h(12)),
+              _MiniMetricCard(
+                iconPath: 'assets/images/market_insights/avg_exp.png',
+                title: 'Avg. Experience',
+                value: Text(
+                  data.avgExperienceYears > 0
+                      ? '${data.avgExperienceYears.toStringAsFixed(1)} Years'
+                      : 'N/A',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _valueStyle(context),
+                ),
               ),
             ],
-          );
-        }
-
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 92,
-              child: Column(
-                children: [
-                  metricCards[0],
-                  SizedBox(height: context.h(12)),
-                  metricCards[1],
-                  SizedBox(height: context.h(12)),
-                  metricCards[2],
-                ],
-              ),
-            ),
-            SizedBox(width: context.w(12)),
-            Expanded(
-              flex: 108,
-              child: _SalaryInsightsCard(
-                data: data.salaryInsights,
-                animationSeed: animationSeed,
-                hasData: hasSalaryData,
-              ),
-            ),
-          ],
-        );
-      },
+          ),
+        ),
+        SizedBox(width: context.w(12)),
+        Expanded(
+          flex: 108,
+          child: _SalaryInsightsCard(
+            data: data.salaryInsights,
+            animationSeed: animationSeed,
+            hasData: hasSalaryData,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -491,19 +463,17 @@ class _MiniMetricCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      constraints: BoxConstraints(
-        minHeight: context.h(78),
-      ),
+      constraints: BoxConstraints(minHeight: context.h(80)),
       padding: EdgeInsets.symmetric(
-        horizontal: context.w(12),
-        vertical: context.h(12),
+        horizontal: context.w(11),
+        vertical: context.h(11),
       ),
       decoration: _cardDecoration(context, isDark),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _IconTile(iconPath: iconPath),
-          SizedBox(width: context.w(12)),
+          SizedBox(width: context.w(10)),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -516,12 +486,12 @@ class _MiniMetricCard extends StatelessWidget {
                   style: TextStyle(
                     color: isDark ? AppColors.grey100 : AppColors.blue900,
                     fontFamily: 'Inter',
-                    fontSize: context.sp(13.5),
+                    fontSize: context.sp(12.8),
                     fontWeight: FontWeight.w700,
-                    height: 1.15,
+                    height: 1.12,
                   ),
                 ),
-                SizedBox(height: context.h(6)),
+                SizedBox(height: context.h(5)),
                 DefaultTextStyle.merge(
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -573,9 +543,7 @@ class _SalaryInsightsCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      constraints: BoxConstraints(
-        minHeight: context.h(222),
-      ),
+      constraints: BoxConstraints(minHeight: context.h(228)),
       padding: EdgeInsets.symmetric(
         horizontal: context.w(14),
         vertical: context.h(15),
@@ -632,9 +600,9 @@ class _SalaryTitleRow extends StatelessWidget {
             style: TextStyle(
               color: isDark ? AppColors.grey100 : AppColors.blue900,
               fontFamily: 'Inter',
-              fontSize: context.sp(16.5),
+              fontSize: context.sp(16),
               fontWeight: FontWeight.w800,
-              height: 1.15,
+              height: 1.12,
             ),
           ),
         ),
@@ -675,12 +643,12 @@ class _SalaryRow extends StatelessWidget {
                 style: TextStyle(
                   color: isDark ? AppColors.grey100 : AppColors.blue900,
                   fontFamily: 'Inter',
-                  fontSize: context.sp(13),
+                  fontSize: context.sp(12.5),
                   fontWeight: FontWeight.w700,
-                  height: 1.15,
+                  height: 1.12,
                 ),
               ),
-              SizedBox(height: context.h(4)),
+              SizedBox(height: context.h(3)),
               DefaultTextStyle.merge(
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -776,7 +744,7 @@ class _ExperienceCard extends StatelessWidget {
       decoration: _cardDecoration(context, isDark),
       child: Column(
         children: [
-          _SectionTitle('Demand by Experience Level'),
+          const _SectionTitle('Demand by Experience Level'),
           SizedBox(height: context.h(24)),
           _InteractiveDonutChart(
             slices: chartData,
@@ -941,6 +909,8 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       text,
       textAlign: TextAlign.center,
+      maxLines: 3,
+      overflow: TextOverflow.ellipsis,
       style: TextStyle(
         color: isDark ? AppColors.grey100 : AppColors.blue900,
         fontFamily: 'Inter',
@@ -982,6 +952,8 @@ class _UnavailableCard extends StatelessWidget {
           Text(
             message,
             textAlign: TextAlign.center,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: isDark ? AppColors.blue200 : AppColors.grey800,
               fontFamily: 'Inter',
@@ -1226,9 +1198,7 @@ class _InteractiveAreaChartState extends State<_InteractiveAreaChart> {
                       if (left > width - 82) left = width - 82;
 
                       double top = point.dy - 44;
-                      if (top < 4) {
-                        top = point.dy + 10;
-                      }
+                      if (top < 4) top = point.dy + 10;
 
                       return Positioned(
                         left: left,
@@ -1242,9 +1212,7 @@ class _InteractiveAreaChartState extends State<_InteractiveAreaChart> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppColors.grey300,
-                            ),
+                            border: Border.all(color: AppColors.grey300),
                             boxShadow: const [
                               BoxShadow(
                                 color: AppColors.lightshadow,
@@ -1811,9 +1779,9 @@ TextStyle _valueStyle(BuildContext context) {
   return TextStyle(
     color: isDark ? AppColors.blue200 : AppColors.grey800,
     fontFamily: 'Inter',
-    fontSize: context.sp(13),
+    fontSize: context.sp(12.2),
     fontWeight: FontWeight.w800,
-    height: 1.2,
+    height: 1.12,
   );
 }
 
