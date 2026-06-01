@@ -317,54 +317,86 @@ class CVLayoutAnalyzer:
         page_lines = []
         raw_blocks = page.get_text("rawdict")["blocks"]
         text_blocks = [b for b in raw_blocks if b["type"] == 0]
-        
-        # Process text from column boxes (already in correct reading order)
-        if text_bboxes:
-            for bbox in text_bboxes:
-                # Extract text from this bbox
-                text = page.get_text("text", clip=bbox, sort=True)
-                if text.strip():
-                    lines = text.strip().split('\n')
-                    # Normalize bullets
-                    for line in lines:
-                        line = line.strip()
-                        if line:
-                            if line.startswith(("•", "-", "▪", "●", "◦")):
-                                line = f"- {line.lstrip('•-▪●◦').strip()}"
-                            page_lines.append(line)
-                            all_text_content.append(line)
-                    
-                # Check if this bbox is in header/footer area
-                if bbox.y0 < header_threshold:
+
+        def _normalize_line(line_text: str) -> str:
+            line_text = line_text.strip()
+            if line_text.startswith(("•", "-", "▪", "●", "◦")):
+                return f"- {line_text.lstrip('•-▪●◦').strip()}"
+            return line_text
+
+        def _extract_block_lines(block: Dict) -> List[str]:
+            lines = []
+            for line in block.get("lines", []):
+                line_text = ""
+                for span in line.get("spans", []):
+                    chars = span.get("chars", [])
+                    text = "".join(ch.get("c", "") for ch in chars).strip()
+                    if text:
+                        line_text += text + " "
+
+                line_text = _normalize_line(line_text)
+                if line_text:
+                    lines.append(line_text)
+
+            return lines
+
+        if have_tables:
+            table_segments = []
+            for table in table_objects.tables:
+                table_lines = CVLayoutAnalyzer._extract_table_content(page, table)
+                if table_lines:
+                    table_segments.append((table.bbox, table_lines))
+
+            non_table_blocks = CVLayoutAnalyzer._filter_blocks_in_tables(text_blocks, table_bboxes)
+            text_segments = [(block["bbox"], _extract_block_lines(block)) for block in non_table_blocks]
+
+            ordered_segments = sorted(
+                [segment for segment in text_segments + table_segments if segment[1]],
+                key=lambda item: (item[0][1], item[0][0])
+            )
+
+            for bbox, lines in ordered_segments:
+                if bbox[1] < header_threshold:
                     information_in_header = True
-                if bbox.y1 > footer_threshold:
+                if bbox[3] > footer_threshold:
                     information_in_footer = True
+
+                for line in lines:
+                    page_lines.append(line)
+                    all_text_content.append(line)
         else:
             # Fallback: use standard block extraction if column_boxes didn't work
-            non_table_blocks = CVLayoutAnalyzer._filter_blocks_in_tables(text_blocks, table_bboxes)
-            
-            for block in non_table_blocks:
-                block_top = block["bbox"][1]
-                block_bottom = block["bbox"][3]
-                
-                if block_top < header_threshold:
-                    information_in_header = True
-                if block_bottom > footer_threshold:
-                    information_in_footer = True
-                
-                for line in block.get("lines", []):
-                    line_text = ""
-                    for span in line.get("spans", []):
-                        chars = span.get("chars", [])
-                        text = "".join(ch.get("c", "") for ch in chars).strip()
-                        if text:
-                            line_text += text + " "
-                    
-                    line_text = line_text.strip()
-                    if line_text:
+            if text_bboxes:
+                for bbox in text_bboxes:
+                    # Extract text from this bbox
+                    text = page.get_text("text", clip=bbox, sort=True)
+                    if text.strip():
+                        lines = text.strip().split('\n')
                         # Normalize bullets
-                        if line_text.startswith(("•", "-", "▪", "●")):
-                            line_text = f"- {line_text.lstrip('•-▪●').strip()}"
+                        for line in lines:
+                            line = _normalize_line(line)
+                            if line:
+                                page_lines.append(line)
+                                all_text_content.append(line)
+                        
+                    # Check if this bbox is in header/footer area
+                    if bbox.y0 < header_threshold:
+                        information_in_header = True
+                    if bbox.y1 > footer_threshold:
+                        information_in_footer = True
+            else:
+                non_table_blocks = CVLayoutAnalyzer._filter_blocks_in_tables(text_blocks, table_bboxes)
+                
+                for block in non_table_blocks:
+                    block_top = block["bbox"][1]
+                    block_bottom = block["bbox"][3]
+                    
+                    if block_top < header_threshold:
+                        information_in_header = True
+                    if block_bottom > footer_threshold:
+                        information_in_footer = True
+                    
+                    for line_text in _extract_block_lines(block):
                         page_lines.append(line_text)
                         all_text_content.append(line_text)
 
@@ -374,14 +406,6 @@ class CVLayoutAnalyzer:
                 for span in line.get("spans", []):
                     if span.get("size", 0) > 0:
                         all_font_sizes.append(span["size"])
- 
-        # Add table content separately with clear markers
-        if have_tables:
-            for table in table_objects.tables:
-                table_lines = CVLayoutAnalyzer._extract_table_content(table)
-                if table_lines:
-                    page_lines.extend(table_lines)
-                    all_text_content.extend(table_lines)
  
         # Build final page text
         page_text = "\n".join(page_lines)
@@ -476,39 +500,95 @@ class CVLayoutAnalyzer:
         return [b for b in blocks if not is_inside_table(b["bbox"])]
  
     @staticmethod
-    def _extract_table_content(table) -> List[str]:
+    def _clean_table_cell(text: Optional[str]) -> str:
+        """Normalize a single table cell value."""
+        if text is None:
+            return ""
+
+        text = text.replace("\n", " ")
+        text = re.sub(r"\s+", " ", text)
+
+        return text.strip()
+
+    @staticmethod
+    def _remove_empty_columns(table: List[List[str]]) -> List[List[str]]:
+        """Remove columns that contain only empty cells."""
+        if not table:
+            return table
+
+        cols_to_keep = []
+        num_cols = max(len(row) for row in table)
+
+        for col_idx in range(num_cols):
+            column_values = []
+
+            for row in table:
+                if col_idx < len(row):
+                    column_values.append(row[col_idx].strip())
+
+            if any(value != "" for value in column_values):
+                cols_to_keep.append(col_idx)
+
+        cleaned = []
+
+        for row in table:
+            cleaned.append([
+                row[i] if i < len(row) else ""
+                for i in cols_to_keep
+            ])
+
+        return cleaned
+
+    @staticmethod
+    def _extract_table_content(page, table) -> List[str]:
         """Extract text from a single table with structure preservation."""
         table_lines = []
+        section_titles = []
         
         try:
-            table_data = table.extract()
-            if not table_data:
+            rows = []
+
+            for row in table.rows:
+                values = []
+
+                for cell in row.cells:
+                    if cell is None:
+                        values.append("")
+                        continue
+
+                    rect = pymupdf.Rect(cell)
+                    text = page.get_text("text", clip=rect)
+                    values.append(CVLayoutAnalyzer._clean_table_cell(text))
+
+                non_empty = [value for value in values if value.strip()]
+
+                if len(non_empty) == 1 and non_empty[0].isupper():
+                    section_titles.append(non_empty[0])
+                    continue
+
+                rows.append(values)
+
+            rows = CVLayoutAnalyzer._remove_empty_columns(rows)
+
+            if not rows and not section_titles:
                 return table_lines
-            
-            table_lines.append("--- TABLE START ---")
-            
-            for row_idx, row in enumerate(table_data):
-                row_text = " | ".join(
-                    str(cell).strip() if cell else "" 
-                    for cell in row
-                )
+                        
+            for row_idx, row in enumerate(rows):
+                row_text = " | ".join(cell for cell in row if cell.strip())
                 
                 if row_text.strip():
                     table_lines.append(row_text)
-                
-                if row_idx < len(table_data) - 1:
-                    table_lines.append("-" * 40)
             
-            table_lines.append("--- TABLE END ---")
+            for title in section_titles:
+                table_lines.append(title)
+
             table_lines.append("")
             
         except Exception:
             try:
                 text = table.get_text().strip()
                 if text:
-                    table_lines.append("--- TABLE START ---")
                     table_lines.extend(text.split("\n"))
-                    table_lines.append("--- TABLE END ---")
                     table_lines.append("")
             except Exception:
                 pass
@@ -1125,6 +1205,7 @@ class CVLayoutAnalyzer:
         cleaned = re.sub(r'\n{2,}', '\n\n', cleaned)  # Limit consecutive newlines
         # cleaned = re.sub(r'\s+', ' ', cleaned)  # Remove extra whitespace
         cleaned = re.sub(r'\n\s*-\s*\n', '\n- ', cleaned) # fix standalone bullet lines
+        cleaned = re.sub(r'\n(\S)\n', r' \1\n', cleaned) # If current line is a single character, append it to previous line
         return cleaned
 
     # ==================== Utility & Helper Methods ====================
