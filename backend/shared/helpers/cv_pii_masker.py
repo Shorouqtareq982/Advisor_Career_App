@@ -101,11 +101,13 @@ TECH_SKILLS = {
     "github",
     "linkedin",
     "devpost",
-    "medium"
+    "medium",
     "linux",
     "deep learning",
     "nltk",
-    "s3"
+    "s3",
+    "docker",
+    "postman",
 }
 
 CERTIFICATIONS = {
@@ -344,11 +346,13 @@ def filter_entities(results, text, max_top_region=350):
         if entity_type == "LOCATION":
             if "\n" in value :
                 continue
-            # reject skill keywords
-            if any(skill in value.lower() for skill in TECH_SKILLS):
+            # reject skill keywords using word boundaries to avoid matching single-letter skills
+            # (e.g., "r" in TECH_SKILLS shouldn't filter "Alexandria")
+            value_words = set(value.lower().split())
+            if any(skill in value_words for skill in TECH_SKILLS):
                 continue
-            # reject long spans
-            if len(value.split()) > 3:
+            # reject very long spans (but allow full addresses up to 12+ words)
+            if len(value.split()) > 15:
                 continue
 
         # Others → use score
@@ -559,7 +563,7 @@ def pattern_based_detection(text):
 
     return detected
 
-def merge_detections(presidio_results, pattern_results, text):
+def merge_detections(presidio_results, pattern_results):
     """Merge Presidio and pattern-based detections, avoiding duplicates"""
     all_results = presidio_results + pattern_results
 
@@ -574,9 +578,12 @@ def merge_detections(presidio_results, pattern_results, text):
     return merged
 
 def normalize_span(r, text):
-    start, end = r.start, r.end
+    start = _get_detection_value(r, "start", 0)
+    end = _get_detection_value(r, "end", 0)
+    entity_type = _get_detection_value(r, "entity_type", "")
+    score = _get_detection_value(r, "score", 0)
 
-    if r.entity_type == "PERSON":
+    if entity_type == "PERSON":
         value = re.split(
             r'[\n|/\\]+',
             text[start:end],
@@ -586,10 +593,10 @@ def normalize_span(r, text):
         end = start + len(value)
 
     return {
-        "entity_type": r.entity_type,
+        "entity_type": entity_type,
         "start": start,
         "end": end,
-        "score": r.score,
+        "score": score,
         "source": "presidio"
     }
 
@@ -604,9 +611,11 @@ def pii_pipeline(cv_text):
         for r in results
     ]
 
+        # Exclude if whitelisted
+
     # Step 1b: Fallback pattern-based detection
     pattern_results = pattern_based_detection(cv_text)
-    results = merge_detections(results, pattern_results, cv_text)
+    results = merge_detections(results, pattern_results)
 
     # Step 1c: Categorize URLs
     for r in results:
