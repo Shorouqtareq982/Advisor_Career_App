@@ -361,14 +361,14 @@ def check_quantifiable_impact(cv_parsed_content: dict) -> dict:
     seen_keys = set()
 
     PATTERNS = [
-      # (compiled_regex, category, unique_label)
-      (MONEY_PERCENT_PATTERN, 'Money/Finance', 'money_percent'),
-      (AWARD_KEYWORDS,'Other','award'),
-      (TASK_KEYWORDS, 'Tasks/Operations','task'),
-      (PEOPLE_KEYWORDS,'People','people'),
-      (MONEY_PATTERN,'Money/Finance','money'),
-      (PERCENT_PATTERN,'Tasks/Operations','percent'),
-      (NUMBER_PATTERN,'Tasks/Operations','number'),
+        # (compiled_regex, category, unique_label)
+        (MONEY_PERCENT_PATTERN, 'Money/Finance', 'money_percent'),
+        (AWARD_KEYWORDS,'Other','award'),
+        (TASK_KEYWORDS, 'Tasks/Operations','task'),
+        (PEOPLE_KEYWORDS,'People','people'),
+        (MONEY_PATTERN,'Money/Finance','money'),
+        (PERCENT_PATTERN,'Tasks/Operations','percent'),
+        (NUMBER_PATTERN,'Tasks/Operations','number'),
     ]
 
     for sent in sentences:
@@ -431,7 +431,7 @@ def check_spelling_and_grammar(cv_text: str, extra_skills: set = None, user_info
 
     return {
         "pass": passed,
-        "details": "; ".join(details_parts),
+        "details": ". ".join(details_parts),
         "typos": typos,
     }
 
