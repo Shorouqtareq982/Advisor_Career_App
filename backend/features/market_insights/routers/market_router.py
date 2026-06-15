@@ -26,8 +26,8 @@ JOB_LOCK = threading.Lock()
 BATCH_LOCK = threading.Lock()
 
 SCHEDULER_RUNNING = False
-SCHEDULE_HOUR = 0  # 2 AM
-SCHEDULE_MINUTE = 0
+SCHEDULE_HOUR = 18  
+SCHEDULE_MINUTE = 50
 # =========================
 # GLOBAL STATE
 # =========================
