@@ -275,7 +275,7 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
                         decoration: BoxDecoration(
                           color: _sessionType == InterviewSessionType.behavioral
                               ? isDark
-                                  ? AppColors.lightBlue500
+                                  ? AppColors.lightBlue500.withOpacity(0.1)
                                   : AppColors.lightBlue700.withOpacity(0.1)
                               : cardBg,
                           borderRadius: BorderRadius.circular(context.r(12)),
@@ -342,7 +342,7 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
                         decoration: BoxDecoration(
                           color: _sessionType == InterviewSessionType.technical
                               ? isDark
-                                  ? AppColors.lightBlue500
+                                  ? AppColors.lightBlue500.withOpacity(0.1)
                                   : AppColors.lightBlue700.withOpacity(0.1)
                               : cardBg,
                           borderRadius: BorderRadius.circular(context.r(12)),
@@ -422,7 +422,7 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
                         decoration: BoxDecoration(
                           color: _languagePreferred == 'en'
                               ? isDark
-                                  ? AppColors.lightBlue500
+                                  ? AppColors.lightBlue500.withOpacity(0.1)
                                   : AppColors.lightBlue700.withOpacity(0.1)
                               : cardBg,
                           borderRadius: BorderRadius.circular(context.r(12)),
@@ -471,7 +471,7 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
                         decoration: BoxDecoration(
                           color: _languagePreferred == 'ar'
                               ? isDark
-                                  ? AppColors.lightBlue500
+                                  ? AppColors.lightBlue500.withOpacity(0.1)
                                   : AppColors.lightBlue700.withOpacity(0.1)
                               : cardBg,
                           borderRadius: BorderRadius.circular(context.r(12)),
@@ -530,7 +530,7 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
                   child: context.text(
                     'Start Interview',
                     style: textTheme.title2Bold.copyWith(
-                      color: textPrimary,
+                      color: isDark ? AppColors.blue900 : AppColors.grey50,
                     ),
                   ),
                 ),
@@ -658,13 +658,13 @@ class CameraRequiredDialog extends StatelessWidget {
               ),
               SizedBox(width: context.w(24)),
               _CircleIconButton(
-                icon: Icons.videocam_rounded,
-                color: AppColors.red400,
+                icon: Icons.videocam_off_rounded, // ← غيري الأيقونة كمان لـ off
+                color: AppColors.red500, // ← أحمر بدل red400
                 onTap: () {
                   Navigator.of(context).pop();
                   onEnableCamera();
                 },
-                isDisabled: true,
+                isDisabled: false, // ← شيلي الـ isDisabled أو خليها false
               ),
             ],
           ),
@@ -725,12 +725,12 @@ class MicrophoneRequiredDialog extends StatelessWidget {
               SizedBox(width: context.w(24)),
               _CircleIconButton(
                 icon: Icons.mic_off_rounded,
-                color: AppColors.red400,
+                color: AppColors.red500, // ← أحمر
                 onTap: () {
                   Navigator.of(context).pop();
                   onEnableMic();
                 },
-                isDisabled: true,
+                isDisabled: false,
               ),
             ],
           ),
@@ -1105,6 +1105,111 @@ class _CircleIconButton extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: context.icon(22)),
+      ),
+    );
+  }
+}
+
+// ─── No Internet Session Dialog ───────────────────────────────────────────────
+
+class NoInternetSessionDialog extends StatelessWidget {
+  final VoidCallback onContinue;
+  final VoidCallback onSaveAndExit;
+
+  const NoInternetSessionDialog({
+    super.key,
+    required this.onContinue,
+    required this.onSaveAndExit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textTheme = context.appTextTheme;
+    final textPrimary = isDark ? AppColors.grey50 : AppColors.blue900;
+    final textMuted = isDark ? AppColors.grey300 : AppColors.grey800;
+
+    return _buildDialog(
+      context: context,
+      isDark: isDark,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: context.w(64),
+            height: context.w(64),
+            decoration: BoxDecoration(
+              color: AppColors.orange500.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.wifi_off_rounded,
+              color: AppColors.orange500,
+              size: context.icon(32),
+            ),
+          ),
+          SizedBox(height: context.h(16)),
+          context.text(
+            'No Internet Connection',
+            style: textTheme.title2Bold.copyWith(color: textPrimary),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: context.h(8)),
+          context.text(
+            'Your connection was lost. Your recording is safe.\n\nWhat would you like to do?',
+            style: textTheme.bodyRegular.copyWith(color: textMuted),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: context.h(20)),
+          SizedBox(
+            width: double.infinity,
+            height: context.h(48),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                onContinue();
+              },
+              icon: Icon(Icons.play_arrow_rounded, size: context.icon(18)),
+              label: context.text(
+                'Continue without audio',
+                style: textTheme.bodyBold.copyWith(color: AppColors.blue900),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.lightBlue500,
+                foregroundColor: AppColors.blue900,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(context.r(50)),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: context.h(10)),
+          SizedBox(
+            width: double.infinity,
+            height: context.h(48),
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                onSaveAndExit();
+              },
+              icon: Icon(Icons.save_outlined, size: context.icon(18)),
+              label: context.text(
+                'Save & continue later',
+                style: textTheme.bodyBold.copyWith(color: textPrimary),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: textPrimary,
+                side: BorderSide(
+                  color: isDark ? AppColors.blue300 : AppColors.grey400,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(context.r(50)),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

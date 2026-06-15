@@ -180,3 +180,31 @@ class ReportParser {
     return items;
   }
 }
+
+// ─── Incomplete Session Entity ────────────────────────────────────────────────
+
+class IncompleteSessionEntity {
+  final String sessionId;
+  final String roleName;
+  final InterviewSessionType sessionType;
+  final String blobUrl;
+  final String sasToken;
+  final DateTime savedAt;
+  final int lastQuestionIndex;
+  final List<InterviewQuestionEntity> questions;
+  final String? recordingPath;
+  final String? languagePreferred;
+
+  const IncompleteSessionEntity({
+    required this.sessionId,
+    required this.roleName,
+    required this.sessionType,
+    required this.blobUrl,
+    required this.sasToken,
+    required this.savedAt,
+    required this.lastQuestionIndex,
+    required this.questions,
+    this.recordingPath,
+    this.languagePreferred,
+  });
+}

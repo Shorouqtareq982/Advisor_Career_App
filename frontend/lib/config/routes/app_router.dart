@@ -532,12 +532,15 @@ class AppRouter {
         name: 'interview-session',
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>;
+          final incompleteSession =
+              extra['incompleteSession'] as IncompleteSessionEntity?;
+
           return InterviewSessionScreen(
             roleName: extra['roleName'] as String,
             roleId: extra['roleId'] as String,
-            sessionType: extra['sessionType'] as InterviewSessionType? ??
-                InterviewSessionType.behavioral,
+            sessionType: extra['sessionType'] as InterviewSessionType,
             languagePreferred: extra['languagePreferred'] as String?,
+            incompleteSession: incompleteSession,
           );
         },
       ),

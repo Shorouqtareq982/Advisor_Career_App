@@ -1,36 +1,47 @@
 import 'dart:io';
-import '../entities/interview_entities.dart';
+import '../../domain/entities/interview_entities.dart';
 
 abstract class MockInterviewRepository {
-  /// POST /sessions/start
-  Future<InterviewSessionEntity> startSession({
+  Future<InterviewSessionEntity> startBehavioralSession({
     required String roleName,
-    required String roleId,
+    required String userId,
+    String? languagePreferred,
   });
 
-  /// GET /questions/{q_id}/audio-stream
-  /// Returns raw bytes of the audio
-  Future<List<int>> getQuestionAudio(String questionId);
+  Future<InterviewSessionEntity> startTechnicalSession({
+    required String roleName,
+    required String userId,
+    String? languagePreferred,
+  });
 
-  /// POST /behavioural/notify-upload
+  Future<List<int>> getQuestionAudio(
+    String questionId, {
+    String? languagePreferred,
+  });
+
   Future<void> notifyUploadComplete({
     required String sessionId,
-    required String videoUrl,
+    required String blobUrl,
+    String? languagePreferred,
   });
 
-  /// GET /interviews/feedback  (list)
-  Future<List<InterviewFeedbackSummary>> getFeedbackList();
+  Future<String> getBehavioralReport(String sessionId);
+  Future<String> getTechnicalReport(String sessionId);
 
-  /// GET /interviews/feedback/{session_id}
-  Future<InterviewFeedbackDetailEntity> getFeedbackDetail(String sessionId);
-
-  /// DELETE /interviews/feedback/{session_id}
-  Future<void> deleteFeedback(String sessionId);
-
-  /// Upload video to Azure using SAS token
-  Future<String> uploadVideoToAzure({
-    required File videoFile,
+  Future<void> uploadToAzure({
+    required File file,
+    required String blobUrl,
     required String sasToken,
-    required String sessionId,
+    required InterviewSessionType sessionType,
   });
+
+  Future<void> saveSessionLocally({
+    required String sessionId,
+    required String roleName,
+    required InterviewSessionType sessionType,
+    String? languagePreferred,
+  });
+
+  Future<List<Map<String, dynamic>>> getLocalSessions();
+  Future<void> deleteLocalSession(String sessionId);
 }

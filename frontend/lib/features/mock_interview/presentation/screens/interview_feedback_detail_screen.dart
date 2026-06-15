@@ -8,6 +8,8 @@ import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../core/theme/app_text_theme.dart';
 import '../../domain/entities/interview_entities.dart';
 import '../providers/mock_interview_provider.dart';
+import '../../core/errors/interview_exceptions.dart';
+import '../../core/errors/interview_error_widgets.dart';
 
 class InterviewFeedbackDetailScreen extends ConsumerStatefulWidget {
   final String sessionId;
@@ -54,7 +56,7 @@ class _InterviewFeedbackDetailScreenState
             ? const Center(
                 child: CircularProgressIndicator(color: AppColors.lightBlue500))
             : state.feedbackDetail == null
-                ? _buildError(context, textTheme, textPrimary)
+                ? _buildError(context)
                 : CustomScrollView(
                     physics: const BouncingScrollPhysics(),
                     slivers: [
@@ -200,26 +202,21 @@ class _InterviewFeedbackDetailScreenState
 
   // ── Error ──────────────────────────────────────────────────────────────────
 
-  Widget _buildError(
-      BuildContext context, AppTextTheme textTheme, Color textPrimary) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline,
-              color: AppColors.red600, size: context.icon(48)),
-          SizedBox(height: context.h(16)),
-          context.text('Failed to load feedback',
-              style: textTheme.title2Bold.copyWith(color: textPrimary)),
-          SizedBox(height: context.h(16)),
-          ElevatedButton(
-            onPressed: () => ref
-                .read(mockInterviewProvider.notifier)
-                .loadFeedbackDetail(widget.sessionId),
-            child: const Text('Retry'),
-          ),
-        ],
-      ),
+  Widget _buildError(BuildContext context) {
+    final error = ref.watch(mockInterviewProvider).error;
+
+    return InterviewErrorCard.fromException(
+      error ?? InterviewException.unknown(),
+      isDark: Theme.of(context).brightness == Brightness.dark,
+      onAction: switch (error?.action) {
+        InterviewErrorAction.retry => () => ref
+            .read(mockInterviewProvider.notifier)
+            .loadFeedbackDetail(widget.sessionId),
+        InterviewErrorAction.goBack => () => context.pop(),
+        _ => () => ref
+            .read(mockInterviewProvider.notifier)
+            .loadFeedbackDetail(widget.sessionId),
+      },
     );
   }
 

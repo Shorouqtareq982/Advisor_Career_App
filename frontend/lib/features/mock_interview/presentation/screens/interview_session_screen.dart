@@ -9,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import 'package:video_compress/video_compress.dart';
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
@@ -16,6 +18,8 @@ import '../../../../core/theme/app_text_theme.dart';
 import '../../domain/entities/interview_entities.dart';
 import '../providers/mock_interview_provider.dart';
 import '../widgets/mock_interview_dialogs.dart';
+import '../../core/errors/interview_error_widgets.dart';
+import '../../core/errors/interview_exceptions.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  INTRO SCREEN
@@ -39,7 +43,7 @@ class InterviewIntroScreen extends StatelessWidget {
     final isBehavioral = sessionType == InterviewSessionType.behavioral;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1B2A),
+      backgroundColor: const Color(0xFF232946),
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(
@@ -237,14 +241,16 @@ class InterviewSessionScreen extends ConsumerStatefulWidget {
   final String roleName;
   final String roleId;
   final InterviewSessionType sessionType;
-  final String? languagePreferred; // ← NEW
+  final String? languagePreferred;
+  final IncompleteSessionEntity? incompleteSession;
 
   const InterviewSessionScreen({
     super.key,
     required this.roleName,
     required this.roleId,
     required this.sessionType,
-    this.languagePreferred, // ← NEW
+    this.languagePreferred,
+    this.incompleteSession,
   });
 
   @override
@@ -272,8 +278,72 @@ class _InterviewSessionScreenState
 
   bool _sessionFinishedHandled = false;
 
+  StreamSubscription? _connectivitySubscription;
+  bool _noInternetDialogShown = false;
+  IncompleteSessionEntity? get _incompleteSession => widget.incompleteSession;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenToConnectivity();
+  }
+
+  void _listenToConnectivity() {
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((results) {
+      final hasInternet = results.any((r) => r != ConnectivityResult.none);
+      if (!hasInternet && !_noInternetDialogShown && mounted) {
+        final s = ref.read(mockInterviewProvider);
+        if (s.sessionStatus == InterviewSessionStatus.active ||
+            s.sessionStatus == InterviewSessionStatus.paused) {
+          _noInternetDialogShown = true;
+          _showNoInternetDialog();
+        }
+      } else if (hasInternet && mounted) {
+        _noInternetDialogShown = false;
+        ref.read(mockInterviewProvider.notifier).setNoInternet(false);
+      }
+    });
+  }
+
+  void _showNoInternetDialog() {
+    _ttsPlaybackPaused = true;
+    _ttsPlayer.pause();
+    if (_isBehavioral) _cameraController?.pausePreview();
+    ref.read(mockInterviewProvider.notifier).pauseInterview();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => NoInternetSessionDialog(
+        onContinue: () {
+          ref.read(mockInterviewProvider.notifier).setNoInternet(false);
+          if (_isBehavioral) _cameraController?.resumePreview();
+          _ttsPlaybackPaused = false;
+          ref.read(mockInterviewProvider.notifier).resumeInterview();
+          Future.microtask(() {
+            if (mounted) {
+              ref.read(mockInterviewProvider.notifier).startQuestionTimer();
+            }
+          });
+        },
+        onSaveAndExit: () async {
+          await ref.read(mockInterviewProvider.notifier).saveAsIncomplete(
+                roleName: widget.roleName,
+                recordingPath: _isBehavioral ? null : _audioRecordingPath,
+              );
+          if (mounted) {
+            ref.read(mockInterviewProvider.notifier).resetSession();
+            context.go('/home');
+          }
+        },
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _connectivitySubscription?.cancel();
     _cameraController?.dispose();
     _audioRecorder.dispose();
     _ttsPlayer.dispose();
@@ -281,27 +351,137 @@ class _InterviewSessionScreenState
   }
 
   Future<void> _startInterview() async {
+    if (widget.incompleteSession != null) {
+      setState(() => _showIntro = false);
+      if (_isBehavioral) {
+        await _initCamera();
+        await _startVideoRecording();
+      } else {
+        await _startAudioRecording();
+      }
+      ref
+          .read(mockInterviewProvider.notifier)
+          .resumeIncompleteSession(widget.incompleteSession!);
+
+      Future.microtask(() {
+        if (mounted) {
+          ref.read(mockInterviewProvider.notifier).startQuestionTimer();
+        }
+      });
+      return;
+    }
     setState(() => _showIntro = false);
     await _requestPermissions();
+
+    final cameraGranted = await Permission.camera.isGranted;
+    final micGranted = await Permission.microphone.isGranted;
+
+    if (_isBehavioral && (!cameraGranted || !micGranted)) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => _buildPermissionDeniedDialog(context),
+        );
+      }
+      return;
+    }
+
+    if (!_isBehavioral && !micGranted) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => _buildPermissionDeniedDialog(context),
+        );
+      }
+      return;
+    }
+
+    try {
+      await _requestPermissions();
+    } on InterviewException catch (e) {
+      setState(() => _showIntro = true);
+      if (mounted) {
+        InterviewErrorSnackbar.showError(
+          context,
+          e,
+          onAction: switch (e.action) {
+            InterviewErrorAction.openSettings => () => openAppSettings(),
+            _ => null,
+          },
+        );
+      }
+      return;
+    }
+
     if (_isBehavioral) {
       await _initCamera();
       await _startVideoRecording();
     } else {
       await _startAudioRecording();
     }
+
     if (mounted) {
       ref.read(mockInterviewProvider.notifier).startSession(
             roleName: widget.roleName,
             roleId: widget.roleId,
             sessionType: widget.sessionType,
-            languagePreferred: widget.languagePreferred, // ← NEW
+            languagePreferred: widget.languagePreferred,
           );
     }
   }
 
   Future<void> _requestPermissions() async {
-    await Permission.camera.request();
-    await Permission.microphone.request();
+    final camera = await Permission.camera.request();
+    final mic = await Permission.microphone.request();
+
+    if (_isBehavioral && !camera.isGranted) {
+      throw InterviewException.cameraPermissionDenied();
+    }
+    if (!mic.isGranted) {
+      throw InterviewException.microphonePermissionDenied();
+    }
+  }
+
+  Widget _buildPermissionDeniedDialog(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1A2535),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text(
+        'Permissions Required',
+        style: TextStyle(color: Colors.white, fontFamily: 'Inter'),
+        textAlign: TextAlign.center,
+      ),
+      content: Text(
+        _isBehavioral
+            ? 'Camera and microphone access are required to start the interview.\n\nPlease enable them in Settings to continue.'
+            : 'Microphone access is required to start the interview.\n\nPlease enable it in Settings to continue.',
+        style: const TextStyle(color: Colors.white70, fontFamily: 'Inter'),
+        textAlign: TextAlign.center,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            context.go('/home');
+          },
+          child: const Text('Go Home', style: TextStyle(color: Colors.white54)),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            openAppSettings();
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF38BDF8),
+            foregroundColor: const Color(0xFF0D1B2A),
+          ),
+          child: const Text('Open Settings',
+              style: TextStyle(fontFamily: 'Inter')),
+        ),
+      ],
+    );
   }
 
   Future<void> _initCamera() async {
@@ -433,6 +613,35 @@ class _InterviewSessionScreenState
     final textTheme = context.appTextTheme;
 
     ref.listen<MockInterviewState>(mockInterviewProvider, (prev, next) {
+      if (!mounted) return;
+      if (next.error != null && next.error != prev?.error) {
+        final exception = next.error!;
+
+        InterviewErrorSnackbar.showError(
+          context,
+          exception,
+          onAction: switch (exception.action) {
+            InterviewErrorAction.retry => () {
+                if (_recordedFile != null) {
+                  ref.read(mockInterviewProvider.notifier).uploadAndNotify(
+                        mediaFile: _recordedFile!,
+                        roleName: widget.roleName,
+                      );
+                } else {
+                  ref.read(mockInterviewProvider.notifier).startSession(
+                        roleName: widget.roleName,
+                        roleId: widget.roleId,
+                        sessionType: widget.sessionType,
+                        languagePreferred: widget.languagePreferred,
+                      );
+                }
+              },
+            InterviewErrorAction.signIn => () => context.go('/sign-in'),
+            InterviewErrorAction.openSettings => () => openAppSettings(),
+            _ => null,
+          },
+        );
+      }
       if (next.sessionStatus == InterviewSessionStatus.finished &&
           prev?.sessionStatus != InterviewSessionStatus.finished &&
           !_sessionFinishedHandled) {
@@ -441,7 +650,15 @@ class _InterviewSessionScreenState
       if (next.audioBytes != null &&
           next.audioBytes != prev?.audioBytes &&
           next.audioBytes!.isNotEmpty) {
-        _playQuestionAudio(next.audioBytes!);
+        if (!next.hasNoInternet) {
+          _playQuestionAudio(next.audioBytes!);
+        } else {
+          Future.microtask(() {
+            if (mounted) {
+              ref.read(mockInterviewProvider.notifier).startQuestionTimer();
+            }
+          });
+        }
       }
     });
 
@@ -476,7 +693,7 @@ class _InterviewSessionScreenState
                       child: Center(
                         child: Image.asset(
                           'assets/images/mock_interview/ai_robot.png',
-                          width: context.w(200),
+                          width: context.w(300),
                           errorBuilder: (_, __, ___) => Icon(
                             Icons.smart_toy_outlined,
                             color: AppColors.lightBlue400,
@@ -794,10 +1011,17 @@ class _InterviewSessionScreenState
 
   Widget _buildBottomControls(BuildContext context, MockInterviewState state) {
     return Container(
-      color: Colors.black.withOpacity(0.5),
+      margin: EdgeInsets.symmetric(
+        horizontal: context.w(16),
+        vertical: context.h(12),
+      ),
       padding: EdgeInsets.symmetric(
-        horizontal: context.w(24),
+        horizontal: context.w(20),
         vertical: context.h(16),
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2535),
+        borderRadius: BorderRadius.circular(context.r(40)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -807,24 +1031,28 @@ class _InterviewSessionScreenState
               icon: _cameraEnabled
                   ? Icons.videocam_rounded
                   : Icons.videocam_off_rounded,
-              color: _cameraEnabled ? AppColors.lightBlue500 : Colors.white24,
+              color: AppColors.lightBlue100,
+              iconColor: AppColors.lightBlue700,
+              iconSize: context.icon(28),
               onTap: _toggleCamera,
             ),
           _ControlButton(
             icon: _micEnabled ? Icons.mic_rounded : Icons.mic_off_rounded,
-            color: _micEnabled ? AppColors.lightBlue500 : Colors.white24,
+            color: AppColors.lightBlue100,
+            iconColor: AppColors.lightBlue700,
+            iconSize: context.icon(28),
             onTap: _toggleMic,
           ),
           _ControlButton(
             icon: Icons.pause_rounded,
-            color: Colors.white24,
+            color: Colors.grey.withOpacity(0.5),
             onTap: _showPauseDialog,
           ),
           if (state.sessionStatus == InterviewSessionStatus.active &&
               !state.waitingForAudio)
             _ControlButton(
               icon: Icons.skip_next_rounded,
-              color: AppColors.lightBlue600,
+              color: Colors.grey.withOpacity(0.5),
               onTap: () =>
                   ref.read(mockInterviewProvider.notifier).skipToNext(),
             ),
@@ -838,18 +1066,62 @@ class _InterviewSessionScreenState
     );
   }
 
+  void _resumeAfterPause() {
+    _ttsPlaybackPaused = false;
+    ref.read(mockInterviewProvider.notifier).resumeInterview();
+
+    final playerState = _ttsPlayer.processingState;
+    if (playerState == ProcessingState.ready ||
+        playerState == ProcessingState.buffering ||
+        playerState == ProcessingState.loading) {
+      _ttsPlayer.play().then((_) {
+        _ttsPlayer.playerStateStream
+            .firstWhere(
+          (s) =>
+              s.processingState == ProcessingState.completed ||
+              s.processingState == ProcessingState.idle ||
+              _ttsPlaybackPaused,
+        )
+            .then((_) {
+          if (mounted && !_ttsPlaybackPaused) {
+            if (_isBehavioral) {
+              _cameraController?.resumeVideoRecording();
+            } else {
+              _audioRecorder.resume();
+            }
+            ref.read(mockInterviewProvider.notifier).startQuestionTimer();
+          }
+        }).catchError((_) {
+          if (mounted && !_ttsPlaybackPaused) {
+            ref.read(mockInterviewProvider.notifier).startQuestionTimer();
+          }
+        });
+      });
+    } else {
+      Future.microtask(() {
+        if (mounted) {
+          ref.read(mockInterviewProvider.notifier).startQuestionTimer();
+        }
+      });
+    }
+  }
+
   void _toggleCamera() {
     if (_cameraEnabled) {
       _ttsPlaybackPaused = true;
       _ttsPlayer.pause();
       ref.read(mockInterviewProvider.notifier).pauseInterview();
       setState(() => _cameraEnabled = false);
+
+      _cameraController?.pausePreview();
+
       _showCameraDialog();
     } else {
-      _ttsPlaybackPaused = false;
       setState(() => _cameraEnabled = true);
-      _ttsPlayer.play();
-      ref.read(mockInterviewProvider.notifier).resumeInterview();
+
+      _cameraController?.resumePreview();
+
+      _resumeAfterPause();
     }
   }
 
@@ -861,10 +1133,8 @@ class _InterviewSessionScreenState
       setState(() => _micEnabled = false);
       _showMicDialog();
     } else {
-      _ttsPlaybackPaused = false;
       setState(() => _micEnabled = true);
-      _ttsPlayer.play();
-      ref.read(mockInterviewProvider.notifier).resumeInterview();
+      _resumeAfterPause();
     }
   }
 
@@ -873,6 +1143,8 @@ class _InterviewSessionScreenState
     _ttsPlayer.pause();
     ref.read(mockInterviewProvider.notifier).pauseInterview();
 
+    if (_isBehavioral) _cameraController?.pausePreview();
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -880,21 +1152,8 @@ class _InterviewSessionScreenState
         onGoHome: _showLeaveDialog,
         onRestart: _showRestartDialog,
         onResume: () {
-          _ttsPlaybackPaused = false;
-          ref.read(mockInterviewProvider.notifier).resumeInterview();
-
-          final playerState = _ttsPlayer.processingState;
-          if (playerState == ProcessingState.ready ||
-              playerState == ProcessingState.buffering ||
-              playerState == ProcessingState.loading) {
-            _ttsPlayer.play();
-          } else {
-            Future.microtask(() {
-              if (mounted) {
-                ref.read(mockInterviewProvider.notifier).startQuestionTimer();
-              }
-            });
-          }
+          if (_isBehavioral) _cameraController?.resumePreview();
+          _resumeAfterPause();
         },
       ),
     );
@@ -902,30 +1161,45 @@ class _InterviewSessionScreenState
 
   void _showLeaveDialog() {
     ref.read(mockInterviewProvider.notifier).pauseInterview();
-    showDialog(
+
+    if (_isBehavioral) _cameraController?.pausePreview();
+
+    showDialog<bool>(
       context: context,
       builder: (_) => LeaveInterviewDialog(
         onLeave: () {
+          Navigator.of(context).pop(true);
           ref.read(mockInterviewProvider.notifier).resetSession();
           context.go('/home');
         },
       ),
-    ).then((_) {
-      if (ref.read(mockInterviewProvider).sessionStatus ==
-          InterviewSessionStatus.paused) {
-        ref.read(mockInterviewProvider.notifier).resumeInterview();
+    ).then((didLeave) {
+      if (didLeave != true && mounted) {
+        if (_isBehavioral) _cameraController?.resumePreview();
+        _resumeAfterPause();
       }
     });
   }
 
   void _showRestartDialog() {
-    showDialog(
+    // ← أوقفي الـ camera
+    if (_isBehavioral) _cameraController?.pausePreview();
+
+    showDialog<bool>(
       context: context,
       builder: (_) => RestartInterviewDialog(
-        onRestart: () =>
-            ref.read(mockInterviewProvider.notifier).restartInterview(),
+        onRestart: () {
+          Navigator.of(context).pop(true);
+          if (_isBehavioral) _cameraController?.resumePreview();
+          ref.read(mockInterviewProvider.notifier).restartInterview();
+        },
       ),
-    );
+    ).then((didRestart) {
+      if (didRestart != true && mounted) {
+        if (_isBehavioral) _cameraController?.resumePreview();
+        _resumeAfterPause();
+      }
+    });
   }
 
   void _showCameraDialog() {
@@ -935,7 +1209,8 @@ class _InterviewSessionScreenState
       builder: (_) => CameraRequiredDialog(
         onEnableCamera: () {
           setState(() => _cameraEnabled = true);
-          ref.read(mockInterviewProvider.notifier).resumeInterview();
+          _cameraController?.resumePreview();
+          _resumeAfterPause();
         },
         onGoHome: _showLeaveDialog,
       ),
@@ -949,7 +1224,7 @@ class _InterviewSessionScreenState
       builder: (_) => MicrophoneRequiredDialog(
         onEnableMic: () {
           setState(() => _micEnabled = true);
-          ref.read(mockInterviewProvider.notifier).resumeInterview();
+          _resumeAfterPause();
         },
         onGoHome: _showLeaveDialog,
       ),
@@ -998,6 +1273,12 @@ class _InterviewSessionScreenState
         ),
       );
     }
+
+    if (widget.incompleteSession != null) {
+      await ref
+          .read(mockInterviewProvider.notifier)
+          .deleteIncompleteSession(widget.incompleteSession!.sessionId);
+    }
   }
 }
 
@@ -1005,12 +1286,16 @@ class _InterviewSessionScreenState
 
 class _ControlButton extends StatelessWidget {
   final IconData icon;
+  final Color iconColor;
   final Color color;
   final VoidCallback onTap;
+  final double? iconSize;
 
   const _ControlButton({
     required this.icon,
     required this.color,
+    this.iconColor = Colors.white,
+    this.iconSize,
     required this.onTap,
   });
 
@@ -1022,7 +1307,7 @@ class _ControlButton extends StatelessWidget {
         width: context.w(52),
         height: context.w(52),
         decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: Icon(icon, color: Colors.white, size: context.icon(22)),
+        child: Icon(icon, color: iconColor, size: iconSize ?? context.icon(22)),
       ),
     );
   }
