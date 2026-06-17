@@ -8,6 +8,7 @@ from app.api.cloudinary_service import router as cloudinary_router
 from app.api.cv_optmization import router as cv_optmization_router
 from app.api.portfolio import router as portfolio_router
 from app.api.user import router as user_router
+from features.mock_interview.routers import router as mock_interview_router
 # Create main API router
 api_router = APIRouter()
 
@@ -16,4 +17,5 @@ api_router.include_router(azure_service_router)
 api_router.include_router(cloudinary_router)
 api_router.include_router(cv_optmization_router)
 api_router.include_router(user_router)
+api_router.include_router(mock_interview_router)
 api_router.include_router(portfolio_router)

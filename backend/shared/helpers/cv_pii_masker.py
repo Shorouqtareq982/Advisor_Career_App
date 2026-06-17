@@ -3,9 +3,18 @@ from typing import Optional
 from presidio_analyzer import AnalyzerEngine, RecognizerResult, PatternRecognizer, Pattern
 from presidio_anonymizer import AnonymizerEngine
 
-# Initialize once
-analyzer = AnalyzerEngine()
-anonymizer = AnonymizerEngine()
+# Lazy initialization avoids loading spaCy / large models at import time.
+analyzer = None
+anonymizer = None
+
+
+def get_pii_engines():
+    global analyzer, anonymizer
+    if analyzer is None:
+        analyzer = AnalyzerEngine()
+    if anonymizer is None:
+        anonymizer = AnonymizerEngine()
+    return analyzer, anonymizer
 
 ORG_KEYWORDS = {
     "university", "college", "institute", "school", "faculty", "department", "academy",
@@ -509,6 +518,7 @@ def normalize_span(r, text):
 # =========================================================
 def pii_pipeline(cv_text):
     # Step 1: Detect with Presidio
+    analyzer, _ = get_pii_engines()
     results = analyzer.analyze(text=cv_text, language="en")
     results = [
         normalize_span(r, cv_text)

@@ -17,24 +17,43 @@ import '../widgets/alerts_app_bar.dart';
 import '../widgets/alerts_header_row.dart';
 import '../widgets/alert_card.dart';
 
-class AlertsScreen extends StatelessWidget {
+class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
 
-  AlertsCubit _buildCubit() {
+  @override
+  State<AlertsScreen> createState() => _AlertsScreenState();
+}
+
+class _AlertsScreenState extends State<AlertsScreen> {
+  late final AlertsCubit _cubit;
+  late final _LifecycleObserver _observer;
+
+  @override
+  void initState() {
+    super.initState();
     final ds = AlertsLocalDataSourceImpl();
     final repo = AlertsRepositoryImpl(ds);
-
-    return AlertsCubit(
+    _cubit = AlertsCubit(
       getAlerts: GetAlerts(repo),
       markAllRead: MarkAllRead(repo),
       markAlertRead: MarkAlertRead(repo),
     )..load();
+
+    _observer = _LifecycleObserver(_cubit);
+    WidgetsBinding.instance.addObserver(_observer);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(_observer);
+    _cubit.close();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => _buildCubit(),
+    return BlocProvider.value(
+      value: _cubit,
       child: Scaffold(
         backgroundColor: AppColors.backgroundAdaptive(context),
         body: SafeArea(
@@ -43,8 +62,6 @@ class AlertsScreen extends StatelessWidget {
               constraints: context.contentConstraints,
               child: BlocBuilder<AlertsCubit, AlertsState>(
                 builder: (context, state) {
-                  final cubit = context.read<AlertsCubit>();
-
                   if (state.isLoading) {
                     return const Center(child: CircularProgressIndicator());
                   }
@@ -70,7 +87,7 @@ class AlertsScreen extends StatelessWidget {
                             SizedBox(
                               height: context.h(44),
                               child: ElevatedButton(
-                                onPressed: cubit.load,
+                                onPressed: _cubit.load,
                                 child: Text(
                                   'Retry',
                                   style: TextStyle(
@@ -111,25 +128,58 @@ class AlertsScreen extends StatelessWidget {
                             EdgeInsets.symmetric(horizontal: context.w(16)),
                         child: AlertsHeaderRow(
                           unreadCount: state.unreadCount,
-                          onMarkAllRead: cubit.onMarkAllRead,
+                          onMarkAllRead: _cubit.onMarkAllRead,
                         ),
                       ),
                       SizedBox(height: context.h(16)),
                       Expanded(
-                        child: ListView.separated(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: context.w(16))
-                                  .copyWith(bottom: context.h(16)),
-                          itemCount: alerts.length,
-                          separatorBuilder: (_, __) =>
-                              SizedBox(height: context.h(16)),
-                          itemBuilder: (_, i) {
-                            final alert = alerts[i];
-                            return AlertCard(
-                              alert: alert,
-                              onTap: () => cubit.onOpenAlert(alert.id),
-                            );
-                          },
+                        child: RefreshIndicator(
+                          onRefresh: _cubit.load,
+                          child: alerts.isEmpty
+                              ? ListView(
+                                  children: [
+                                    SizedBox(height: context.h(80)),
+                                    Center(
+                                      child: Text(
+                                        'No alerts yet',
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: context.sp(14),
+                                          color: AppColors.textMutedAdaptive(
+                                              context),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : ListView.separated(
+                                  padding: EdgeInsets.symmetric(
+                                          horizontal: context.w(16))
+                                      .copyWith(bottom: context.h(16)),
+                                  itemCount: alerts.length,
+                                  separatorBuilder: (_, __) =>
+                                      SizedBox(height: context.h(16)),
+                                  itemBuilder: (_, i) {
+                                    final alert = alerts[i];
+                                    return AlertCard(
+                                      alert: alert,
+                                      onTap: () {
+                                        _cubit.onOpenAlert(alert.id);
+                                        if (alert.route != null) {
+                                          if (alert.route ==
+                                              '/interview-feedback-detail') {
+                                            final sessionId = alert.id
+                                                .replaceFirst('interview_', '');
+                                            context.push(alert.route!,
+                                                extra: sessionId);
+                                          } else {
+                                            context.push(alert.route!);
+                                          }
+                                        }
+                                      },
+                                    );
+                                  },
+                                ),
                         ),
                       ),
                     ],
@@ -142,5 +192,19 @@ class AlertsScreen extends StatelessWidget {
         bottomNavigationBar: const HomeBottomNav(currentRoute: '/alerts'),
       ),
     );
+  }
+}
+
+// ── Lifecycle observer ────────────────────────────────────────────────────────
+
+class _LifecycleObserver extends WidgetsBindingObserver {
+  final AlertsCubit cubit;
+  _LifecycleObserver(this.cubit);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      cubit.load();
+    }
   }
 }

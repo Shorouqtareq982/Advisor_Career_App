@@ -41,10 +41,27 @@ import '../../features/settings/presentation/screens/delete_account_screen.dart'
 import '../../features/resume_optimization/presentation/screens/resume_optimization_screen.dart';
 import '../../features/resume_optimization/presentation/screens/report_details_screen.dart';
 import '../../features/resume_optimization/presentation/screens/start_optimization_screen.dart';
+
+// // ── Career Build ─────────────────────────────────────────────────────
 import '../../features/career_build/presentation/screens/career_builder_screen.dart';
+import '../../features/career_build/presentation/screens/career_build_entry_screen.dart';
+import '../../features/career_build/presentation/screens/create_plan_step1_screen.dart';
+import '../../features/career_build/presentation/screens/create_plan_step2_screen.dart';
+import '../../features/career_build/presentation/screens/create_plan_step3_screen.dart';
+import '../../features/career_build/presentation/screens/create_plan_step4_screen.dart';
+import '../../features/career_build/presentation/screens/career_plans_screen.dart';
+import '../../features/career_build/presentation/screens/career_plan_view_screen.dart';
+
 import '../../features/mock_interview/presentation/screens/mock_interview_screen.dart';
 import '../../features/market_insight/presentation/screens/market_insights_screen.dart';
-import '../../features/ai_portfolio/presentation/screens/ai_portfolio_screen.dart';
+
+// // ── Ai Portfolio ─────────────────────────────────────────────────────
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_entry_screen.dart';
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_designs_screen.dart';
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_preview_screen.dart';
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_settings_screen.dart';
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_section_details_screen.dart';
+import '../../features/ai_portfolio/presentation/screens/ai_portfolio_my_portfolios_screen.dart';
 
 import '../../features/auth/presentation/providers/auth_provider.dart';
 
@@ -54,6 +71,12 @@ import '../../features/job_matching/presentation/screens/job_preferences_screen.
 import '../../features/job_matching/presentation/screens/recommended_jobs_screen.dart';
 import '../../features/job_matching/presentation/screens/job_details_screen.dart';
 import '../../features/job_matching/domain/entities/job_entity.dart';
+
+// // ── Mock Interview ─────────────────────────────────────────────────────
+import '../../features/mock_interview/presentation/screens/interview_feedback_screen.dart';
+import '../../features/mock_interview/presentation/screens/interview_feedback_detail_screen.dart';
+import '../../features/mock_interview/presentation/screens/interview_session_screen.dart';
+import '../../features/mock_interview/domain/entities/interview_entities.dart';
 
 Widget _withAuthTheme(BuildContext context, Widget child) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -71,9 +94,48 @@ class AppRouter {
     debugLogDiagnostics: true,
     redirect: (context, state) async {
       final currentPath = state.uri.path;
+      final currentFragment = state.uri.fragment;
+      final fullLocation = state.uri.toString();
 
-      // splash
-      if (currentPath == '/splash') return null;
+      final protectedAppRoutes = <String>[
+        '/alerts',
+        '/interview-feedback-detail',
+        '/career-build',
+        '/mock-interview',
+        '/resume-optimization',
+        '/market-insights',
+        '/ai-portfolio',
+        '/settings',
+        '/personal-info',
+        '/change-password',
+        '/jobs',
+        '/home',
+      ];
+
+      if (protectedAppRoutes.any((r) => currentPath.startsWith(r))) {
+        return null;
+      }
+
+      final normalizedFragmentPath = currentFragment.startsWith('/')
+          ? currentFragment.split('?').first
+          : currentFragment.isNotEmpty
+              ? '/${currentFragment.split('?').first}'
+              : '';
+
+      final effectivePath = normalizedFragmentPath.isNotEmpty
+          ? normalizedFragmentPath
+          : currentPath;
+
+      final isPortfolioWebRoute =
+          effectivePath.startsWith('/ai-portfolio/web/') ||
+              currentFragment.contains('/ai-portfolio/web/') ||
+              fullLocation.contains('/ai-portfolio/web/');
+
+      if (isPortfolioWebRoute) {
+        return null;
+      }
+
+      if (effectivePath == '/splash') return null;
 
       final prefs = await SharedPreferences.getInstance();
       final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
@@ -416,20 +478,163 @@ class AppRouter {
         name: 'career-builder',
         builder: (context, state) => const CareerBuilderScreen(),
       ),
+
+      // // ── Mock Interview ──────────────────────────────────────────────────────
+      GoRoute(
+        path: '/career-build',
+        name: 'career-build-entry',
+        builder: (context, state) => const CareerBuildEntryScreen(),
+      ),
+      GoRoute(
+        path: '/career-build/create/step-1',
+        name: 'career-build-step-1',
+        builder: (context, state) => const CreatePlanStep1Screen(),
+      ),
+      GoRoute(
+        path: '/career-build/create/step-2',
+        name: 'career-build-step-2',
+        builder: (context, state) => const CreatePlanStep2Screen(),
+      ),
+      GoRoute(
+        path: '/career-build/create/step-3',
+        name: 'career-build-step-3',
+        builder: (context, state) => const CreatePlanStep3Screen(),
+      ),
+      GoRoute(
+        path: '/career-build/create/step-4',
+        name: 'career-build-step-4',
+        builder: (context, state) => const CreatePlanStep4Screen(),
+      ),
+      GoRoute(
+        path: '/career-build/plans',
+        name: 'career-build-plans',
+        builder: (context, state) => const CareerPlansScreen(),
+      ),
+      GoRoute(
+        path: '/career-build/plans/:id',
+        name: 'career-build-plan-view',
+        builder: (context, state) {
+          final id = state.pathParameters['id'] ?? '';
+
+          return CareerPlanViewScreen(
+            planId: id,
+          );
+        },
+      ),
+
       GoRoute(
         path: '/mock-interview',
         name: 'mock-interview',
-        builder: (context, state) => const MockInterviewScreen(),
+        builder: (context, state) => const InterviewFeedbackScreen(),
       ),
+      GoRoute(
+        path: '/interview-session',
+        name: 'interview-session',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          final incompleteSession =
+              extra['incompleteSession'] as IncompleteSessionEntity?;
+
+          return InterviewSessionScreen(
+            roleName: extra['roleName'] as String,
+            roleId: extra['roleId'] as String,
+            sessionType: extra['sessionType'] as InterviewSessionType,
+            languagePreferred: extra['languagePreferred'] as String?,
+            incompleteSession: incompleteSession,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/interview-feedback-detail',
+        name: 'interview-feedback-detail',
+        builder: (context, state) {
+          final sessionId = state.extra as String;
+          return InterviewFeedbackDetailScreen(sessionId: sessionId);
+        },
+      ),
+
       GoRoute(
         path: '/market-insights',
         name: 'market-insights',
         builder: (context, state) => const MarketInsightsScreen(),
       ),
+
+      // // ── Mock Interview ──────────────────────────────────────────────────────
       GoRoute(
         path: '/ai-portfolio',
         name: 'ai-portfolio',
-        builder: (context, state) => const AIPortfolioScreen(),
+        builder: (context, state) => const AIPortfolioEntryScreen(),
+      ),
+      GoRoute(
+        path: '/ai-portfolio/designs',
+        name: 'ai-portfolio-designs',
+        builder: (context, state) => const AIPortfolioDesignsScreen(),
+      ),
+      GoRoute(
+        path: '/ai-portfolio/preview',
+        name: 'ai-portfolio-preview',
+        builder: (context, state) => const AIPortfolioPreviewScreen(),
+      ),
+      GoRoute(
+        path: '/ai-portfolio/settings',
+        name: 'ai-portfolio-settings',
+        builder: (context, state) => const AIPortfolioSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/ai-portfolio/my-portfolios',
+        name: 'ai-portfolio-my-portfolios',
+        builder: (context, state) => const AIPortfolioMyPortfoliosScreen(),
+      ),
+      GoRoute(
+        path: '/ai-portfolio/section/:sectionKey',
+        name: 'ai-portfolio-section',
+        builder: (context, state) {
+          final sectionKey = state.pathParameters['sectionKey'] ?? '';
+
+          switch (sectionKey) {
+            case 'about-me':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'About Me',
+                subtitle: 'Tell your professional story',
+              );
+
+            case 'professional-experience':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Professional Experience',
+                subtitle: 'Where you worked and what you achieved',
+              );
+
+            case 'projects':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Projects',
+                subtitle: 'Showcase your best work',
+              );
+
+            case 'skills':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Skills & Expertise',
+                subtitle: 'Showcase your expertise',
+              );
+
+            case 'education':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Education',
+                subtitle: 'Your academic background',
+              );
+
+            case 'contact':
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Contact',
+                subtitle: 'Let people reach you',
+              );
+
+            default:
+              return const AIPortfolioSectionDetailsScreen(
+                title: 'Section',
+                subtitle: 'Portfolio section',
+              );
+          }
+        },
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

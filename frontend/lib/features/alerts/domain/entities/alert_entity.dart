@@ -1,5 +1,5 @@
 import 'package:equatable/equatable.dart';
-import 'package:flutter/material.dart'; // 👈 أضف ده عشان الـ Color
+import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 
 enum AlertType { resume, jobs, interview, plan }
@@ -11,6 +11,7 @@ class AlertEntity extends Equatable {
   final DateTime createdAt;
   final bool isRead;
   final AlertType type;
+  final String? route;
 
   const AlertEntity({
     required this.id,
@@ -19,6 +20,7 @@ class AlertEntity extends Equatable {
     required this.createdAt,
     required this.isRead,
     required this.type,
+    this.route,
   });
 
   AlertEntity copyWith({bool? isRead}) => AlertEntity(
@@ -28,6 +30,7 @@ class AlertEntity extends Equatable {
         createdAt: createdAt,
         isRead: isRead ?? this.isRead,
         type: type,
+        route: route,
       );
 
   // Helper methods for UI
@@ -60,5 +63,5 @@ class AlertEntity extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, title, body, createdAt, isRead, type];
+  List<Object?> get props => [id, title, body, createdAt, isRead, type, route];
 }

@@ -333,17 +333,17 @@ class DatabaseProvider:
     
     def save_job(self, job_data: Dict) -> Optional[Dict]:
         """Save a new job posting"""
-        return self.create("jobs", job_data)
+        return self.create("jobs_market_insight", job_data)
 
     def get_job_by_id(self, job_id: str) -> Optional[Dict]:
         """Get a specific job by ID"""
-        jobs = self.read("jobs", {"job_id": job_id}, limit=1)
+        jobs = self.read("jobs_market_insight", {"job_id": job_id}, limit=1)
         return jobs[0] if jobs else None
 
     def search_jobs(self, filters: Dict = None, limit: int = 50) -> List[Dict]:
         """Search jobs with flexible filters"""
         try:
-            query = self.client.table("jobs").select("*")
+            query = self.client.table("jobs_market_insight").select("*")
             
             if filters:
                 if filters.get("title"):
@@ -368,11 +368,11 @@ class DatabaseProvider:
 
     def update_job(self, job_id: str, update_data: Dict) -> Optional[Dict]:
         """Update job posting"""
-        return self.update("jobs", update_data, {"job_id": job_id})
+        return self.update("jobs_market_insight", update_data, {"job_id": job_id})
 
     def delete_job(self, job_id: str) -> bool:
         """Delete a job posting"""
-        return self.delete("jobs", {"job_id": job_id})
+        return self.delete("jobs_market_insight", {"job_id": job_id})
 
     def create_recommendation(self, user_id: str, job_id: str, cv_id: str, 
                             score: float, model_version: str = "v1.0") -> Optional[Dict]:

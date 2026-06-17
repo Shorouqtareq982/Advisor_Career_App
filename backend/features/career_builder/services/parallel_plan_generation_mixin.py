@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import time
+import json
 from typing import Any, Dict, List
 
 from features.career_builder.services.generation_runtime import GenerationRuntime
@@ -8,6 +10,48 @@ logger = logging.getLogger(__name__)
 
 
 class ParallelPlanGenerationMixin:
+
+    def __init__(self):
+        self.plan_count = 0
+        self.start_time = time.time()
+        self.metrics_data = []
+
+    def _ensure_metrics_state(self):
+        if not hasattr(self, "plan_count"):
+            self.plan_count = 0
+
+        if not hasattr(self, "start_time"):
+            self.start_time = time.time()
+
+        if not hasattr(self, "metrics_data"):
+            self.metrics_data = []
+
+    def _calculate_throughput(self):
+        self._ensure_metrics_state()
+
+        elapsed_time = time.time() - self.start_time
+        if elapsed_time > 0:
+            return self.plan_count / elapsed_time
+        return 0
+
+    async def _measure_concurrency(self, runtime: GenerationRuntime):
+        if runtime is None or runtime.llm_sem is None:
+            logger.warning("runtime or runtime.llm_sem is not initialized.")
+            return 0
+
+        waiters = getattr(runtime.llm_sem, "_waiters", None)
+
+        if waiters is None:
+            logger.info("No semaphore waiters yet.")
+            return 0
+
+        try:
+            active_tasks = len(waiters)
+        except TypeError:
+            active_tasks = 0
+
+        logger.info(f"Active concurrent tasks: {active_tasks}")
+        return active_tasks
 
     async def _attach_study_guides_parallel(
         self,
@@ -18,6 +62,27 @@ class ParallelPlanGenerationMixin:
         available_hours_per_week: int,
         runtime: GenerationRuntime,
     ) -> List[Dict[str, Any]]:
+
+        self._ensure_metrics_state()
+
+        concurrency = await self._measure_concurrency(runtime)
+        self.plan_count += 1
+        throughput = self._calculate_throughput()
+
+        self.metrics_data.append({
+            "timestamp": time.time(),
+            "throughput": throughput,
+            "concurrency": concurrency
+        })
+
+        try:
+            with open("metrics_data.json", "w") as f:
+                json.dump(self.metrics_data, f, indent=4)
+            logger.info("Metrics saved to metrics_data.json")
+        except Exception as e:
+            logger.warning(f"Failed to save metrics_data.json: {e}")
+
+        logger.info(f"Current throughput: {throughput:.2f} plans/second")
 
         async def build_one(week: Dict[str, Any]) -> Dict[str, Any]:
             level_info = self._infer_week_levels_from_topic(
@@ -54,10 +119,6 @@ class ParallelPlanGenerationMixin:
 
         return list(await asyncio.gather(*(build_one(w) for w in weekly_breakdown)))
 
-    # ============================================================
-    # 🔥 RESOURCES WITH GLOBAL DEDUPE + LOCK
-    # ============================================================
-
     async def _attach_resources_parallel(
         self,
         *,
@@ -84,9 +145,9 @@ class ParallelPlanGenerationMixin:
 
             skill_id = next(
                 (
-                    t.get("skill_id")
-                    for t in used_learning_targets
-                    if t.get("skill_name") == focus_skill
+                    target.get("skill_id")
+                    for target in used_learning_targets
+                    if target.get("skill_name") == focus_skill
                 ),
                 None,
             )
@@ -125,10 +186,7 @@ class ParallelPlanGenerationMixin:
                         current_level=level_info.get("current_level", "beginner"),
                         target_level=level_info.get("target_level", "intermediate"),
                         available_hours_per_week=available_hours_per_week,
-                        context_keywords=(
-                            week.get("focus_skills", [])
-                            + track_keywords
-                        ),
+                        context_keywords=week.get("focus_skills", []) + track_keywords,
                         week_number=week.get("week_number"),
                         duration_weeks=duration_weeks,
                         skill_id=skill_id,
@@ -139,23 +197,22 @@ class ParallelPlanGenerationMixin:
             else:
                 result = fallback()
 
-            raw_resources = result["resources"]
+            raw_resources = result.get("resources", []) or []
 
-            # ✅ GLOBAL DEDUPE WITH LOCK
             final_resources = []
 
-            for r in raw_resources:
-                url = (r.get("url") or "").strip().lower().rstrip("/")
+            for resource in raw_resources:
+                url = (resource.get("url") or "").strip().lower().rstrip("/")
                 if not url:
                     continue
 
                 async with dedupe_lock:
                     if url in global_seen_urls:
                         continue
-                    global_seen_urls.add(url)
-                    final_resources.append(r)
 
-            # ✅ REFILL لو نقص
+                    global_seen_urls.add(url)
+                    final_resources.append(resource)
+
             expected = self._expected_week_resource_count(available_hours_per_week)
 
             if len(final_resources) < expected:
@@ -167,16 +224,17 @@ class ParallelPlanGenerationMixin:
                     available_hours_per_week=available_hours_per_week,
                 )
 
-                for r in fallback_extra:
-                    url = (r.get("url") or "").strip().lower().rstrip("/")
+                for resource in fallback_extra:
+                    url = (resource.get("url") or "").strip().lower().rstrip("/")
                     if not url:
                         continue
 
                     async with dedupe_lock:
                         if url in global_seen_urls:
                             continue
+
                         global_seen_urls.add(url)
-                        final_resources.append(r)
+                        final_resources.append(resource)
 
                     if len(final_resources) >= expected:
                         break

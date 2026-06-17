@@ -40,12 +40,35 @@ pytesseract>=0.3.10
 pymupdf4llm>=1.27.1
 python-docx
 Pillow
+beautifulsoup4
+pandas
 
 # ===============================
 # AI / ML
 # ===============================
 scikit-learn
 google-genai
+groq
+firebase-admin>=6.0.0
+nltk>=3.8.0
+sentence-transformers>=2.2.0
+
+# ===============================
+# Mock Interview ML (Inference + Notebooks)
+# ===============================
+numpy
+torch
+torchvision
+opencv-python
+spacy
+opensmile
+soundfile
+tqdm
+decord
+gensim
+matplotlib
+seaborn
+#install FFMPEG separately for decord to work
 
 # ===============================
 # Utilities
@@ -53,18 +76,23 @@ google-genai
 python-dateutil
 typing-extensions
 language-tool-python
+deep-translator
+faster-whisper
+celery
+redis
 
 # ===============================
 # Portfolio Feature
 # ===============================
-PyGithub 
+PyGithub
 gitpython
 Jinja2
 playwright
+
 # ===============================
 # PII Masking
 # ===============================
-presidio-analyzer 
+presidio-analyzer
 presidio-anonymizer
 
 # ===============================
