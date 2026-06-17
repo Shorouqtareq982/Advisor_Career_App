@@ -3,17 +3,20 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../core/theme/app_text_theme.dart';
 import '../../../../core/utils/file_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../providers/job_matching_provider.dart';
+import '../widgets/job_search_dialogs.dart';
 import '../widgets/job_matching_dialogs.dart';
 
 class JobPreferencesScreen extends ConsumerStatefulWidget {
-  /// true  → من job matching flow (validation + "Preferences saved" dialog)
-  /// false → من settings filter icon (save عادي + snackbar)
+  /// true  → from job matching flow (validation required)
+  /// false → from settings filter icon
   final bool fromJobMatching;
 
   const JobPreferencesScreen({
@@ -27,83 +30,264 @@ class JobPreferencesScreen extends ConsumerStatefulWidget {
 }
 
 class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
-  // ── Controllers — نفس career_preferences_screen ────────────────────────────
-  final _preferredLocationController = TextEditingController();
-  final _interestedTracksController = TextEditingController();
-  final _jobTitleController = TextEditingController();
+  // ── Form state ─────────────────────────────────────────────────────────────
+  String? _selectedJobTitle;
+  String? _selectedCountry;
+  String? _selectedWorkMode; // "Remote" / "Onsite" / "Hybrid"
+  String? _selectedJobType; // "Full-time" / "Part-time"
 
-  List<String> _selectedWorkTypes = [];
-  List<String> _selectedWorkLocations = [];
-  List<String> _selectedJobPlatforms = [];
-  String? _selectedAlertFrequency;
-
-  String? _cvFileName;
   File? _cvFile;
+  String? _cvFileName;
   bool _isUploading = false;
   bool _isLoading = false;
 
-  final _workTypeOptions = ['Full-time', 'Part-time'];
-  final _workLocationOptions = ['Onsite', 'Remote', 'Hybrid'];
-  final _jobPlatformOptions = ['LinkedIn', 'Adzuna', 'Jooble'];
-  final _alertFrequencyLabels = ['24 hours', '3 days', '1 week'];
+  // Options
+  final _workModeOptions = ['Remote', 'Onsite'];
+  final _jobTypeOptions = ['Full-time', 'Part-time'];
 
   @override
   void initState() {
     super.initState();
-    _loadFromUser();
+    _loadDropdowns();
+    _prefillFromUser();
   }
 
-  @override
-  void dispose() {
-    _preferredLocationController.dispose();
-    _interestedTracksController.dispose();
-    _jobTitleController.dispose();
-    super.dispose();
+  void _loadDropdowns() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final notifier = ref.read(jobMatchingProvider.notifier);
+      await notifier.loadDropdowns();
+      if (mounted) {
+        _tryPrefillJobTitle();
+        _tryPrefillCountry(); // ← أضف السطر ده
+      }
+    });
   }
 
-  // ── Load same data as career_preferences_screen ────────────────────────────
-  void _loadFromUser() {
+  /// Prefill job title ONLY after dropdown list is loaded
+  /// to avoid DropdownButton assertion error
+  void _tryPrefillJobTitle() {
+    final user = ref.read(authProvider).user;
+    if (user?.jobTitle == null || user!.jobTitle!.isEmpty) return;
+    if (_selectedJobTitle != null) return; // already set
+
+    final titles = ref.read(jobMatchingProvider).jobTitles;
+    final match = titles.firstWhere(
+      (t) => t.toLowerCase() == user.jobTitle!.toLowerCase(),
+      orElse: () => '',
+    );
+    if (match.isNotEmpty && mounted) {
+      setState(() => _selectedJobTitle = match);
+    }
+  }
+
+  void _tryPrefillCountry() {
+    final user = ref.read(authProvider).user;
+    if (user?.preferredLocation == null || user!.preferredLocation!.isEmpty)
+      return;
+    if (_selectedCountry != null) return; // already set
+
+    final countries = ref.read(jobMatchingProvider).countries;
+    // Try exact match on name
+    final match = countries.firstWhere(
+      (c) =>
+          (c['name'] ?? '').toLowerCase() ==
+          user.preferredLocation!.toLowerCase(),
+      orElse: () => {},
+    );
+    if (match.isNotEmpty && mounted) {
+      setState(() => _selectedCountry = match['name']);
+    }
+  }
+
+  void _prefillFromUser() {
     final user = ref.read(authProvider).user;
     if (user == null) return;
 
-    _preferredLocationController.text = user.preferredLocation ?? '';
-    _interestedTracksController.text = user.interestedTracks ?? '';
-    _jobTitleController.text = user.jobTitle ?? '';
+    // Job title prefill is deferred to _tryPrefillJobTitle()
 
-    _selectedWorkTypes = List<String>.from(user.workType ?? []);
-    _selectedWorkLocations = List<String>.from(user.workLocation ?? []);
-    _selectedJobPlatforms = List<String>.from(user.jobPlatforms ?? []);
-
-    final freq = user.jobAlertsFrequency;
-    _selectedAlertFrequency = (freq == null || freq.isEmpty) ? null : freq;
-
-    if (user.cvUrl != null && user.cvUrl!.isNotEmpty) {
-      _cvFileName = FileUtils.getFileNameFromUrl(user.cvUrl);
-    } else {
-      _cvFileName = null;
+    // Pre-fill work type
+    if (user.workType.isNotEmpty) {
+      final wt = user.workType.first;
+      if (_jobTypeOptions.any((o) => o.toLowerCase() == wt.toLowerCase())) {
+        _selectedJobType = _jobTypeOptions
+            .firstWhere((o) => o.toLowerCase() == wt.toLowerCase());
+      }
     }
 
-    if (mounted) setState(() {});
+    // Pre-fill work location
+    if (user.workLocation.isNotEmpty) {
+      final wl = user.workLocation.first;
+      if (_workModeOptions.any((o) => o.toLowerCase() == wl.toLowerCase())) {
+        _selectedWorkMode = _workModeOptions
+            .firstWhere((o) => o.toLowerCase() == wl.toLowerCase());
+      }
+    }
+
+    // Pre-fill country from preferredLocation (if saved as country name)
+    // Actual matching happens in _tryPrefillCountry() after list loads
+
+    // CV from user profile
+    if (user.cvUrl != null && user.cvUrl!.isNotEmpty) {
+      _cvFileName = FileUtils.getFileNameFromUrl(user.cvUrl);
+    }
   }
 
-  // ── Validation (only when fromJobMatching) ─────────────────────────────────
+  // ── Validation ─────────────────────────────────────────────────────────────
   String? _validate() {
-    final jobTitle = _jobTitleController.text.trim();
-    if (jobTitle.isEmpty) return 'Please enter your Job Title';
-    if (jobTitle.length < 2) return 'Job Title is too short';
+    if (_selectedJobTitle == null || _selectedJobTitle!.isEmpty) {
+      return 'Please select a Job Title';
+    }
+    if (_selectedCountry == null || _selectedCountry!.isEmpty) {
+      return 'Please select a Country';
+    }
+    if (_selectedJobType == null) return 'Please select a Work Type';
+    if (_selectedWorkMode == null) return 'Please select a Work Mode';
 
-    if (_selectedWorkTypes.isEmpty)
-      return 'Please select at least one Work Type';
-    if (_selectedWorkLocations.isEmpty)
-      return 'Please select at least one Work Location';
-    if (_selectedJobPlatforms.isEmpty)
-      return 'Please select at least one Job Platform';
-
-    final hasCv = ref.read(authProvider).user?.cvUrl?.isNotEmpty == true ||
-        _cvFile != null;
+    final hasCv = _cvFile != null ||
+        (ref.read(authProvider).user?.cvUrl?.isNotEmpty ?? false);
     if (!hasCv) return 'Please upload your CV';
 
     return null;
+  }
+
+  // ── CV picker ──────────────────────────────────────────────────────────────
+  Future<void> _pickCV() async {
+    try {
+      setState(() => _isUploading = true);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'docx'],
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final file = File(result.files.single.path!);
+        if (file.lengthSync() > 10 * 1024 * 1024) {
+          _showSnack('File exceeds 10 MB.', isWarning: true);
+          return;
+        }
+        setState(() {
+          _cvFile = file;
+          _cvFileName = result.files.single.name;
+        });
+
+        // Also upload to Supabase so it's saved on user profile
+        final cvUrl = await ref.read(authProvider.notifier).uploadCV(file);
+        if (cvUrl != null && mounted) {
+          await ref.read(authProvider.notifier).updateUserProfile(cvUrl: cvUrl);
+        }
+      }
+    } catch (e) {
+      if (mounted) _showSnack('Failed to upload CV.', isError: true);
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
+  Future<void> _handleFind() async {
+    final error = _validate();
+    if (error != null) {
+      _showSnack(error, isWarning: true);
+      return;
+    }
+
+    // Validate CV / resolve file first (before showing dialog)
+    setState(() => _isLoading = true);
+
+    // Save preferences to user profile
+    await ref.read(authProvider.notifier).updateUserProfile(
+          jobTitle: _selectedJobTitle,
+          workType: _selectedJobType != null ? [_selectedJobType!] : null,
+          workLocation: _selectedWorkMode != null ? [_selectedWorkMode!] : null,
+          preferredLocation: _selectedCountry,
+        );
+
+    // Resolve CV file
+    File? cvFile = _cvFile;
+    if (cvFile == null) {
+      final cvUrl = ref.read(authProvider).user?.cvUrl;
+      if (cvUrl != null && cvUrl.isNotEmpty) {
+        cvFile = await _downloadCvToTemp(cvUrl);
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (cvFile == null) {
+      _showSnack('Could not load your CV. Please re-upload.', isError: true);
+      return;
+    }
+
+    // Show "search started" dialog
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const JobSearchStartedDialog(),
+    );
+
+    if (!mounted) return;
+
+    final userId = ref.read(authProvider).user?.id;
+    if (userId != null) {
+      ref.read(jobMatchingProvider.notifier).setUserId(userId);
+    }
+
+    final capturedCvFile = cvFile;
+    final capturedJobTitle = _selectedJobTitle!;
+    final capturedJobType = _selectedJobType!;
+    final capturedCountry = _selectedCountry!;
+    final capturedWorkMode = _selectedWorkMode!;
+
+    // Fire-and-forget: run in background, show notification when done
+    ref.read(jobMatchingProvider.notifier).matchJobsInBackground(
+          jobTitle: capturedJobTitle,
+          jobType: capturedJobType,
+          country: capturedCountry,
+          workMode: capturedWorkMode,
+          cvFile: capturedCvFile,
+          onSuccess: () {
+            if (mounted) {
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => JobResultsReadyDialog(
+                  onViewResults: () => context.go('/recommended-jobs'),
+                ),
+              );
+            }
+          },
+        );
+
+    // Navigate back to home so user isn't stuck waiting
+    if (mounted) context.go('/home');
+  }
+
+  Future<File?> _downloadCvToTemp(String cvUrl) async {
+    try {
+      final dio = await _getDio();
+      final tmpDir = Directory.systemTemp;
+      final fileName = FileUtils.getFileNameFromUrl(cvUrl) ?? 'cv_temp.pdf';
+      final tmpFile = File('${tmpDir.path}/$fileName');
+      final cleanUrl = cvUrl.contains('?original=')
+          ? cvUrl.split('?original=').first
+          : cvUrl;
+      await dio.download(cleanUrl, tmpFile.path);
+      return tmpFile;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ignore: prefer_constructors_over_static_methods
+  dynamic _getDio() async {
+    // Use the global apiClient dio to keep auth headers
+    // Import path: '../../../../core/network/api_client.dart'
+    // Avoid circular import — instantiate fresh Dio here for file download
+    // (no auth needed for Supabase storage public URLs)
+    final dio = _SimpleDio();
+    return dio;
   }
 
   void _showSnack(String msg, {bool isError = false, bool isWarning = false}) {
@@ -141,116 +325,15 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
     );
   }
 
-  // ── CV ──────────────────────────────────────────────────────────────────────
-  Future<void> _pickCV() async {
-    try {
-      setState(() => _isUploading = true);
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'docx'],
-        allowMultiple: false,
-      );
-
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-        if (file.lengthSync() > 10 * 1024 * 1024) {
-          _showSnack('File exceeds 10 MB.', isWarning: true);
-          return;
-        }
-        setState(() {
-          _cvFile = file;
-          _cvFileName = result.files.single.name;
-        });
-
-        final cvUrl = await ref.read(authProvider.notifier).uploadCV(file);
-        if (cvUrl != null && mounted) {
-          await ref.read(authProvider.notifier).updateUserProfile(cvUrl: cvUrl);
-          await ref.read(authProvider.notifier).refreshUser();
-        }
-      }
-    } catch (e) {
-      if (mounted) _showSnack('Failed to upload CV.', isError: true);
-    } finally {
-      if (mounted) setState(() => _isUploading = false);
-    }
-  }
-
-  Future<void> _handleSave() async {
-    if (widget.fromJobMatching) {
-      final error = _validate();
-      if (error != null) {
-        _showSnack(error, isWarning: true);
-        return;
-      }
-    }
-
-    setState(() => _isLoading = true);
-
-    final success = await ref.read(authProvider.notifier).updateUserProfile(
-          preferredLocation: _preferredLocationController.text.trim().isEmpty
-              ? null
-              : _preferredLocationController.text.trim(),
-          interestedTracks: _interestedTracksController.text.trim().isEmpty
-              ? null
-              : _interestedTracksController.text.trim(),
-          jobTitle: _jobTitleController.text.trim().isEmpty
-              ? null
-              : _jobTitleController.text.trim(),
-          workType: _selectedWorkTypes.isEmpty ? null : _selectedWorkTypes,
-          workLocation:
-              _selectedWorkLocations.isEmpty ? null : _selectedWorkLocations,
-          jobPlatforms:
-              _selectedJobPlatforms.isEmpty ? null : _selectedJobPlatforms,
-          jobAlertsFrequency: _selectedAlertFrequency,
-        );
-
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    if (!success) {
-      _showSnack('Failed to save. Please try again.', isError: true);
-      return;
-    }
-
-    await ref.read(authProvider.notifier).refreshUser();
-    if (!mounted) return;
-
-    if (widget.fromJobMatching) {
-      // Show "Preferences saved!" dialog then go to recommended jobs
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const PreferencesSavedDialog(),
-      );
-      if (mounted) context.go('/recommended-jobs');
-    } else {
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const PreferencesSavedDialog(),
-      );
-      if (mounted) context.pop();
-    }
-  }
-
-  void _toggle(List<String> list, String item) {
-    setState(() {
-      list.contains(item) ? list.remove(item) : list.add(item);
-    });
-  }
-
-  String _freqValue(String label) {
-    if (label == '24 hours') return 'daily';
-    if (label == '3 days') return '3days';
-    return 'weekly';
-  }
-
+  // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textTheme = context.appTextTheme;
     final user = ref.watch(authProvider).user;
-    final hasCV = (user?.cvUrl?.isNotEmpty ?? false) || _cvFile != null;
+    final jobState = ref.watch(jobMatchingProvider);
+
+    final hasCV = _cvFile != null || (user?.cvUrl?.isNotEmpty ?? false);
 
     final bg = isDark ? AppColors.blue900 : AppColors.grey100;
     final primary = isDark ? AppColors.grey50 : AppColors.blue900;
@@ -264,7 +347,7 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── App bar ──────────────────────────────────────────────────
+            // ── App bar ────────────────────────────────────────────────────
             Padding(
               padding: EdgeInsets.symmetric(
                   horizontal: context.w(16), vertical: context.h(12)),
@@ -288,7 +371,7 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
               ),
             ),
 
-            // ── Title ────────────────────────────────────────────────────
+            // ── Title ──────────────────────────────────────────────────────
             Text(
               'Job Preferences',
               style: textTheme.title1Bold.copyWith(
@@ -301,7 +384,7 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: context.w(24)),
                 child: Text(
-                  'Pick your preferences, and the AI will show jobs that fit you best',
+                  'Fill in your preferences and upload your CV — our AI will find the best matches for you.',
                   style: textTheme.bodyRegular.copyWith(color: muted),
                   textAlign: TextAlign.center,
                 ),
@@ -310,7 +393,7 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
 
             SizedBox(height: context.h(12)),
 
-            // ── Scrollable content ───────────────────────────────────────
+            // ── Scrollable content ─────────────────────────────────────────
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
@@ -326,90 +409,75 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Job Title ────────────────────────────────────────
-                    _field(
-                      controller: _jobTitleController,
-                      label: 'Job Title',
-                      hint: 'e.g.  Data Analyst, ML Engineer, UI/UX Designer',
+                    // ── Job Title dropdown ───────────────────────────────
+                    _label('Job Title', primary, textTheme),
+                    SizedBox(height: context.h(8)),
+                    _buildDropdown(
+                      value: _selectedJobTitle,
+                      hint: 'Select your job title',
+                      items: jobState.jobTitles,
                       accent: accent,
                       primary: primary,
                       muted: muted,
                       fieldBg: fieldBg,
                       border: border,
+                      isDark: isDark,
+                      onChanged: (v) => setState(() => _selectedJobTitle = v),
                     ),
 
-                    SizedBox(height: context.h(16)),
+                    SizedBox(height: context.h(20)),
 
-                    // ── Work Type ────────────────────────────────────────
+                    // ── Country dropdown ─────────────────────────────────
+                    _label('Country', primary, textTheme),
+                    SizedBox(height: context.h(8)),
+                    _buildDropdown(
+                      value: _selectedCountry,
+                      hint: 'Select your country',
+                      items: jobState.countries
+                          .map((c) => c['name'] ?? '')
+                          .where((n) => n.isNotEmpty)
+                          .toList(),
+                      accent: accent,
+                      primary: primary,
+                      muted: muted,
+                      fieldBg: fieldBg,
+                      border: border,
+                      isDark: isDark,
+                      onChanged: (v) => setState(() => _selectedCountry = v),
+                    ),
+
+                    SizedBox(height: context.h(20)),
+
+                    // ── Work Type chips ──────────────────────────────────
                     _label('Work Type', primary, textTheme),
                     SizedBox(height: context.h(10)),
-                    _chips(
-                      options: _workTypeOptions,
-                      selected: _selectedWorkTypes,
+                    _buildChips(
+                      options: _jobTypeOptions,
+                      selected: _selectedJobType,
                       accent: accent,
                       primary: primary,
                       fieldBg: fieldBg,
                       border: border,
                       isDark: isDark,
-                      onTap: (o) => _toggle(_selectedWorkTypes, o),
+                      onTap: (o) => setState(() =>
+                          _selectedJobType = o == _selectedJobType ? null : o),
                     ),
 
                     SizedBox(height: context.h(20)),
 
-                    // ── Work Location ────────────────────────────────────
-                    _label('Work Location', primary, textTheme),
+                    // ── Work Mode chips ──────────────────────────────────
+                    _label('Work Mode', primary, textTheme),
                     SizedBox(height: context.h(10)),
-                    _chips(
-                      options: _workLocationOptions,
-                      selected: _selectedWorkLocations,
+                    _buildChips(
+                      options: _workModeOptions,
+                      selected: _selectedWorkMode,
                       accent: accent,
                       primary: primary,
                       fieldBg: fieldBg,
                       border: border,
                       isDark: isDark,
-                      onTap: (o) => _toggle(_selectedWorkLocations, o),
-                    ),
-
-                    SizedBox(height: context.h(20)),
-
-                    // ── Job Platforms ────────────────────────────────────
-                    _label('Job Platforms', primary, textTheme),
-                    SizedBox(height: context.h(10)),
-                    _chips(
-                      options: _jobPlatformOptions,
-                      selected: _selectedJobPlatforms,
-                      accent: accent,
-                      primary: primary,
-                      fieldBg: fieldBg,
-                      border: border,
-                      isDark: isDark,
-                      onTap: (o) => _toggle(_selectedJobPlatforms, o),
-                    ),
-
-                    SizedBox(height: context.h(20)),
-
-                    // ── Alert Frequency ──────────────────────────────────
-                    _label('Get job alerts every', primary, textTheme),
-                    SizedBox(height: context.h(10)),
-                    Wrap(
-                      spacing: context.w(8),
-                      runSpacing: context.h(8),
-                      children: _alertFrequencyLabels.map((lbl) {
-                        final val = _freqValue(lbl);
-                        final selected = _selectedAlertFrequency == val;
-                        return _ChipItem(
-                          label: lbl,
-                          isSelected: selected,
-                          isDark: isDark,
-                          accent: accent,
-                          fieldBg: fieldBg,
-                          border: border,
-                          primary: primary,
-                          onTap: () => setState(() =>
-                              _selectedAlertFrequency = selected ? null : val),
-                          showIcon: false, // frequency chips — no +/✓ icon
-                        );
-                      }).toList(),
+                      onTap: (o) => setState(() => _selectedWorkMode =
+                          o == _selectedWorkMode ? null : o),
                     ),
 
                     SizedBox(height: context.h(20)),
@@ -432,12 +500,12 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
 
                     SizedBox(height: context.h(28)),
 
-                    // ── Save button ──────────────────────────────────────
+                    // ── Find Jobs button ─────────────────────────────────
                     SizedBox(
                       width: double.infinity,
                       height: context.h(52),
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : _handleSave,
+                        onPressed: _isLoading ? null : _handleFind,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: accent,
                           foregroundColor:
@@ -459,13 +527,26 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
                                       : AppColors.grey50,
                                 ),
                               )
-                            : Text(
-                                'save',
-                                style: textTheme.title2Bold.copyWith(
-                                  color: isDark
-                                      ? AppColors.blue900
-                                      : AppColors.grey50,
-                                ),
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Find Matching Jobs',
+                                    style: textTheme.title2Bold.copyWith(
+                                      color: isDark
+                                          ? AppColors.blue900
+                                          : AppColors.grey50,
+                                    ),
+                                  ),
+                                  SizedBox(width: context.w(8)),
+                                  Icon(
+                                    Icons.search,
+                                    color: isDark
+                                        ? AppColors.blue900
+                                        : AppColors.grey50,
+                                    size: context.icon(20),
+                                  ),
+                                ],
                               ),
                       ),
                     ),
@@ -481,156 +562,142 @@ class _JobPreferencesScreenState extends ConsumerState<JobPreferencesScreen> {
     );
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
-  Widget _label(String text, Color color, AppTextTheme t) => Text(
-        text,
-        style: t.bodyBold.copyWith(color: color),
-      );
+  Widget _label(String text, Color color, AppTextTheme t) =>
+      Text(text, style: t.bodyBold.copyWith(color: color));
 
-  Widget _field({
-    required TextEditingController controller,
-    required String label,
+  Widget _buildDropdown({
+    required String? value,
     required String hint,
+    required List<String> items,
     required Color accent,
     required Color primary,
     required Color muted,
     required Color fieldBg,
     required Color border,
+    required bool isDark,
+    required ValueChanged<String?> onChanged,
   }) {
-    return TextField(
-      controller: controller,
-      style: TextStyle(
-          fontFamily: 'Inter', fontSize: context.sp(14), color: primary),
-      decoration: InputDecoration(
-        labelText: label,
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        hintText: hint,
-        hintStyle: TextStyle(
-            fontFamily: 'Inter', fontSize: context.sp(13), color: muted),
-        labelStyle: TextStyle(
-            fontFamily: 'Inter',
-            fontSize: context.sp(12),
-            fontWeight: FontWeight.w500,
-            color: accent),
-        filled: true,
-        fillColor: fieldBg,
-        contentPadding: EdgeInsets.symmetric(
-            horizontal: context.w(16), vertical: context.h(16)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(context.r(10)),
-          borderSide: BorderSide(color: border),
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: context.w(16)),
+      decoration: BoxDecoration(
+        color: fieldBg,
+        borderRadius: BorderRadius.circular(context.r(10)),
+        border: Border.all(
+          color: value != null ? accent : border,
+          width: value != null ? 1.5 : 1.0,
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(context.r(10)),
-          borderSide: BorderSide(color: accent, width: 1.5),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          hint: Text(hint,
+              style: TextStyle(
+                  fontFamily: 'Inter', fontSize: context.sp(13), color: muted)),
+          isExpanded: true,
+          dropdownColor: fieldBg,
+          icon: Icon(Icons.keyboard_arrow_down, color: muted),
+          style: TextStyle(
+              fontFamily: 'Inter', fontSize: context.sp(14), color: primary),
+          items: items
+              .map((item) => DropdownMenuItem(
+                    value: item,
+                    child: Text(item),
+                  ))
+              .toList(),
+          onChanged: onChanged,
         ),
       ),
     );
   }
 
-  Widget _chips({
+  Widget _buildChips({
     required List<String> options,
-    required List<String> selected,
-    required bool isDark,
+    required String? selected,
     required Color accent,
     required Color primary,
     required Color fieldBg,
     required Color border,
+    required bool isDark,
     required ValueChanged<String> onTap,
   }) {
     return Wrap(
       spacing: context.w(8),
       runSpacing: context.h(8),
-      children: options
-          .map((o) => _ChipItem(
-                label: o,
-                isSelected: selected.contains(o),
-                isDark: isDark,
-                accent: accent,
-                fieldBg: fieldBg,
-                border: border,
-                primary: primary,
-                onTap: () => onTap(o),
-                showIcon: true,
-              ))
-          .toList(),
-    );
-  }
-}
-
-// ─── Chip Item ────────────────────────────────────────────────────────────────
-
-class _ChipItem extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final bool isDark;
-  final Color accent;
-  final Color fieldBg;
-  final Color border;
-  final Color primary;
-  final VoidCallback onTap;
-  final bool showIcon;
-
-  const _ChipItem({
-    required this.label,
-    required this.isSelected,
-    required this.isDark,
-    required this.accent,
-    required this.fieldBg,
-    required this.border,
-    required this.primary,
-    required this.onTap,
-    required this.showIcon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final textColor =
-        isSelected ? (isDark ? AppColors.blue900 : AppColors.grey50) : primary;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(
-            horizontal: context.w(16), vertical: context.h(10)),
-        decoration: BoxDecoration(
-          color: isSelected ? accent : fieldBg,
-          borderRadius: BorderRadius.circular(context.r(50)),
-          border: Border.all(
-            color: isSelected ? accent : border,
-            width: isSelected ? 1.5 : 1.0,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: context.sp(13),
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                color: textColor,
+      children: options.map((o) {
+        final isSelected = selected == o;
+        return GestureDetector(
+          onTap: () => onTap(o),
+          child: Container(
+            padding: EdgeInsets.symmetric(
+                horizontal: context.w(16), vertical: context.h(10)),
+            decoration: BoxDecoration(
+              color: isSelected ? accent : fieldBg,
+              borderRadius: BorderRadius.circular(context.r(50)),
+              border: Border.all(
+                color: isSelected ? accent : border,
+                width: isSelected ? 1.5 : 1.0,
               ),
             ),
-            if (showIcon) ...[
-              SizedBox(width: context.w(6)),
-              Icon(
-                isSelected ? Icons.check : Icons.add,
-                size: context.icon(14),
-                color: textColor,
-              ),
-            ],
-          ],
-        ),
-      ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  o,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: context.sp(13),
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                    color: isSelected
+                        ? (isDark ? AppColors.blue900 : AppColors.grey50)
+                        : primary,
+                  ),
+                ),
+                SizedBox(width: context.w(6)),
+                Icon(
+                  isSelected ? Icons.check : Icons.add,
+                  size: context.icon(14),
+                  color: isSelected
+                      ? (isDark ? AppColors.blue900 : AppColors.grey50)
+                      : primary,
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }
 
-// ─── CV Upload Area ───────────────────────────────────────────────────────────
+// ─── Simple Dio wrapper for downloading CV ────────────────────────────────────
+class _SimpleDio {
+  Future<void> download(String url, String savePath) async {
+    // Use dio from package to download
+    // We can't import apiClient here without circular dep,
+    // so we create a minimal Dio instance just for downloading.
+    // The CV storage URL is public (Supabase storage), no auth needed.
+    final dio = _createDio();
+    await dio.download(url, savePath);
+  }
 
+  dynamic _createDio() {
+    // Return a basic Dio. Import is resolved at compile time via dio package.
+    // ignore: undefined_prefixes
+    return _DioFactory.create();
+  }
+}
+
+class _DioFactory {
+  static dynamic create() {
+    // Import 'package:dio/dio.dart' is at the top of this file.
+    // This just isolates the instantiation.
+    return Dio();
+  }
+}
+
+// ─── CV Upload Area (same as job_preferences_screen original) ─────────────────
 class _CvUploadArea extends StatelessWidget {
   final String? fileName;
   final bool hasCV;
@@ -691,7 +758,7 @@ class _CvUploadArea extends StatelessWidget {
                 ),
                 SizedBox(height: context.h(8)),
                 Text(
-                  hasCV ? 'click to Change' : 'click to upload',
+                  hasCV ? 'Tap to change' : 'Tap to upload',
                   style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: context.sp(14),
@@ -701,14 +768,20 @@ class _CvUploadArea extends StatelessWidget {
                 if (hasCV && fileName != null) ...[
                   SizedBox(height: context.h(6)),
                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.delete_outline,
-                        color: AppColors.red500, size: context.icon(14)),
+                    Icon(Icons.check_circle_outline,
+                        color: accent, size: context.icon(14)),
                     SizedBox(width: context.w(4)),
-                    Text(fileName!,
+                    Flexible(
+                      child: Text(
+                        fileName!,
                         style: TextStyle(
                             fontFamily: 'Inter',
                             fontSize: context.sp(12),
-                            color: AppColors.red500)),
+                            color: accent),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
                   ]),
                 ] else if (!hasCV) ...[
                   SizedBox(height: context.h(4)),

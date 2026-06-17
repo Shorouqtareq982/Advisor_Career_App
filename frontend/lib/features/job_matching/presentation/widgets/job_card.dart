@@ -4,33 +4,18 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../core/theme/app_text_theme.dart';
 import '../../domain/entities/job_entity.dart';
-import 'job_rating_widget.dart';
 
 class JobCard extends StatelessWidget {
   final JobEntity job;
   final VoidCallback onViewDetails;
   final VoidCallback onToggleSave;
-  final ValueChanged<int> onRate;
-  final bool showRating; // only in recommended tab
 
   const JobCard({
     super.key,
     required this.job,
     required this.onViewDetails,
     required this.onToggleSave,
-    required this.onRate,
-    this.showRating = true,
   });
-
-  String _formatPostedAt(DateTime postedAt) {
-    final diff = DateTime.now().difference(postedAt);
-    if (diff.inMinutes < 60) return 'Posted ${diff.inMinutes} min ago';
-    if (diff.inHours < 24)
-      return 'Posted ${diff.inHours} hour${diff.inHours == 1 ? '' : 's'} ago';
-    if (diff.inDays == 1) return 'Posted 1 day ago';
-    if (diff.inDays < 30) return 'Posted ${diff.inDays} days ago';
-    return 'Posted on ${postedAt.day}/${postedAt.month}/${postedAt.year}';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +50,6 @@ class JobCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header row ──────────────────────────────────────────────────
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -73,9 +57,31 @@ class JobCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title + "New" badge
                       Row(
                         children: [
+                          if (job.rank != null) ...[
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: context.w(7),
+                                vertical: context.h(3),
+                              ),
+                              decoration: BoxDecoration(
+                                color: accentColor.withOpacity(0.15),
+                                borderRadius:
+                                    BorderRadius.circular(context.r(6)),
+                              ),
+                              child: Text(
+                                '#${job.rank}',
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: context.sp(11),
+                                  fontWeight: FontWeight.w700,
+                                  color: accentColor,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: context.w(6)),
+                          ],
                           Expanded(
                             child: Text(
                               job.title,
@@ -85,35 +91,9 @@ class JobCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          if (job.isNew) ...[
-                            SizedBox(width: context.w(8)),
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: context.w(8),
-                                vertical: context.h(3),
-                              ),
-                              decoration: BoxDecoration(
-                                color: accentColor,
-                                borderRadius:
-                                    BorderRadius.circular(context.r(4)),
-                              ),
-                              child: Text(
-                                'New',
-                                style: TextStyle(
-                                  fontFamily: 'Inter',
-                                  fontSize: context.sp(11),
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark
-                                      ? AppColors.blue900
-                                      : AppColors.grey50,
-                                ),
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                       SizedBox(height: context.h(4)),
-                      // Company
                       Text(
                         job.company,
                         style: textTheme.bodyRegular.copyWith(color: textMuted),
@@ -122,7 +102,6 @@ class JobCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: context.w(8)),
-                // Bookmark icon
                 GestureDetector(
                   onTap: onToggleSave,
                   child: Container(
@@ -145,34 +124,34 @@ class JobCard extends StatelessWidget {
                 ),
               ],
             ),
-
             SizedBox(height: context.h(10)),
-
-            // ── Info rows ────────────────────────────────────────────────────
+            if (job.matchScore != null) ...[
+              _MatchScoreBar(
+                score: job.matchScore!,
+                isDark: isDark,
+                accentColor: accentColor,
+                textMuted: textMuted,
+              ),
+              SizedBox(height: context.h(10)),
+            ],
             _InfoRow(
-              icon: Icons.location_on_outlined,
-              text: job.location,
-              isDark: isDark,
-              textMuted: textMuted,
-            ),
+                icon: Icons.location_on_outlined,
+                text: job.location,
+                textMuted: textMuted),
             SizedBox(height: context.h(4)),
             _InfoRow(
-              icon: Icons.work_outline,
-              text: '${job.workLocation} • ${job.workType}',
-              isDark: isDark,
-              textMuted: textMuted,
-            ),
-            SizedBox(height: context.h(4)),
-            _InfoRow(
-              icon: Icons.calendar_today_outlined,
-              text: _formatPostedAt(job.postedAt),
-              isDark: isDark,
-              textMuted: textMuted,
-            ),
-
+                icon: Icons.work_outline,
+                text: '${job.workLocation} • ${job.workType}',
+                textMuted: textMuted),
+            if (job.explanation != null && job.explanation!.isNotEmpty) ...[
+              SizedBox(height: context.h(10)),
+              _ExplanationSection(
+                text: job.explanation!,
+                accentColor: accentColor,
+                textMuted: textMuted,
+              ),
+            ],
             SizedBox(height: context.h(12)),
-
-            // ── Action buttons ───────────────────────────────────────────────
             Row(
               children: [
                 Expanded(
@@ -195,7 +174,6 @@ class JobCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: context.w(8)),
-                // External link button
                 GestureDetector(
                   onTap: () async {
                     if (job.jobUrl != null) {
@@ -222,20 +200,6 @@ class JobCard extends StatelessWidget {
                 ),
               ],
             ),
-
-            // ── Rating section (recommended only) ────────────────────────────
-            if (showRating) ...[
-              SizedBox(height: context.h(12)),
-              Text(
-                'Rate this job recommendation',
-                style: textTheme.bodyRegular.copyWith(color: textMuted),
-              ),
-              SizedBox(height: context.h(8)),
-              JobRatingWidget(
-                selectedRating: job.userRating,
-                onRatingSelected: onRate,
-              ),
-            ],
           ],
         ),
       ),
@@ -243,16 +207,68 @@ class JobCard extends StatelessWidget {
   }
 }
 
+// ─── Match Score Bar ──────────────────────────────────────────────────────────
+class _MatchScoreBar extends StatelessWidget {
+  final double score;
+  final bool isDark;
+  final Color accentColor;
+  final Color textMuted;
+
+  const _MatchScoreBar({
+    required this.score,
+    required this.isDark,
+    required this.accentColor,
+    required this.textMuted,
+  });
+
+  Color get _barColor {
+    if (score >= 70) return AppColors.green500;
+    if (score >= 45) return AppColors.orange400;
+    return AppColors.red400;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = score.clamp(0.0, 100.0);
+    return Row(
+      children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(context.r(4)),
+            child: LinearProgressIndicator(
+              value: pct / 100,
+              minHeight: context.h(6),
+              backgroundColor: isDark
+                  ? AppColors.blue500.withOpacity(0.4)
+                  : AppColors.grey200,
+              valueColor: AlwaysStoppedAnimation<Color>(_barColor),
+            ),
+          ),
+        ),
+        SizedBox(width: context.w(8)),
+        Text(
+          '${pct.round()}% match',
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontSize: context.sp(12),
+            fontWeight: FontWeight.w600,
+            color: _barColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Info Row ─────────────────────────────────────────────────────────────────
 class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String text;
-  final bool isDark;
   final Color textMuted;
 
   const _InfoRow({
     required this.icon,
     required this.text,
-    required this.isDark,
     required this.textMuted,
   });
 
@@ -271,6 +287,103 @@ class _InfoRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Explanation Section (with See more / See less) ───────────────────────────
+class _ExplanationSection extends StatefulWidget {
+  final String text;
+  final Color accentColor;
+  final Color textMuted;
+
+  const _ExplanationSection({
+    required this.text,
+    required this.accentColor,
+    required this.textMuted,
+  });
+
+  @override
+  State<_ExplanationSection> createState() => _ExplanationSectionState();
+}
+
+class _ExplanationSectionState extends State<_ExplanationSection> {
+  bool _expanded = false;
+
+  bool _isOverflowing(double maxWidth, TextStyle style) {
+    final tp = TextPainter(
+      text: TextSpan(text: widget.text, style: style),
+      maxLines: 3,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: maxWidth);
+    return tp.didExceedMaxLines;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = TextStyle(
+      fontFamily: 'Inter',
+      fontSize: context.sp(12),
+      color: widget.textMuted,
+      height: 1.4,
+    );
+
+    final iconSpace = context.icon(14) + context.w(6);
+
+    return Container(
+      padding: EdgeInsets.all(context.w(10)),
+      decoration: BoxDecoration(
+        color: widget.accentColor.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(context.r(8)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final textMaxWidth = constraints.maxWidth - iconSpace;
+          final canExpand =
+              !_expanded && _isOverflowing(textMaxWidth, textStyle);
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.auto_awesome,
+                      size: context.icon(14), color: widget.accentColor),
+                  SizedBox(width: context.w(6)),
+                  Expanded(
+                    child: Text(
+                      widget.text,
+                      style: textStyle,
+                      maxLines: _expanded ? null : 3,
+                      overflow: _expanded
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              if (canExpand || _expanded)
+                GestureDetector(
+                  onTap: () => setState(() => _expanded = !_expanded),
+                  child: Padding(
+                    padding:
+                        EdgeInsets.only(top: context.h(4), left: iconSpace),
+                    child: Text(
+                      _expanded ? 'See less' : 'See more',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: context.sp(12),
+                        fontWeight: FontWeight.w600,
+                        color: widget.accentColor,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

@@ -3,15 +3,18 @@ class JobEntity {
   final String title;
   final String company;
   final String location;
-  final String workType; // e.g. "Full-time", "Part-time"
-  final String workLocation; // e.g. "Hybrid", "Remote", "Onsite"
+  final String workType;
+  final String workLocation;
   final String? jobUrl;
   final String? jobDescription;
   final List<String> requiredSkills;
   final DateTime postedAt;
   final bool isSaved;
   final bool isNew;
-  final int? userRating; // 1, 2, or 3 (null = not rated)
+
+  final int? rank;
+  final double? matchScore;
+  final String? explanation;
 
   const JobEntity({
     required this.id,
@@ -26,7 +29,9 @@ class JobEntity {
     required this.postedAt,
     this.isSaved = false,
     this.isNew = true,
-    this.userRating,
+    this.rank,
+    this.matchScore,
+    this.explanation,
   });
 
   JobEntity copyWith({
@@ -42,8 +47,9 @@ class JobEntity {
     DateTime? postedAt,
     bool? isSaved,
     bool? isNew,
-    int? userRating,
-    bool clearRating = false,
+    int? rank,
+    double? matchScore,
+    String? explanation,
   }) {
     return JobEntity(
       id: id ?? this.id,
@@ -58,7 +64,9 @@ class JobEntity {
       postedAt: postedAt ?? this.postedAt,
       isSaved: isSaved ?? this.isSaved,
       isNew: isNew ?? this.isNew,
-      userRating: clearRating ? null : (userRating ?? this.userRating),
+      rank: rank ?? this.rank,
+      matchScore: matchScore ?? this.matchScore,
+      explanation: explanation ?? this.explanation,
     );
   }
 }

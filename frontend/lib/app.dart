@@ -10,6 +10,7 @@ import 'core/services/auth_service.dart';
 import 'features/settings/providers/theme_provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
 import '../../../../core/theme/app_text_theme.dart';
+import '../../../../core/services/notification_service.dart';
 
 class GrowzaApp extends ConsumerStatefulWidget {
   const GrowzaApp({super.key});
@@ -25,12 +26,48 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
   final AuthService _authService = AuthService();
 
   bool _isProcessingOAuth = false;
+  bool _isNavigating = false;
 
   @override
   void initState() {
     super.initState();
 
     print('AuthService init: ${_authService.runtimeType}');
+
+    // ── Notification tap → navigate ────────────────────────────────────────
+    // FIX: استخدم setCallback بدل الـ direct assignment عشان يشغّل أي
+    NotificationService.setCallback((payload) {
+      if (_isNavigating) return;
+      _isNavigating = true;
+
+      // Add small delay to ensure router is ready
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) {
+          _isNavigating = false;
+          return;
+        }
+
+        try {
+          if (payload.startsWith('interview_feedback:')) {
+            final sessionId = payload.replaceFirst('interview_feedback:', '');
+            AppRouter.router
+                .push('/interview-feedback-detail', extra: sessionId);
+          } else if (payload == 'job_results') {
+            AppRouter.router.go('/recommended-jobs'); // ← ده صح
+          } else if (payload == 'career_plan') {
+            AppRouter.router.push('/career-build/plans');
+          } else {
+            AppRouter.router.go('/alerts');
+          }
+        } catch (e) {
+          debugPrint('Navigation error: $e');
+        }
+
+        Future.delayed(const Duration(seconds: 2), () {
+          _isNavigating = false;
+        });
+      });
+    });
 
     _initDeepLinks();
 

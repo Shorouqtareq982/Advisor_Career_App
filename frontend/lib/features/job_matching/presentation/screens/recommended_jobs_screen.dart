@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
@@ -32,11 +31,17 @@ class _RecommendedJobsScreenState extends ConsumerState<RecommendedJobsScreen>
   }
 
   Future<void> _init() async {
-    final userId = ref.read(authProvider).user?.id;
+    // السيشن ممكن تكون لسه بترستور خصوصًا لو الشاشة فتحت من إشعار
+    String? userId = ref.read(authProvider).user?.id;
+    for (int i = 0; i < 10 && userId == null; i++) {
+      await Future.delayed(const Duration(milliseconds: 200));
+      if (!mounted) return;
+      userId = ref.read(authProvider).user?.id;
+    }
+
     if (userId != null) {
       ref.read(jobMatchingProvider.notifier).setUserId(userId);
     }
-    ref.read(jobMatchingProvider.notifier).loadRecommendedJobs();
     ref.read(jobMatchingProvider.notifier).loadSavedJobs();
   }
 
@@ -47,8 +52,12 @@ class _RecommendedJobsScreenState extends ConsumerState<RecommendedJobsScreen>
   }
 
   void _openDetails(JobEntity job) {
-    ref.read(jobMatchingProvider.notifier).markJobSeen(job.id);
     context.push('/job-details', extra: job);
+  }
+
+  // push مش go، عشان لو رجع من غير تعديل يرجع عادي للنتايج الموجودة
+  void _editPreferences() {
+    context.push('/job-preferences', extra: {'fromJobMatching': true});
   }
 
   @override
@@ -67,7 +76,6 @@ class _RecommendedJobsScreenState extends ConsumerState<RecommendedJobsScreen>
       body: SafeArea(
         child: Column(
           children: [
-            // ── App bar ──────────────────────────────────────────────────
             Padding(
               padding: EdgeInsets.symmetric(
                   horizontal: context.w(16), vertical: context.h(12)),
@@ -86,20 +94,14 @@ class _RecommendedJobsScreenState extends ConsumerState<RecommendedJobsScreen>
                     fit: BoxFit.contain,
                   ),
                   const Spacer(),
-                  // Filter icon → job preferences
                   GestureDetector(
-                    onTap: () => context.push(
-                      '/job-preferences',
-                      extra: {'fromJobMatching': false},
-                    ),
+                    onTap: _editPreferences,
                     child: Icon(Icons.tune,
                         color: primary, size: context.icon(22)),
                   ),
                 ],
               ),
             ),
-
-            // ── Title ────────────────────────────────────────────────────
             Padding(
               padding: EdgeInsets.only(bottom: context.h(8)),
               child: Text(
@@ -107,8 +109,6 @@ class _RecommendedJobsScreenState extends ConsumerState<RecommendedJobsScreen>
                 style: textTheme.title1Bold.copyWith(color: primary),
               ),
             ),
-
-            // ── Tab bar ──────────────────────────────────────────────────
             Padding(
               padding: EdgeInsets.symmetric(horizontal: context.w(16)),
               child: TabBar(
@@ -136,44 +136,33 @@ class _RecommendedJobsScreenState extends ConsumerState<RecommendedJobsScreen>
                 ],
               ),
             ),
-
             SizedBox(height: context.h(4)),
-
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  // Recommended
                   _JobsList(
                     jobs: jobState.recommendedJobs,
                     status: jobState.recommendedStatus,
-                    showRating: true,
                     emptyTitle: 'No recommendations yet.',
-                    emptySubtitle: 'Complete your preferences to get started.',
+                    emptySubtitle:
+                        'Tap the filter icon above to find matching jobs.',
                     onViewDetails: _openDetails,
                     onToggleSave: (id) =>
                         ref.read(jobMatchingProvider.notifier).toggleSave(id),
-                    onRate: (id, r) => ref
-                        .read(jobMatchingProvider.notifier)
-                        .rateJob(jobId: id, rating: r),
-                    onRefresh: () => ref
-                        .read(jobMatchingProvider.notifier)
-                        .loadRecommendedJobs(),
+                    onRefresh: () async {},
                     isDark: isDark,
                   ),
-                  // Saved
                   _JobsList(
                     jobs: jobState.savedJobs,
                     status: jobState.savedStatus,
-                    showRating: false,
                     emptyTitle: "You haven't saved any jobs yet.",
                     emptySubtitle:
-                        'Tap the save icon on any job to keep your favorites!',
+                        'Tap the bookmark icon on any job to save it.',
                     emptyIcon: Icons.bookmark_border,
                     onViewDetails: _openDetails,
                     onToggleSave: (id) =>
                         ref.read(jobMatchingProvider.notifier).toggleSave(id),
-                    onRate: (_, __) {},
                     onRefresh: () =>
                         ref.read(jobMatchingProvider.notifier).loadSavedJobs(),
                     isDark: isDark,
@@ -188,31 +177,25 @@ class _RecommendedJobsScreenState extends ConsumerState<RecommendedJobsScreen>
   }
 }
 
-// ─── Generic jobs list ────────────────────────────────────────────────────────
-
 class _JobsList extends StatelessWidget {
   final List<JobEntity> jobs;
   final JobMatchingStatus status;
-  final bool showRating;
   final String emptyTitle;
   final String emptySubtitle;
   final IconData emptyIcon;
   final ValueChanged<JobEntity> onViewDetails;
   final ValueChanged<String> onToggleSave;
-  final void Function(String, int) onRate;
   final Future<void> Function() onRefresh;
   final bool isDark;
 
   const _JobsList({
     required this.jobs,
     required this.status,
-    required this.showRating,
     required this.emptyTitle,
     required this.emptySubtitle,
     this.emptyIcon = Icons.work_off_outlined,
     required this.onViewDetails,
     required this.onToggleSave,
-    required this.onRate,
     required this.onRefresh,
     required this.isDark,
   });
@@ -221,8 +204,22 @@ class _JobsList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (status == JobMatchingStatus.loading) {
       return Center(
-        child: CircularProgressIndicator(
-          color: isDark ? AppColors.lightBlue500 : AppColors.lightBlue700,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              color: isDark ? AppColors.lightBlue500 : AppColors.lightBlue700,
+            ),
+            SizedBox(height: context.h(16)),
+            Text(
+              'Finding your best matches...',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: context.sp(14),
+                color: isDark ? AppColors.grey400 : AppColors.grey700,
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -275,10 +272,8 @@ class _JobsList extends StatelessWidget {
         itemCount: jobs.length,
         itemBuilder: (_, i) => JobCard(
           job: jobs[i],
-          showRating: showRating,
           onViewDetails: () => onViewDetails(jobs[i]),
           onToggleSave: () => onToggleSave(jobs[i].id),
-          onRate: (r) => onRate(jobs[i].id, r),
         ),
       ),
     );

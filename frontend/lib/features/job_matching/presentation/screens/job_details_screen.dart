@@ -679,6 +679,7 @@ class _JobMatchingResumeUploadDialogState
                                 color: AppColors.red500,
                                 size: context.icon(14)),
                             SizedBox(width: context.w(4)),
+                            // نفس الحل
                             Flexible(
                               child: Text(
                                 _selectedFileName!,

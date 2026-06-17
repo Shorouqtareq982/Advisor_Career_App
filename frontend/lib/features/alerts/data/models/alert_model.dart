@@ -8,6 +8,7 @@ class AlertModel extends AlertEntity {
     required super.createdAt,
     required super.isRead,
     required super.type,
+    super.route,
   });
 
   @override
@@ -18,6 +19,7 @@ class AlertModel extends AlertEntity {
     DateTime? createdAt,
     bool? isRead,
     AlertType? type,
+    String? route,
   }) {
     return AlertModel(
       id: id ?? this.id,
@@ -26,6 +28,7 @@ class AlertModel extends AlertEntity {
       createdAt: createdAt ?? this.createdAt,
       isRead: isRead ?? this.isRead,
       type: type ?? this.type,
+      route: route ?? this.route,
     );
   }
 
@@ -39,6 +42,7 @@ class AlertModel extends AlertEntity {
       ),
       isRead: (json['isRead'] ?? false) == true,
       type: _parseType((json['type'] ?? 'jobs').toString()),
+      route: json['route'] as String?,
     );
   }
 
@@ -65,6 +69,7 @@ class AlertModel extends AlertEntity {
       'createdAt': createdAt.toIso8601String(),
       'isRead': isRead,
       'type': type.toString().split('.').last,
+      'route': route,
     };
   }
 }

@@ -16,7 +16,7 @@ class ApiClient {
       baseUrl: ApiConstants.baseUrl,
       connectTimeout: const Duration(seconds: 30),
       sendTimeout: const Duration(minutes: 2),
-      receiveTimeout: const Duration(minutes: 2),
+      receiveTimeout: const Duration(minutes: 6),
       headers: {
         'Content-Type': ApiConstants.contentType,
         'Accept': ApiConstants.accept,

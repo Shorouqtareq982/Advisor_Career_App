@@ -74,6 +74,51 @@ class AppRouter {
 
       // splash
       if (currentPath == '/splash') return null;
+      final protectedAppRoutes = <String>[
+        '/alerts',
+        '/interview-feedback-detail',
+        '/career-build',
+        '/mock-interview',
+        '/resume-optimization',
+        '/market-insights',
+        '/ai-portfolio',
+        '/settings',
+        '/personal-info',
+        '/change-password',
+        '/jobs',
+        '/job-preferences',
+        '/recommended-jobs',
+        '/job-details',
+        '/home',
+      ];
+
+      if (protectedAppRoutes.any((r) => currentPath.startsWith(r))) {
+        return null;
+      }
+
+      final currentFragment = state.uri.fragment;
+      final fullLocation = state.uri.toString();
+
+      final normalizedFragmentPath = currentFragment.startsWith('/')
+          ? currentFragment.split('?').first
+          : currentFragment.isNotEmpty
+              ? '/${currentFragment.split('?').first}'
+              : '';
+
+      final effectivePath = normalizedFragmentPath.isNotEmpty
+          ? normalizedFragmentPath
+          : currentPath;
+
+      final isPortfolioWebRoute =
+          effectivePath.startsWith('/ai-portfolio/web/') ||
+              currentFragment.contains('/ai-portfolio/web/') ||
+              fullLocation.contains('/ai-portfolio/web/');
+
+      if (isPortfolioWebRoute) {
+        return null;
+      }
+
+      if (effectivePath == '/splash') return null;
 
       final prefs = await SharedPreferences.getInstance();
       final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;

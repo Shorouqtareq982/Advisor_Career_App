@@ -76,3 +76,77 @@ class AlertsLocalDataSourceImpl implements AlertsLocalDataSource {
     return fetchAlerts();
   }
 }
+
+// ─── Global helper ────────────────────────────────────────────────────────────
+
+class AlertsStore {
+  AlertsStore._();
+  static final AlertsStore instance = AlertsStore._();
+  final AlertsLocalDataSourceImpl _ds = AlertsLocalDataSourceImpl();
+
+  Future<void> addInterviewFeedbackAlert({
+    required String roleName,
+    required String sessionId,
+    String sessionType = 'technical',
+  }) async {
+    final alert = AlertModel(
+      id: 'interview_$sessionId',
+      title: 'Interview Feedback Ready',
+      body: 'Your $roleName interview feedback is now available. Tap to view.',
+      createdAt: DateTime.now().toUtc(),
+      isRead: false,
+      type: AlertType.interview,
+      route: '/interview-feedback-detail',
+    );
+    await _ds.addAlert(alert);
+  }
+
+  Future<void> addJobMatchingAlert({
+    required String jobTitle,
+    required int matchCount,
+  }) async {
+    final alert = AlertModel(
+      id: 'jobs_${DateTime.now().millisecondsSinceEpoch}',
+      title: 'Your Job Matches Are Ready! 🎉',
+      body: matchCount > 0
+          ? 'We found $matchCount $jobTitle opportunities for you. Tap to view.'
+          : 'Your $jobTitle search finished — tap to view the results.',
+      createdAt: DateTime.now().toUtc(),
+      isRead: false,
+      type: AlertType.jobs,
+      route: '/recommended-jobs',
+    );
+    await _ds.addAlert(alert);
+  }
+
+  Future<void> addCareerPlanAlert({
+    required String planTitle,
+    required String planId,
+  }) async {
+    final alert = AlertModel(
+      id: 'plan_$planId',
+      title: 'Career Plan Ready',
+      body: 'Your "$planTitle" career plan has been generated. Tap to view.',
+      createdAt: DateTime.now().toUtc(),
+      isRead: false,
+      type: AlertType.plan,
+      route: '/career-build/plans',
+    );
+    await _ds.addAlert(alert);
+  }
+
+  Future<void> addCareerPlanRegeneratedAlert({
+    required String planTitle,
+    required String planId,
+  }) async {
+    final alert = AlertModel(
+      id: 'plan_regen_${planId}_${DateTime.now().millisecondsSinceEpoch}',
+      title: 'Career Plan Updated',
+      body: 'Your "$planTitle" career plan has been regenerated successfully.',
+      createdAt: DateTime.now().toUtc(),
+      isRead: false,
+      type: AlertType.plan,
+    );
+    await _ds.addAlert(alert);
+  }
+}
