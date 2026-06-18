@@ -22,12 +22,12 @@ logger = get_logger(__name__)
 
 
 class AzureBlobStorageProvider:
-    def __init__(self):
+    def __init__(self, container_name: Optional[str] = None):
         try:
             self.blob_service_client = BlobServiceClient.from_connection_string(
                 settings.AZURE_STORAGE_CONNECTION_STRING
             )
-            self.container_name = settings.AZURE_CONTAINER_NAME
+            self.container_name = container_name or settings.AZURE_CONTAINER_NAME
             self._ensure_container_exists()
             logger.info(f"Azure Blob Storage initialized for container: {self.container_name}")
         except Exception as e:
@@ -121,6 +121,32 @@ class AzureBlobStorageProvider:
             
         except ResourceNotFoundError:
             logger.error(f"Blob not found: {blob_name}")
+            raise
+
+    def download_to_path(self, blob_name: str, file_path: str) -> str:
+        """Download a blob directly to a local file path (streaming).
+
+        This is preferable for large files (videos) to avoid holding the full content in memory.
+        """
+        try:
+            blob_client = self.blob_service_client.get_blob_client(
+                container=self.container_name,
+                blob=blob_name
+            )
+
+            with open(file_path, "wb") as f:
+                blob_client.download_blob().readinto(f)
+
+            logger.info(f"File downloaded successfully to path: {blob_name} -> {file_path}")
+            return file_path
+        except ResourceNotFoundError:
+            logger.error(f"Blob not found: {blob_name}")
+            raise
+        except AzureError as e:
+            logger.error(f"Azure error downloading file: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"Error downloading file: {str(e)}")
             raise
         except AzureError as e:
             logger.error(f"Azure error downloading file: {str(e)}")
@@ -252,14 +278,16 @@ class AzureBlobStorageProvider:
             return False
 
 
-# Singleton instance
-_azure_storage_provider: Optional[AzureBlobStorageProvider] = None
+# Singleton instances per container
+_azure_storage_providers: dict = {}
 
 
-def get_azure_storage_provider() -> AzureBlobStorageProvider:
-    global _azure_storage_provider
-    
-    if _azure_storage_provider is None:
-        _azure_storage_provider = AzureBlobStorageProvider()
-    
-    return _azure_storage_provider
+def get_azure_storage_provider(container_name: Optional[str] = None) -> AzureBlobStorageProvider:
+    key = container_name or settings.AZURE_CONTAINER_NAME
+    if not key:
+        raise ValueError("Azure container name is not configured")
+
+    if key not in _azure_storage_providers:
+        _azure_storage_providers[key] = AzureBlobStorageProvider(container_name=key)
+
+    return _azure_storage_providers[key]

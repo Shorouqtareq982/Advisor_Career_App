@@ -33,7 +33,7 @@ class SectionAnalysisModel {
 
   factory SectionAnalysisModel.fromJson(Map<String, dynamic> json) =>
       SectionAnalysisModel(
-        overallSectionScore: json['Overall_Section_Score'] as int? ?? 0,
+        overallSectionScore: 0,
         contactInfo: PassNotesModel.fromJson(
             json['Contact_Info'] as Map<String, dynamic>? ?? {}),
         workExperience: PassNotesModel.fromJson(
@@ -126,6 +126,25 @@ class IndustryKeywordModel {
       );
 }
 
+String _extractIssueText(dynamic item) {
+  if (item is String) return item;
+  if (item is Map<String, dynamic>) {
+    final result = item['Result'];
+    if (result is String) return result;
+    if (result is Map<String, dynamic>) {
+      return result['description'] as String? ?? result.toString();
+    }
+    return item['Check_Name'] as String? ?? item.toString();
+  }
+  return item.toString();
+}
+
+List<String> _toIssueList(dynamic value) {
+  if (value == null) return [];
+  if (value is List) return value.map((e) => _extractIssueText(e)).toList();
+  return [];
+}
+
 List<String> _toList(dynamic value) {
   if (value == null) return [];
   if (value is List) return value.map((e) => e.toString()).toList();
@@ -134,7 +153,7 @@ List<String> _toList(dynamic value) {
 
 String _extractDisplayName(Map<String, dynamic> json) {
   // 1. Job title from job_postings (only if JD was provided)
-  final jobPostings = json['job_postings'] as Map<String, dynamic>?;
+  final jobPostings = json['job_posting'] as Map<String, dynamic>?;
   if (jobPostings != null) {
     final jobTitle = jobPostings['job_title'] as String?;
     if (jobTitle != null && jobTitle.trim().isNotEmpty) {
@@ -187,6 +206,7 @@ class ResumeReportModel {
   final JobAlignmentModel? jobAlignment;
   final IndustryKeywordModel industryKeyword;
   final List<String> atsIssues;
+  final List<String> contentIssues;
   final List<String> improvementTips;
   final DateTime createdAt;
 
@@ -199,6 +219,7 @@ class ResumeReportModel {
     this.jobAlignment,
     required this.industryKeyword,
     required this.atsIssues,
+    required this.contentIssues,
     required this.improvementTips,
     required this.createdAt,
   });
@@ -209,7 +230,15 @@ class ResumeReportModel {
         analysis['ATS_Readability_Analysis'] as Map<String, dynamic>? ?? {};
     final contentAnalysis =
         analysis['Content_Quality_Analysis'] as Map<String, dynamic>? ?? {};
-    final jobAlignmentJson = analysis['Job_Alignment'] as Map<String, dynamic>?;
+
+    final llmInsights = analysis['LLM_Insights'] as Map<String, dynamic>?;
+    final jobAlignmentJson =
+        llmInsights?['Job_Alignment'] as Map<String, dynamic>?;
+    final keywordOptJson =
+        llmInsights?['Keyword_Optimization'] as Map<String, dynamic>?;
+    final improvementTips = llmInsights != null
+        ? _toList(llmInsights['Improvement_Tips'])
+        : _toList(analysis['Improvement_Tips']);
 
     return ResumeReportModel(
       reportId: json['report_id'] as String? ?? '',
@@ -223,11 +252,14 @@ class ResumeReportModel {
           ? JobAlignmentModel.fromJson(jobAlignmentJson)
           : null,
       industryKeyword: IndustryKeywordModel.fromJson(
-        analysis['Industry_Keyword_Optimization'] as Map<String, dynamic>? ??
+        keywordOptJson ??
+            analysis['Industry_Keyword_Optimization']
+                as Map<String, dynamic>? ??
             {},
       ),
-      atsIssues: _toList(analysis['ATS_Issues']),
-      improvementTips: _toList(analysis['Improvement_Tips']),
+      atsIssues: _toIssueList(atsAnalysis['ATS_Issues']),
+      contentIssues: _toIssueList(contentAnalysis['Content_Issues']),
+      improvementTips: improvementTips,
       createdAt: _parseDate(json),
     );
   }
@@ -244,6 +276,7 @@ class ResumeReportModel {
         industryKeyword: industryKeyword.toEntity(),
         atsIssues: atsIssues,
         improvementTips: improvementTips,
+        contentIssues: contentIssues,
       );
 }
 
@@ -272,9 +305,11 @@ class ResumeReportSummaryModel {
         analysis['ATS_Readability_Analysis'] as Map<String, dynamic>? ?? {};
     final contentAnalysis =
         analysis['Content_Quality_Analysis'] as Map<String, dynamic>? ?? {};
-    final sectionAnalysis =
-        analysis['Section_Analysis'] as Map<String, dynamic>? ?? {};
-    final jobAlignment = analysis['Job_Alignment'] as Map<String, dynamic>?;
+
+    final llmInsights = analysis['LLM_Insights'] as Map<String, dynamic>?;
+    final jobAlignment =
+        llmInsights?['Job_Alignment'] as Map<String, dynamic>? ??
+            analysis['Job_Alignment'] as Map<String, dynamic>?;
 
     return ResumeReportSummaryModel(
       reportId: json['report_id'] as String? ?? '',

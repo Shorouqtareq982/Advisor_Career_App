@@ -35,12 +35,10 @@ class CVScoringService:
         self.cv_text = cv_text
         self.ats_issues = []
         self.content_quality_issues = []
-
     
     def get_cv_scores(self):
         ats_readability_score, ats_total_checks, ats_passed_checks = self.calculate_ats_readability_score()
         content_quality_score, content_total_checks, content_passed_checks = self.calculate_content_quality_score()
-        # job_alignment_score = self.calculate_job_alignment_score() if self.jd_data else None
 
         return {
             "ATS_Readability_Analysis": {
@@ -57,49 +55,22 @@ class CVScoringService:
             }
         }
     
-    
     def calculate_ats_readability_score(self):
         """
         Detailed analysis of ATS readability factors with specific checks and messages.
-
         TOTAL CHECKS: 19
         
-        SCORING FORMULA:
-        Score = (Number_of_Passed_Checks / Total_Number_of_Checks) * 100
-        Round UP to nearest integer. Maximum score: 100.
-        
-        CHECK CATEGORIES:
-        
-        1. STRUCTURE & FORMATTING (4 checks):
-        - Number of pages ≤ 2 → PASS / FAIL
-        - ≤ 3 font families used → PASS / FAIL
-        - Average font size between 9 and 13 points → PASS / FAIL
-        - Word count ≤ 1000 → PASS / FAIL
-        
-        2. PAGE SETUP (4 checks):
-        - Standard page size (e.g. A4, Letter) → PASS / FAIL
-        - Margins between 0.5 and 1 inch → PASS / FAIL
-        - No information in header → PASS / FAIL
-        - No information in footer → PASS / FAIL
-        
-        3. ATS PARSING COMPATIBILITY (5 checks):
-        - Tables absent or non-disruptive → PASS / FAIL
-        - Columns absent → PASS / FAIL
-        - Images absent or relevant → PASS / FAIL
-        - Graphics/drawings/icons absent → PASS / FAIL
-        - Textboxes absent → PASS / FAIL
-        
-        4. VALID DATE FORMATS (1 check):
-        - Date format: MM/YY or MM/YYYY or Month YYYY (e.g. 03/18, 03/2019, Mar 2019) → PASS / FAIL
-        
-        5. FILE QUALITY (5 checks):
-        - File size ≤ 5000 KB → PASS / FAIL
-        - File type is PDF or DOCX → PASS / FAIL
-        - File name is CV-relevant (contains "CV" or "Resume" or candidate name) → PASS / FAIL
-        - File name length ≤ 100 characters → PASS / FAIL
-        - File name does not contain special characters → PASS / FAIL
-        
-        RULE: If a CVLayoutAnalysis field is null/None, treat it as PASS.
+        Score = (passed checks ÷ 19) × 100 (rounded up, max 100).
+
+        Categories:
+
+        Structure: pages, fonts, font size, word count
+        Page setup: page size, margins, no headers/footers
+        ATS compatibility: no disruptive tables, columns, images, graphics, or text boxes
+        Dates: valid standard format (e.g., MM/YY, Mar 2019)
+        File quality: size, type (PDF/DOCX), valid name, length, no special chars
+
+        Rule: any null field counts as PASS.
         """ 
         self.ats_issues = []
 
@@ -111,256 +82,195 @@ class CVScoringService:
 
         # 1. Structure & Formatting (4)
         num_of_pages = self.layout_analysis.get("num_of_pages")
-        pages_ok = passes(num_of_pages is None or num_of_pages <= 2)
+        pages_ok = passes(num_of_pages is None or num_of_pages <= 3)
         passed_checks += int(pages_ok)
         if not pages_ok:
-            self.ats_issues.append("CV should be 2 pages or fewer.")
+            self.ats_issues.append({
+                "Check_Name": "Page Count",
+                "Result": {"description": "Your CV is a bit long (over 3 pages). Try trimming it down to 3 pages or less to make it easier for recruiters and ATS systems to scan."}
+            })
 
         fonts_used = self.layout_analysis.get("fonts_used")
         fonts_ok = passes(fonts_used is None or len(fonts_used) <= 3)
         passed_checks += int(fonts_ok)
         if not fonts_ok:
-            self.ats_issues.append("Use 3 or fewer font families for ATS readability.")
+            self.ats_issues.append({
+                "Check_Name": "Font Families",
+                "Result": {"description": "More than 3 font families were detected. Sticking to 3 or fewer will maintain ATS-friendly consistency."}
+            })
 
         avg_font_size = self.layout_analysis.get("avg_font_size")
         font_size_ok = passes(avg_font_size is None or 9 <= avg_font_size <= 13)
         passed_checks += int(font_size_ok)
         if not font_size_ok:
-            self.ats_issues.append("Average font size should be between 9 and 13 pt.")
+            self.ats_issues.append({
+                "Check_Name": "Font Size",
+                "Result": {"description": "Average font size is outside the recommended 9–13 pt range, which may affect readability in ATS systems. Try adjusting your font size to be between 9 and 13 points."}
+            })
 
         word_count = self.layout_analysis.get("word_count")
         word_count_ok = passes(word_count is None or word_count <= 1000)
         passed_checks += int(word_count_ok)
         if not word_count_ok:
-            self.ats_issues.append("Keep CV word count at 1000 words or fewer.")
+            self.ats_issues.append({
+                "Check_Name": "Word Count",
+                "Result": {"description": "Your CV is a bit word-heavy (over 1000 words). Cutting it down will help highlight your strongest points more clearly."}
+            })
 
         # 2. Page Setup (4)
         page_sizes = self.layout_analysis.get("page_sizes_in_points")
         page_size_ok = self._is_standard_page_size(page_sizes)
         passed_checks += int(page_size_ok)
         if not page_size_ok:
-            self.ats_issues.append("Use standard page size like A4 or Letter.")
+            self.ats_issues.append({
+                "Check_Name": "Page Size",
+                "Result": {"description": "Non-standard page size detected. Use A4 or Letter format to ensure ATS compatibility."}
+            })
 
         page_margins = self.layout_analysis.get("page_margins_in_inches")
         margins_ok = self._is_valid_margin_range(page_margins)
         passed_checks += int(margins_ok)
         if not margins_ok:
-            self.ats_issues.append("Keep page margins between 0.5 and 1.0 inches.")
+            self.ats_issues.append({
+                "Check_Name": "Page Margins",
+                "Result": {"description": "Page margins fall outside the recommended range (0.5–1 inch). Small adjustments will make your layout cleaner and more ATS-friendly."}
+            })
 
         header_info = self.layout_analysis.get("information_in_header")
         no_header_info_ok = header_info is None or not header_info
         passed_checks += int(no_header_info_ok)
         if not no_header_info_ok:
-            self.ats_issues.append("Remove important content from header for ATS parsing.")
+            self.ats_issues.append({
+                "Check_Name": "Header Content",
+                "Result": {"description": "Some important details are in the header. Moving them into the main body will help ATS systems read them properly."}
+            })
 
         footer_info = self.layout_analysis.get("information_in_footer")
         no_footer_info_ok = footer_info is None or not footer_info
         passed_checks += int(no_footer_info_ok)
         if not no_footer_info_ok:
-            self.ats_issues.append("Remove important content from footer for ATS parsing.")
+            self.ats_issues.append({
+                "Check_Name": "Footer Content",
+                "Result": {"description": "A few key details are in the footer. Bringing them into the main section will improve visibility for ATS parsing."}
+            })
 
         # 3. ATS Parsing Compatibility (5)
         have_tables = self.layout_analysis.get("have_tables")
         tables_ok = have_tables is None or not have_tables
         passed_checks += int(tables_ok)
         if not tables_ok:
-            self.ats_issues.append("Avoid tables to improve ATS parsing compatibility.")
+            self.ats_issues.append({
+                "Check_Name": "Tables",
+                "Result": {"description": "You’ve used tables in your CV. Converting them into simple text will help ATS systems read your content more accurately."}
+            })
 
         have_columns = self.layout_analysis.get("have_columns")
         columns_ok = have_columns is None or not have_columns
         passed_checks += int(columns_ok)
         if not columns_ok:
-            self.ats_issues.append("Avoid multi-column layouts for ATS parsing.")
+            self.ats_issues.append({
+                "Check_Name": "Column Layout",
+                "Result": {"description": "A multi-column layout is detected. A single-column format usually works better for ATS systems and improves readability."}
+            })
 
         have_images = self.layout_analysis.get("have_images")
         images_ok = have_images is None or not have_images
         passed_checks += int(images_ok)
         if not images_ok:
-            self.ats_issues.append("Avoid images unless essential, as ATS may skip them.")
+            self.ats_issues.append({
+                "Check_Name": "Images",
+                "Result": {"description": "Your CV includes images. Unless essential, removing them will help ensure ATS systems capture all your information."}
+            })
 
         have_graphics = self.layout_analysis.get("have_graphics")
         graphics_ok = have_graphics is None or not have_graphics
         passed_checks += int(graphics_ok)
         if not graphics_ok:
-            self.ats_issues.append("Avoid graphics/icons for better ATS readability.")
+            self.ats_issues.append({
+                "Check_Name": "Graphics/Icons",
+                "Result": {"description": "Some icons or graphics are used. Keeping things text-based will make your CV more ATS-friendly and easier to parse."}
+            })
 
         have_textboxes = self.layout_analysis.get("have_textboxes")
         textboxes_ok = have_textboxes is None or not have_textboxes
         passed_checks += int(textboxes_ok)
         if not textboxes_ok:
-            self.ats_issues.append("Avoid textboxes, they can break ATS extraction.")
+            self.ats_issues.append({
+                "Check_Name": "Textboxes",
+                "Result": {"description": "Textboxes are present in your CV. Converting them into regular text will improve ATS readability and avoid missing content."}
+            })
 
         # 4. Valid Date Formats (1)
-        valid_date_format = self.layout_analysis.get("valid_date_format")
+        valid_date_format = validate_cv_dates(self.cv_text).get("is_valid")
         date_format_ok = valid_date_format is None or valid_date_format
         passed_checks += int(date_format_ok)
         if not date_format_ok:
-            self.ats_issues.append("Use consistent date formats like MM/YYYY or Month YYYY.")
+            self.ats_issues.append({
+                "Check_Name": "Date Format",
+                "Result": {"description": "Your date formats are a bit inconsistent. Using MM/YYYY or Month YYYY will make your timeline clearer and more ATS-friendly."}
+            })
 
         # 5. File Quality (5)
         file_size_kb = self.layout_analysis.get("file_size_kb")
-        file_size_ok = file_size_kb is None or file_size_kb <= 5000
+        file_size_ok = file_size_kb is None or file_size_kb <= 1000
         passed_checks += int(file_size_ok)
         if not file_size_ok:
-            self.ats_issues.append("File size should be 5000 KB or less.")
+            self.ats_issues.append({
+                "Check_Name": "File Size",
+                "Result": {"description": "CV file size is on the heavy side. Compressing it to 1 MB or less will help it upload and process more smoothly."}
+            })
 
         file_type = self.layout_analysis.get("file_type")
         file_type_ok = self._is_ats_file_type(file_type)
         passed_checks += int(file_type_ok)
         if not file_type_ok:
-            self.ats_issues.append("Use PDF or DOCX format.")
+            self.ats_issues.append({
+                "Check_Name": "File Type",
+                "Result": {"description": "This file format may not be fully supported by ATS systems. PDF or DOCX is the safest choice for reliable parsing."}
+            })
 
-        valid_cv_filename = self.layout_analysis.get("valid_cv_filename")
-        filename_relevant_ok = valid_cv_filename is None or valid_cv_filename
+        cv_filename = self.layout_analysis.get("original_filename")
+        filename_relevant_ok = cv_filename and ("cv" in cv_filename.lower() or "resume" in cv_filename.lower())
         passed_checks += int(filename_relevant_ok)
         if not filename_relevant_ok:
-            self.ats_issues.append("Use a CV-relevant filename (e.g., contains CV or Resume).")
+            self.ats_issues.append({
+                "Check_Name": "Filename Relevance",
+                "Result": {"description": "Your filename doesn’t clearly indicate it's a CV. Adding 'CV' or 'Resume' will make it instantly recognizable to recruiters."}
+            })
 
         valid_cv_filename_length = self.layout_analysis.get("valid_cv_filename_length")
         filename_length_ok = valid_cv_filename_length is None or valid_cv_filename_length
         passed_checks += int(filename_length_ok)
         if not filename_length_ok:
-            self.ats_issues.append("Filename should be 100 characters or fewer.")
+            self.ats_issues.append({
+                "Check_Name": "Filename Length",
+                "Result": {"description": "CV filename length is too long. Shortening it to under 100 characters will keep it cleaner and easier to manage."}
+            })
 
         original_filename = self.layout_analysis.get("original_filename")
         filename_chars_ok = self._has_no_special_chars(original_filename)
         passed_checks += int(filename_chars_ok)
         if not filename_chars_ok:
-            self.ats_issues.append("Filename should avoid special characters.")
+            self.ats_issues.append({
+                "Check_Name": "Filename Characters",
+                "Result": {"description": "Special characters in the filename can sometimes cause issues. Removing them will ensure smoother uploading and compatibility."}
+            })
 
         return min(100, math.ceil((passed_checks / total_checks) * 100)), total_checks, passed_checks
 
-    
-    def calculate_job_alignment_score(self):
-        """
-        Evaluation of how well the resume matches the job description across skills, experience, and keywords.
-        
-        MATCHING FORMULA:
-        Match_Score = Title/Education/Experience_Level_Alignment + Skills_Score + Keyword_Score + Experience_Score
-        
-        SCORING WEIGHTS (Total: 100 points):
-        1. Title Match: 5 points (compare CV title with JD title)
-        2. Education Level Match: 5 points (compare degree level with JD requirements)
-        3. Experience Level Match: 5 points (compare years/level with JD expectations)
-        4. Skills Alignment: 30 points (formula below)
-        5. Keyword Alignment: 30 points (formula below)
-        6. Experience Alignment: 25 points (formula below)
-        
-        DETAILED CALCULATIONS:
-        
-        1. Title/Education/Experience Level Alignment (0-15 points):
-        - Title Match → True = 5 points, False = 0 points
-        - Education Level Match → True = 5 points, False = 0 points
-        - Experience Level Match → True = 5 points, False = 0 points
-        
-        2. Skills Alignment (0-30 points):
-        - Extract required skills from JD
-        - Extract skills from CV
-        - Count matched skills (normalize case, ignore duplicates)
-        - Formula: Skills_Score = (Matched_Skills / Total_Required_Skills) * 30
-        - Round UP to nearest integer
-        - Max: 30 points
-        
-        3. Keyword Alignment (0-30 points):
-        - Extract important keywords from JD (tools, technologies, domain terms, methodologies)
-        - Count matched keywords in CV (normalize case, ignore duplicates)
-        - Formula: Keyword_Score = (Matched_Keywords / Total_Keywords) * 30
-        - Round UP to nearest integer
-        - Max: 30 points
-        
-        4. Experience Alignment (0-25 points):
-        - Compare CV experience descriptions with JD responsibilities
-        - Count matched responsibilities/achievements
-        - Formula: Experience_Score = (Matched_Responsibilities / Total_Responsibilities) * 25
-        - Round UP to nearest integer
-        - Max: 25 points
-        
-        MATCHING RULES:
-        - Count only explicit matches from CV (do not infer)
-        - Normalize case when matching (Python = python)
-        - Ignore duplicate matches (count each match once)
-        - Use only skills/keywords/experience clearly stated in CV and JD
-        - Do not assume skills/experience not written in CV
-        
-        MAX SCORE LIMIT:
-        Final Match_Score = min(calculated_score, 100)
-        """
-        base_score = 0
-
-        cv_title = self._norm(self.cv_data.get("title", ""))
-        jd_title = self._norm(self.jd_data.get("job_title", ""))
-        title_match = self._fuzzy_phrase_match(cv_title, jd_title)
-        base_score += 5 if title_match else 0
-
-        cv_education_levels = self._extract_education_levels_from_cv()
-        jd_education_levels = self._extract_education_levels_from_jd()
-        edu_match = not jd_education_levels or bool(cv_education_levels & jd_education_levels)
-        base_score += 5 if edu_match else 0
-
-        cv_years = self._estimate_cv_experience_years()
-        min_years, max_years = self._extract_experience_range()
-        exp_match = self._is_experience_in_range(cv_years, min_years, max_years)
-        base_score += 5 if exp_match else 0
-
-        cv_skill_set = self._extract_cv_skills()
-        required_skills = self._normalize_set(self.jd_data.get("required_skills", []))
-        matched_required = len(cv_skill_set & required_skills)
-        skills_score = self._ratio_score(matched_required, len(required_skills), 30)
-
-        cv_corpus = self._build_cv_text_corpus()
-        jd_keywords = self._normalize_set(self.jd_data.get("keywords", []))
-        matched_keywords = sum(1 for kw in jd_keywords if self._phrase_in_text(kw, cv_corpus))
-        keyword_score = self._ratio_score(matched_keywords, len(jd_keywords), 30)
-
-        responsibilities = self._normalize_set(self.jd_data.get("job_duties_and_responsibilities", []))
-        matched_responsibilities = 0
-        for responsibility in responsibilities:
-            if self._text_overlap_match(responsibility, cv_corpus):
-                matched_responsibilities += 1
-        experience_score = self._ratio_score(matched_responsibilities, len(responsibilities), 25)
-
-        return min(100, base_score + skills_score + keyword_score + experience_score)
-
-    
     def calculate_content_quality_score(self):
         """
-        Detailed analysis of content quality factors with specific checks and messages.
-        
-        TOTAL CHECKS: 13
-        
-        SCORING FORMULA:
-        Score = (Number_of_Passed_Checks / Total_Number_of_Checks) * 100
-        Round UP to nearest integer. Maximum score: 100.
-        
-        CHECK CATEGORIES:
-        
-        1. ESSENTIAL SECTIONS EXIST (4 checks):
-        - Summary section present → PASS / FAIL
-        - Skills section present → PASS / FAIL
-        - Education section present → PASS / FAIL
-        - Work Experience section present → PASS / FAIL
-        
-        2. CONTACT INFO PRESENT (4 checks):
-        - Email provided → PASS / FAIL
-        - Phone number provided → PASS / FAIL
-        - Address/Location provided → PASS / FAIL
-        - Name and professional title exist → PASS / FAIL
-        
-        3. CONTENT QUALITY (5 checks):
-        - Headings in logical order and clearly defined → PASS / FAIL
-        - Spelling and grammar correct (typos <= 2) → PASS / FAIL
-        - Action verbs used, no personal pronouns (I, me, my) → PASS / FAIL
-        - Clear and specific wording (no vague/generic phrases) → PASS / FAIL
-        - Quantifiable impact: At least 5 measurable results across experiences/projects → PASS / FAIL
-        
-        QUANTIFIABLE METRICS CATEGORIES (for check #13):
-        Count measurable results across these categories:
-        1. Money/Finance: sales volume, revenue %, cost savings, budgets managed
-        2. People: customers served/retained, direct reports, teams led, people hired
-        3. Tasks/Operations: efficiency improvements, process improvements, time saved, volume of tasks
-        4. Other: awards, publications, recognitions
-        
-        Minimum 5 measurable results required to PASS check #13.
+        This evaluates CV content quality using 13 PASS/FAIL checks.
+
+        Score = (passed ÷ 13) × 100 (rounded up, max 100).
+
+        Checks:
+
+        Essential sections (4): summary, skills, education, experience
+        Contact info (4): email, phone, location, name/title
+        Content quality (5): structure, action verbs, no pronouns, clarity, and ≥5 quantifiable achievements
+
+        Quantifiable results include: money, people, operations, and achievements (e.g., revenue, team size, efficiency gains).
         """
 
         self.content_quality_issues = []
@@ -374,47 +284,71 @@ class CVScoringService:
         summary_ok = bool(self._norm(self.cv_data.get("summary", "")))
         passed_checks += int(summary_ok)
         if not summary_ok:
-            self.content_quality_issues.append("Add a professional summary section.")
+            self.content_quality_issues.append({
+                "Check_Name": "Professional Summary",
+                "Result": {"description": "A professional summary is not found in your CV. Consider adding a short overview of your background and goals."}
+            })
 
         skills_ok = bool(self.cv_data.get("skill_section", []))
         passed_checks += int(skills_ok)
         if not skills_ok:
-            self.content_quality_issues.append("Add a dedicated skills section.")
+            self.content_quality_issues.append({
+                "Check_Name": "Skills Section",
+                "Result": {"description": "No dedicated skills section was detected. Adding one will help highlight your key technical and soft skills."}
+            })
 
         education_ok = bool(self.cv_data.get("education", []))
         passed_checks += int(education_ok)
         if not education_ok:
-            self.content_quality_issues.append("Add an education section.")
+            self.content_quality_issues.append({
+                "Check_Name": "Education Section",
+                "Result": {"description": "Your CV does not include an education section. Include your academic background to improve completeness."}
+            })
 
         experience_ok = bool(self.cv_data.get("work_experience", []))
         passed_checks += int(experience_ok)
         if not experience_ok:
-            self.content_quality_issues.append("Add a work experience section.")
+            self.content_quality_issues.append({
+                "Check_Name": "Work Experience Section",
+                "Result": {"description": "Work experience details are missing. Add your previous roles to strengthen your CV."}
+            })
 
         # 2. Contact info present (4)
         email = self.cv_data.get("email", "")
         email_ok = self._is_valid_email(email)
         passed_checks += int(email_ok)
         if not email_ok:
-            self.content_quality_issues.append("Provide a valid email address.")
+            self.content_quality_issues.append({
+                "Check_Name": "Email Address",
+                "Result": {"description": "No valid email address was found. Please include a professional contact email."}
+            })
 
         phone = self.cv_data.get("phone", "")
         phone_ok = self._is_valid_phone(phone)
         passed_checks += int(phone_ok)
         if not phone_ok:
-            self.content_quality_issues.append("Provide a valid phone number.")
+            self.content_quality_issues.append({
+                "Check_Name": "Phone Number",
+                "Result": {"description": "A phone number is not present. Adding one will make it easier for recruiters to contact you."}
+            })
 
         location_ok = bool(self._is_present(self.cv_data.get("location", "")))
         passed_checks += int(location_ok)
         if not location_ok:
-            self.content_quality_issues.append("Add your location or address.")
+            self.content_quality_issues.append({
+                "Check_Name": "Location",
+                "Result": {"description": "Location information is missing. Consider adding your city or country for better visibility."}
+            })
 
         name_present = bool(self._is_present(self.cv_data.get("name", "")))
         title_present = bool(self._is_present(self.cv_data.get("title", "")))
         identity_ok = name_present and title_present
         passed_checks += int(identity_ok)
         if not identity_ok:
-            self.content_quality_issues.append("Include both your full name and professional title.")
+            self.content_quality_issues.append({
+                "Check_Name": "Name and Title",
+                "Result": {"description": "Your CV is missing either your full name or a professional title. Make sure both are clearly stated."}
+            })
 
         # 3. Content quality (5)
         parsed_content = dict(self.cv_data)
@@ -433,13 +367,18 @@ class CVScoringService:
             if check_details:
                 first_line = check_details.splitlines()[0].strip()
                 sanitized_line = re.sub(r"^[^A-Za-z0-9]+", "", first_line)
-                self.content_quality_issues.append(f"{sanitized_line}")
+                self.content_quality_issues.append({
+                    "Check_Name": check_name,
+                    "Result": {"description": sanitized_line}
+                })
             else:
-                self.content_quality_issues.append(f"{check_name}: failed.")
+                self.content_quality_issues.append({
+                    "Check_Name": check_name,
+                    "Result": {"description": f"{check_name}: failed."}
+                })
         
 
         return min(100, math.ceil((passed_checks / total_checks) * 100)), total_checks, passed_checks
-
     
     def _norm(self, value):
         return re.sub(r"\s+", " ", str(value or "").strip().lower())
@@ -452,20 +391,6 @@ class CVScoringService:
         if isinstance(value, (list, tuple, set, dict)):
             return len(value) > 0
         return True
-    
-    def _normalize_set(self, items):
-        normalized = set()
-        for item in items or []:
-            text = self._norm(item)
-            if text:
-                normalized.add(text)
-        return normalized
-
-    
-    def _ratio_score(self,matched, total, max_points):
-        if total <= 0:
-            return 0
-        return min(max_points, math.ceil((matched / total) * max_points))
 
     
     def _is_standard_page_size(self, page_sizes):
@@ -489,7 +414,6 @@ class CVScoringService:
             if not match_found:
                 return False
         return True
-
     
     def _is_valid_margin_range(self, page_margins):
         if page_margins is None:
@@ -502,14 +426,15 @@ class CVScoringService:
                 margin.get("left"),
                 margin.get("top"),
                 margin.get("right"),
-                margin.get("bottom"),
             ]
+            bottom_margin = margin.get("bottom")
             if any(side is None for side in sides):
                 continue
             if not all(0.5 <= float(side) <= 1.0 for side in sides):
                 return False
+            if bottom_margin is not None and float(bottom_margin) < 0.5:
+                return False
         return True
-
     
     def _is_ats_file_type(self, file_type):
         if file_type is None:
@@ -524,99 +449,11 @@ class CVScoringService:
             "docx"
         }
 
-    
     def _has_no_special_chars(self, filename):
         if filename is None:
             return True
         base_name = str(filename).split("/")[-1].split("\\")[-1]
         return bool(re.fullmatch(r"[A-Za-z0-9._\- ]+", base_name))
-
-    
-    def _phrase_in_text(self, phrase, text):
-        if not phrase:
-            return False
-        pattern = r"\b" + re.escape(phrase) + r"\b"
-        return re.search(pattern, text) is not None
-
-    
-    def _fuzzy_phrase_match(self, a, b):
-        if not a or not b:
-            return False
-        if a in b or b in a:
-            return True
-        a_tokens = {t for t in re.split(r"\W+", a) if t}
-        b_tokens = {t for t in re.split(r"\W+", b) if t}
-        if not a_tokens or not b_tokens:
-            return False
-        overlap = len(a_tokens & b_tokens)
-        denom = max(1, min(len(a_tokens), len(b_tokens)))
-        return (overlap / denom) >= 0.6
-
-    
-    def _extract_education_levels_from_cv(self):
-        levels = set()
-        for edu in self.cv_data.get("education", []) or []:
-            degree = self._norm(edu.get("degree", ""))
-            if "phd" in degree or "doctor" in degree:
-                levels.add("doctorate")
-            if "master" in degree or "msc" in degree or "m.sc" in degree or "mba" in degree:
-                levels.add("master")
-            if "bachelor" in degree or "bsc" in degree or "b.sc" in degree:
-                levels.add("bachelor")
-            if "diploma" in degree:
-                levels.add("diploma")
-            if "high school" in degree or "secondary school" in degree or "highschool" in degree:
-                levels.add("high_school")
-        return levels
-
-    
-    def _extract_education_levels_from_jd(self):
-        levels = set()
-        fields = [
-            *(self.jd_data.get("education_requirements", []) or []),
-            *(self.jd_data.get("required_qualifications", []) or []),
-            *(self.jd_data.get("preferred_qualifications", []) or []),
-        ]
-        for field in fields:
-            text = self._norm(field)
-            if "phd" in text or "doctor" in text:
-                levels.add("doctorate")
-            if "master" in text or "msc" in text or "m.sc" in text or "mba" in text:
-                levels.add("master")
-            if "bachelor" in text or "bsc" in text or "b.sc" in text:
-                levels.add("bachelor")
-            if "diploma" in text or "associate" in text:
-                levels.add("diploma")
-            if "high school" in text or "secondary school" in text or "highschool" in text:
-                levels.add("high_school")
-        return levels
-
-    
-    def _extract_experience_range(self):
-        min_years = self._extract_first_number(self.jd_data.get("minimum_experience", ""))
-        max_years = self._extract_first_number(self.jd_data.get("maximum_experience", ""))
-        return min_years, max_years
-
-    
-    def _extract_first_number(self, text):
-        match = re.search(r"(\d+(?:\.\d+)?)", str(text or ""))
-        return float(match.group(1)) if match else None
-
-    
-    def _estimate_cv_experience_years(self):
-
-        total_months = 0
-        for exp in self.cv_data.get("work_experience", []) or []:
-            start = self._parse_date(exp.get("from_date", ""))
-            end = self._parse_date(exp.get("to_date", ""))
-            if start is None:
-                continue
-            if end is None:
-                end = datetime.utcnow()
-            months = max(0, (end.year - start.year) * 12 + (end.month - start.month))
-            total_months += months
-        return total_months / 12.0
-
     
     def _parse_date(self, value):
         text = self._norm(value)
@@ -642,72 +479,198 @@ class CVScoringService:
 
         return None
 
-    
-    def _is_experience_in_range(self, cv_years, min_years, max_years):
-        if min_years is None and max_years is None:
-            return True
-        if min_years is not None and cv_years < min_years:
-            return False
-        if max_years is not None and cv_years > max_years:
-            return False
-        return True
-
-    
-    def _extract_cv_skills(self):
-        skills = set()
-        for section in self.cv_data.get("skill_section", []) or []:
-            for skill in section.get("skills", []) or []:
-                normalized = self._norm(skill)
-                if normalized:
-                    skills.add(normalized)
-        return skills
-
-    
-    def _build_cv_text_corpus(self):
-        parts = [
-            self.cv_data.get("name", ""),
-            self.cv_data.get("title", ""),
-            self.cv_data.get("summary", ""),
-        ]
-
-        for exp in self.cv_data.get("work_experience", []) or []:
-            parts.append(exp.get("role", ""))
-            parts.append(exp.get("company", ""))
-            parts.extend(exp.get("description", []) or [])
-
-        for proj in self.cv_data.get("projects", []) or []:
-            parts.append(proj.get("name", ""))
-            parts.extend(proj.get("description", []) or [])
-
-        for section in self.cv_data.get("skill_section", []) or []:
-            parts.append(section.get("name", ""))
-            parts.extend(section.get("skills", []) or [])
-
-        parts.extend(self.cv_data.get("achievements", []) or [])
-        return self._norm(" ".join(str(p) for p in parts if p))
-
-    
-    def _text_overlap_match(self,target, source_text):
-        target = self._norm(target)
-        if not target:
-            return False
-        if self._phrase_in_text(target, source_text):
-            return True
-
-        target_tokens = {t for t in re.split(r"\W+", target) if len(t) > 2}
-        if not target_tokens:
-            return False
-        matched_tokens = {t for t in target_tokens if self._phrase_in_text(t, source_text)}
-        return (len(matched_tokens) / len(target_tokens)) >= 0.6
-
-    
     def _is_valid_email(self, email):
         if not email:
             return False
         return re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", str(email).strip()) is not None
 
-    
     def _is_valid_phone(self, phone):
         digits = re.sub(r"\D", "", str(phone or ""))
         return len(digits) >= 7
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+FULL_MONTHS = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+ABBR_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+SEASONS = ("Spring", "Summer", "Fall", "Winter")
+
+_FM  = "|".join(FULL_MONTHS)           # full month names
+_AM  = "|".join(ABBR_MONTHS)           # 3-letter abbreviations
+_S   = "|".join(SEASONS)               # season names
+_SEP = r"\s*[–-]\s*"                   # en-dash or hyphen, optional spaces
+
+# ---------- atomic date atoms ----------
+# Year-only  e.g. 2019 or Present/Current
+_YEAR      = r"(?:19|20)\d{2}"
+_YEAR_FLEX = rf"(?:{_YEAR}|[Pp]resent|[Cc]urrent)"
+
+# MM/YYYY or MM-YYYY
+_MMYYYY    = r"(?:0?[1-9]|1[0-2])[/\-](?:19|20)\d{2}"
+# MM/YY (short year)
+_MMYY      = r"(?:0?[1-9]|1[0-2])[/\-]\d{2}"
+# Full month + year
+_FMYYYY    = rf"(?:{_FM})\s+(?:19|20)\d{{2}}"
+# Abbreviated month + year
+_AMYYYY    = rf"(?:{_AM})\s+(?:19|20)\d{{2}}"
+# Season + year
+_SYYYY     = rf"(?:{_S})\s+(?:19|20)\d{{2}}"
+
+# "Expected …" prefix variants
+_EXP_ATOM  = rf"(?:{_SYYYY}|{_FMYYYY}|{_AMYYYY}|{_MMYYYY}|{_MMYY}|{_YEAR})"
+_EXPECTED  = rf"Expected\s+{_EXP_ATOM}"
+
+# Any single standalone date (no range)
+_SINGLE    = rf"(?:{_EXPECTED}|{_SYYYY}|{_FMYYYY}|{_AMYYYY}|{_MMYYYY}|{_MMYY}|{_YEAR_FLEX})"
+
+# A range: <date> – <date or Present>
+_RANGE     = rf"(?:{_SYYYY}|{_FMYYYY}|{_AMYYYY}|{_MMYYYY}|{_MMYY}|{_YEAR}){_SEP}(?:{_SYYYY}|{_FMYYYY}|{_AMYYYY}|{_MMYYYY}|{_MMYY}|{_YEAR_FLEX})"
+
+DATE_PATTERN = re.compile(
+    rf"\b(?:{_RANGE}|{_SINGLE})\b",
+    re.IGNORECASE,
+)
+
+# ---------- bad-pattern detectors ----------
+# Day included: DD/MM/YYYY, MM/DD/YYYY, etc.
+BAD_WITH_DAY = re.compile(
+    r"\b(?:\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}|\d{4}[/\-]\d{1,2}[/\-]\d{1,2})\b"
+)
+# Month only (no year near it)
+BAD_MONTH_ONLY = re.compile(
+    rf"\b(?:{_FM}|{_AM})\b(?!\s+(?:19|20)\d{{2}})",
+    re.IGNORECASE,
+)
+# Bad separator: "to", "until", "through" between years
+BAD_WORD_SEP = re.compile(
+    rf"(?:{_YEAR}|{_AM}|{_FM}|{_S})\s+\d{{4}}\s+(?:to|until|through)\s+",
+    re.IGNORECASE,
+)
+# No space around dash/en-dash in a range  e.g. "2016-2019"
+BAD_NO_SPACE_SEP = re.compile(r"(?<!\s)[–-](?!\s)")
+# Abbreviated month with trailing period  e.g. "Sept." or "Jan."
+BAD_ABBR_PERIOD = re.compile(
+    rf"\b(?:{'|'.join(ABBR_MONTHS)})\.",
+    re.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------
+# Format-family classifier
+# ---------------------------------------------------------------------------
+def _classify(date_str: str) -> str:
+    """Return a format-family tag for a matched date string."""
+    s = date_str.strip()
+    if re.match(r"^Expected\b", s, re.IGNORECASE):
+        return "expected"
+    if re.search(rf"\b(?:{_S})\b", s, re.IGNORECASE):
+        return "season_year"
+    if re.search(rf"\b(?:{_FM})\b", s):
+        return "full_month_year"
+    if re.search(rf"\b(?:{_AM})\b", s):
+        return "abbr_month_year"
+    if re.search(r"\d{1,2}[/\-](?:19|20)\d{2}", s):
+        return "mm_yyyy"
+    if re.search(r"\d{1,2}[/\-]\d{2}\b", s):
+        return "mm_yy"
+    return "year_only"
+
+def validate_cv_dates(cv_text: str) -> dict[str, Any]:
+    """
+    Validate all date expressions found in *cv_text* against the resume
+    date-format rules from resumeworded.com.
+
+    Parameters
+    ----------
+    cv_text : str
+        Raw text extracted from a CV / resume.
+
+    Returns
+    -------
+    dict[str, Any]
+        Contains validity flag, found dates, format families, errors, warnings.
+    """
+    errors:   list[str] = []
+    warnings: list[str] = []
+
+    # 1. Detect outright bad patterns ----------------------------------------
+    for m in BAD_WITH_DAY.finditer(cv_text):
+        errors.append(
+            f"Exact day included (not allowed on resumes): '{m.group()}'"
+        )
+
+    for m in BAD_WORD_SEP.finditer(cv_text):
+        errors.append(
+            f"Word separator ('to'/'until'/'through') used instead of dash: '{m.group().strip()}'"
+        )
+
+    for m in BAD_ABBR_PERIOD.finditer(cv_text):
+        errors.append(
+            f"Month abbreviation should not have a trailing period: '{m.group()}'"
+        )
+
+    # 2. Check for bad no-space separators (heuristic: year-dash-year) --------
+    no_space = re.findall(r"(?:19|20)\d{2}[–-](?:19|20)\d{2}", cv_text)
+    for hit in no_space:
+        errors.append(
+            f"Date range missing spaces around separator: '{hit}' "
+            f"(should be e.g. '2016 – 2019')"
+        )
+
+    # 3. Extract valid date matches -------------------------------------------
+    dates_found: list[str] = []
+    families:    list[str] = []
+
+    for m in DATE_PATTERN.finditer(cv_text):
+        token = m.group().strip()
+        # Skip tokens that are only a bare 2-digit number (false positives)
+        if re.fullmatch(r"\d{1,2}", token):
+            continue
+        dates_found.append(token)
+        families.append(_classify(token))
+
+    # 4. Consistency check ----------------------------------------------------
+    if dates_found:
+        # Ignore "expected" and "year_only" when checking cross-section consistency
+        # (the article explicitly allows year-only for old jobs alongside month+year)
+        core_families = [f for f in families if f not in ("expected",)]
+        unique_core = set(core_families)
+
+        # Incompatible mix: e.g. full_month_year AND abbr_month_year in same doc
+        incompatible_pairs = [
+            {"full_month_year", "abbr_month_year"},
+            {"mm_yyyy", "mm_yy"},
+            {"season_year", "mm_yyyy"},
+            {"season_year", "mm_yy"},
+            {"season_year", "full_month_year"},
+            {"season_year", "abbr_month_year"},
+        ]
+        for pair in incompatible_pairs:
+            if pair.issubset(unique_core):
+                errors.append(
+                    f"Inconsistent date formats detected: "
+                    f"{sorted(pair)} — pick one and use it throughout."
+                )
+
+        # Warn (not error) about mixing year-only with month+year
+        # (article says it's acceptable for older positions)
+        if "year_only" in unique_core and len(unique_core) > 1:
+            warnings.append(
+                "Year-only dates are mixed with month+year dates. "
+                "This is acceptable for older/distant positions, but ensure "
+                "it's not being used to hide short tenures."
+            )
+
+    is_valid = len(errors) == 0
+    return {
+        "is_valid": is_valid,
+        "dates_found": dates_found,
+        "format_families": families,
+        "errors": errors,
+        "warnings": warnings
+    }
+    

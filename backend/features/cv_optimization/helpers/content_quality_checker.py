@@ -5,10 +5,6 @@ Analyzes CV text across 4 content quality dimensions.
 
 import re
 
-from shared.helpers.cv_pii_masker import pii_pipeline
-
-from ..helpers.spelling_checker import get_typos_with_suggestions
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONSTANTS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -52,8 +48,8 @@ HEADING_TIERS = {
     "summary": 1, "professional summary": 1, "executive summary": 1, "career summary": 1,
     "objective": 1, "career objective": 1, "professional objective": 1,
     "profile": 1, "about me": 1, "overview": 1,
-    "education": 3, "academic background": 3, "academic qualifications": 3, "qualifications": 3,
-    "degrees": 3, "degree": 3, "university": 3, "college": 3, "schooling": 3,
+    "education": 2, "academic background": 2, "academic qualifications": 2, "qualifications": 2,
+    "degrees": 2, "degree": 2, "university": 2, "college": 2, "schooling": 2,
     "experience": 2, "work experience": 2, "professional experience": 2, "employment experience": 2,
     "work history": 2, "employment history": 2, "career history": 2,
     "positions held": 2, "employment": 2, "professional background": 2, "experience summary": 2,
@@ -83,30 +79,35 @@ HEADING_TIERS = {
 
 STRONG_ACTION_VERBS = {
     # Leadership
-    "led", "managed", "directed", "oversaw", "supervised", "mentored", "coached",
-    "guided", "spearheaded", "chaired", "headed", "coordinated",
+    "led", "managed", "directed", "oversaw", "supervised", "mentored","coached", "guided", "spearheaded", "chaired", "headed",
+    "coordinated", "orchestrated", "delegated", "empowered", "inspired",
     # Achievement
-    "achieved", "exceeded", "surpassed", "delivered", "accomplished", "attained",
-    "secured", "won", "earned",
+    "achieved", "exceeded", "surpassed", "delivered", "accomplished","attained", "secured", "won", "earned", "outperformed",
+    "triumphed", "realized", "reached", "completed","successfully executed",
     # Creation
-    "developed", "built", "created", "designed", "established", "launched",
-    "implemented", "deployed", "engineered", "architected", "founded", "initiated",
+    "developed", "built", "created", "designed", "established","launched", "implemented", "deployed", "engineered",
+    "architected", "founded", "initiated", "pioneered","invented", "formulated", "composed", "produced", "crafted",
     # Improvement
-    "improved", "optimized", "streamlined", "enhanced", "increased", "reduced",
-    "decreased", "accelerated", "boosted", "transformed", "revamped", "upgraded",
-    "restructured", "automated",
+    "improved", "optimized", "streamlined", "enhanced", "increased","reduced", "decreased", "accelerated", "boosted",
+    "transformed", "revamped", "upgraded", "restructured","automated", "refined", "modernized", "scaled",
+    "expanded", "cut", "saved", "rescued","turned around", "salvaged", "rejuvenated","revitalized", "revolutionized",
     # Analysis
-    "analyzed", "assessed", "evaluated", "researched", "identified", "diagnosed",
-    "audited", "investigated",
+    "analyzed", "assessed", "evaluated", "researched","identified", "diagnosed", "audited", "investigated",
+    "monitored", "measured", "calculated", "forecasted","mapped", "surveyed", "uncovered", "discovered",
+    "validated", "tested", "debugged", "troubleshot",
     # Communication
-    "presented", "negotiated", "collaborated", "partnered", "facilitated",
-    "communicated", "advocated", "influenced", "persuaded",
+    "presented", "negotiated", "collaborated", "partnered","facilitated", "communicated", "advocated",
+    "influenced", "persuaded", "articulated","mediated", "lobbied", "publicized",
+    "promoted", "reported", "documented","published", "spoke", "taught", "trained",
     # Operations
-    "executed", "administered", "operated", "maintained", "supported", "ensured",
-    "trained", "onboarded", "recruited", "hired",
-    # Finance/Sales
-    "generated", "grew", "scaled", "drove", "expanded", "acquired", "retained",
-    "forecasted", "budgeted", "negotiated", "closed",
+    "executed", "administered", "operated", "maintained","supported", "ensured", "onboarded","recruited", "hired", "processed",
+    "handled", "scheduled", "organized",
+    # Finance / Sales
+    "generated", "grew", "drove","acquired", "retained", "budgeted","closed", "converted", "sold","marketed",
+    # Technical
+    "programmed", "coded", "integrated", "configured", "engineered", "debugged", "tested", "deployed",
+    "migrated", "refactored", "containerized","implemented", "tested", "reviewed","planned", "prioritized", "executed",
+    "monitored", "tracked", "resolved","supported", "delivered", "maintained"
 }
 
 PERSONAL_PRONOUNS = {"i", "me", "my", "myself", "mine", "we", "our", "ours", "ourselves"}
@@ -128,62 +129,256 @@ VAGUE_PHRASES = [
     r"\bstrategic thinker\b",
     r"\bproblem[\s-]?solver\b",
     r"\bmultitasker\b",
-    r"\bresponsible for\b",
-    r"\bhelped (with|to)\b",
-    r"\bworked on\b",
-    r"\binvolved in\b",
-    r"\bfamiliar with\b",
     r"\bhighly skilled\b",
-    r"\bknowledge of\b",
-    r"\bexposure to\b",
-    r"\bbasic understanding\b",
-    r"\bgood (at|with|in)\b",
-    r"\betc\\.?\b",
     r"\bvarious tasks\b",
-    r"\bday[\s-]?to[\s-]?day\b",
+    r"\bexcellent interpersonal skills\b",
+    r"\bworks well under pressure\b",
+    r"\bmotivated individual\b",
+    r"\bdynamic professional\b",
+    r"\boutstanding communication skills\b",
+    r"\bproven track record\b",
+    r"\bgoal[\s-]?oriented\b",
+    r"\bresults[\s-]?oriented\b",
+    r"\bpeople person\b",
+    r"\bquick learner\b",
+    r"\bhit the ground running\b",
+    r"\bcan-do attitude\b",
+    r"\bhighly motivated\b",
+    r"\bself-motivated\b",
 ]
 
 # Quantifiable metric patterns
+_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
+
+_DATE_RE = re.compile(
+    r"\b\d{1,2}[/-]\d{4}\b"                 # 01/2023
+    r"|\b\d{4}[/-]\d{1,2}\b"               # 2023/01
+    r"|\b(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}\b",  # 2020-2024
+    re.IGNORECASE,
+)
+_PHONE_RE = re.compile(
+    r"(?:\+\d{1,3}[-.\s]?)?"                  # optional country code
+    r"(?:\(\d{2,4}\)[-.\s]?|\d{2,4}[-.\s])?"  # optional area code, parens or not
+    r"\d{3,4}[-.\s]?\d{4}\b"                   # main number block
+)
+
+_NON_ACHIEVEMENT_NUMBER_RE = re.compile(
+    r"\b\d+\+?\s*years?\s*(?:of\s*)?(?:experience|exp)\b"
+    r"|\bpage\s*\d+\s*of\s*\d+\b"
+    r"|\b(?:am|is|was|aged?)\s*\d+\s*years?\s*old\b",
+    re.IGNORECASE,
+)
+
+# Money
 MONEY_PATTERN = re.compile(
-    r"(\$|€|£|¥|USD|EUR|GBP)"  # currency symbols
-    r"|(\d[\d,]*(\.\d+)?\s*(million|billion|thousand|k|m|b)\b)"  # 1.2M, 500K
-    r"|(revenue|sales|cost|budget|profit|saving|spend|expenditure)",
+    r"(?:\$|€|£|¥|USD|EUR|GBP)\s*"
+    r"\d[\d,]*(?:\.\d+)?\s*"
+    r"(?:thousand|million|billion|k|m|b|mm|mn|bn)?\b"
+    r"|"
+    # number+scale-suffix REQUIRES an explicit currency word immediately
+    r"\d[\d,]*(?:\.\d+)?\s*(?:thousand|million|billion|k|m|b|mm|mn|bn)\b\s*"
+    r"(?:usd|eur|gbp|dollars?)"
+    r"|"
+    # money keyword BEFORE the number (e.g. "revenue by $2.5 million")
+    r"(?:revenue|sales|cost|budget|profit|saving|savings|spend|"
+    r"expenditure|income)s?\s*"
+    r"(?:of|by|to|from|at)?\s*"
+    r"(?:\$|€|£|¥)?\s*"
+    r"\d[\d,]*(?:\.\d+)?\s*(?:thousand|million|billion|k|m|b|mm|mn|bn)?"
+    r"|"
+    # number+scale-suffix BEFORE a nearby money keyword (e.g. "500k in
+    # operational costs", "3M in new sales pipeline")
+    r"\d[\d,]*(?:\.\d+)?\s*(?:thousand|million|billion|k|m|b|mm|mn|bn)\b"
+    r"[^.]{0,30}?"
+    r"(?:revenue|sales|cost|budget|profit|saving|savings|spend|expenditure|income)",
     re.IGNORECASE,
 )
 
 MONEY_PERCENT_PATTERN = re.compile(
-    r"\d+(\.\d+)?\s*%.*?(revenue|sales|cost|profit|saving|roi|margin|budget)"
-    r"|(revenue|sales|cost|profit|saving|roi|margin|budget).*?\d+(\.\d+)?\s*%",
+    r"\d+(?:\.\d+)?\s*%"
+    r"[^.]{0,50}?"
+    r"(?:revenue|sales|cost|profit|saving|roi|margin|budget)"
+
+    r"|"
+
+    r"(?:revenue|sales|cost|profit|saving|roi|margin|budget)"
+    r"[^.]{0,50}?"
+    r"\d+(?:\.\d+)?\s*%",
+
     re.IGNORECASE,
 )
 
-PERCENT_PATTERN = re.compile(r"\d+(\.\d+)?\s*%")
+# Percentages
+PERCENT_PATTERN = re.compile(
+    r"\b\d+(?:\.\d+)?\s*%"
+)
 
+# Generic Numbers
 NUMBER_PATTERN = re.compile(
-    r"\b\d[\d,]*(?:\.\d+)?(?:\+)?(?:-\d[\d,]*(?:\.\d+)?)?(?=\s|$)"
-) # any standalone number with optional '+'
+    r"\b\d[\d,]*(?:\.\d+)?"
+    r"\+?"
+    r"(?:-\d[\d,]*(?:\.\d+)?)?"
+    r"(?=\s|$|[.,!?])"
+)
 
+# People / Team Metrics
 PEOPLE_KEYWORDS = re.compile(
-    r"\b(\d+[\+]?[\s-]*?(people|person|employee|staff|customer|client|user|member|report|hire|recruit|team)s?)\b"
-    r"|\b(team of \d+)\b"
-    r"|\b(\d+[\+]?[\s-]*?(direct report|stakeholder)s?)\b",
+    r"\b\d[\d,]*\+?\s*"
+    r"(?:people|persons?|employees?|staff|customers?|clients?|"
+    r"users?|members?|reports?|hires?|recruits?|engineers?|"
+    r"developers?|interns?|teams?|stakeholders?)\b"
+
+    r"|"
+
+    r"\bteam of \d[\d,]*\b"
+
+    r"|"
+
+    r"\b\d[\d,]*\+?[-\s]*person\s+"
+    r"(?:team|group|department|organization|organisation)\b"
+
+    r"|"
+
+    r"\b(?:led|managed|supervised|mentored|directed)\s+"
+    r"\d[\d,]*\+?\s+"
+    r"(?:people|employees?|staff|engineers?|developers?|"
+    r"interns?|contractors?|teams?)",
+
     re.IGNORECASE,
 )
 
+# Scale Metrics
+SCALE_PATTERN = re.compile(
+    r"\b\d[\d,]*(?:\.\d+)?\s*"
+    r"(?:thousand|million|billion|k|m|b)?\s*"
+    r"(?:records?|rows?|requests?|transactions?|events?|"
+    r"messages?|documents?|files?|orders?|tickets?|"
+    r"downloads?|api calls?|queries?)\b",
+
+    re.IGNORECASE,
+)
+
+# Performance Metrics
+PERFORMANCE_PATTERN = re.compile(
+    r"\b\d+(?:\.\d+)?x\b"
+
+    r"|"
+
+    r"\b99(?:\.\d+)?%\s*uptime\b"
+
+    r"|"
+
+    r"\b\d+(?:\.\d+)?\s*"
+    r"(?:ms|milliseconds?|s|sec|seconds?|minutes?)\b"
+
+    r"|"
+
+    r"\b(?:latency|response time|throughput|availability|uptime)"
+    r"[^.]{0,40}?"
+    r"\d+(?:\.\d+)?",
+
+    re.IGNORECASE,
+)
+
+# Task / Productivity Metrics
 TASK_KEYWORDS = re.compile(
-    r"\b(\d+[\+]?\s*(hour|day|week|month|year|minute)s?\s*(saved|reduced|cut|faster|quicker))\b"
-    r"|\b((\d+)x\s*(faster|improvement|increase|reduction|growth))\b"
-    r"|\b(from \d+ to \d+)\b"
-    r"|\b(\d+[\+]?\s*(request|ticket|deployment|release|transaction|order|project|application)s?)\b",
+    r"\b(?:saved|reduced|cut|decreased|improved|increased)\b"
+    r"[^.]{0,50}?"
+    r"\d[\d,]*\+?\s*"
+    r"(?:hour|day|week|month|year|minute)s?\b"
+
+    r"|"
+
+    r"\b\d[\d,]*\+?\s*"
+    r"(?:hour|day|week|month|year|minute)s?\b"
+    r"[^.]{0,50}?"
+    r"\b(?:saved|reduced|cut|decreased|faster|quicker)\b"
+
+    r"|"
+
+    r"\b\d+(?:\.\d+)?x\s*"
+    r"(?:faster|improvement|increase|reduction|growth)\b"
+
+    r"|"
+
+    r"\b\d[\d,]*\+?\s*"
+    r"(?:requests?|tickets?|deployments?|releases?|transactions?|"
+    r"orders?|projects?|applications?)\b",
+
     re.IGNORECASE,
 )
 
+# Awards / Recognition
 AWARD_KEYWORDS = re.compile(
-    r"\b(award|recognition|prize|honor|honour|publication|paper|patent|certificate|rank(ed)?|top \d+%?)\b",
+    r"\b(?:awards?|recognitions?|prizes?|honou?rs?|patents?|"
+    r"publications?|papers?|certificates?|"
+    r"ranked|ranking|rankings?|top\s+\d+%?)\b",
     re.IGNORECASE,
 )
 
+# Helper Functions
+def is_year_like(text: str) -> bool:
+    return bool(_YEAR_RE.fullmatch(text.strip()))
 
+def is_date_like(text: str) -> bool:
+    return bool(_DATE_RE.search(text))
+
+def is_phone_like(text: str) -> bool:
+    return bool(_PHONE_RE.search(text))
+
+def is_non_achievement_number(text: str) -> bool:
+    return bool(_NON_ACHIEVEMENT_NUMBER_RE.search(text))
+
+
+# ---------------------------------------------------------------------------
+# Pattern -> category, ordered from most-specific to least-specific.
+# Only the FIRST matching pattern for a sentence determines its category,
+# so a single sentence contributes exactly one quantifiable-impact result instead of one per matching regex.
+# ---------------------------------------------------------------------------
+PATTERNS = [
+    # Highest confidence
+    (MONEY_PERCENT_PATTERN, "Money/Finance", "money_percent"),
+    (MONEY_PATTERN, "Money/Finance", "money"),
+    # Operational impact
+    (PERFORMANCE_PATTERN, "Performance", "performance"),
+    (SCALE_PATTERN, "Scale", "scale"),
+    (PEOPLE_KEYWORDS, "People", "people"),
+    (TASK_KEYWORDS, "Tasks/Operations", "task"),
+    # Recognition
+    (AWARD_KEYWORDS, "Recognition", "award"),
+    # Lowest confidence
+    (PERCENT_PATTERN, "Performance", "percent"),
+    (NUMBER_PATTERN, "General Metrics", "number"),
+]
+
+
+def find_all_matches(sentence: str):
+    matches = []
+    if not sentence:
+        return matches
+    if _NON_ACHIEVEMENT_NUMBER_RE.search(sentence):
+        return matches
+    for rx, category, label in PATTERNS:
+        if label == "number":
+            for m in rx.finditer(sentence):
+                token = m.group(0).strip()
+
+                if is_year_like(token):
+                    continue
+
+                if is_date_like(token):
+                    continue
+
+                matches.append((category, token, label))
+
+            continue
+
+        for m in rx.finditer(sentence):
+            matches.append(
+                (category, m.group(0).strip(), label)
+            )
+
+    return matches
 # ══════════════════════════════════════════════════════════════════════════════
 #  HELPER: extract bullet-point / experience sentences
 # ══════════════════════════════════════════════════════════════════════════════
@@ -280,44 +475,55 @@ def check_headings(headings_from_parsed_content: list[str]) -> dict:
 #  CHECK 2 – Action verbs used, no personal pronouns
 # ══════════════════════════════════════════════════════════════════════════════
 
-def check_action_verbs_and_pronouns(cv_text: str) -> dict:
+def check_action_verbs_occurrences(cv_text: str) -> dict:
     words = re.findall(r"\b[a-z']+\b", cv_text.lower())
 
-    found_pronouns = [w for w in words if w in PERSONAL_PRONOUNS]
     found_verbs = [w for w in words if w in STRONG_ACTION_VERBS]
 
-    pronoun_ok = len(found_pronouns) == 0
-    verb_ok = len(found_verbs) >= 5  # at least 5 distinct action verb usages
-
-    passed = pronoun_ok and verb_ok
+    passed = len(found_verbs) >= 5  # at least 5 distinct action verb usages
 
     details_parts = []
     success_parts = []
-    if verb_ok:
+    if passed:
         unique_verbs = sorted(set(found_verbs))
         success_parts.append(
             f"Found {len(found_verbs)} action-verb usage(s) "
             f"({', '.join(unique_verbs[:8])}{'...' if len(unique_verbs) > 8 else ''})."
         )
     else:
-        details_parts.append(
-            f"Only {len(found_verbs)} strong action verb(s) found. Aim for at least 5 to make achievements clearer."
-        )
-
-    if pronoun_ok:
-        success_parts.append("No personal pronouns detected.")
-    else:
-        uniq = sorted(set(found_pronouns))
-        details_parts.append(
-            f"Personal pronouns found: {', '.join(uniq)} "
-            f"({len(found_pronouns)} occurrence(s)). Consider rewriting bullets without first-person pronouns."
-        )
+        if len(found_verbs) == 0:
+            details_parts.append(
+                "No strong action verbs were detected. Use action-oriented verbs like 'led', 'developed', 'implemented', or 'achieved' to clearly demonstrate your contributions."
+            )
+        else:
+            details_parts.append(
+                f"We found {len(found_verbs)} strong action verb(s). Consider using a wider variety of action verbs throughout your CV to better showcase your accomplishments (recommended: at least 5)."
+            )
 
     return {
         "pass": passed,
         "details": " ".join(details_parts),
         "success_message": " ".join(success_parts),
         "action_verbs_count": len(found_verbs),
+    }
+
+def check_pronouns(cv_text: str) -> dict:
+    words = re.findall(r"\b[a-z']+\b", cv_text.lower())
+    found_pronouns = [w for w in words if w in PERSONAL_PRONOUNS]
+    passed = len(found_pronouns) == 0
+
+    if passed:
+        success_message = "No personal pronouns detected."
+    else:
+        details = (
+            f"Found {len(found_pronouns)} personal pronoun occurrence(s). "
+            "CVs are typically written without first-person language. Start statements with action verbs instead."
+        )
+
+    return {
+        "pass": passed,
+        "details": details if not passed else "",
+        "success_message": success_message if passed else "",
         "pronouns_found": sorted(set(found_pronouns)),
     }
 
@@ -342,10 +548,11 @@ def check_clarity(cv_text: str) -> dict:
     if passed:
         details = "No vague or generic phrases detected."
     else:
-        items = [f"'{p}' ×{c}" for p, c in found_vague[:10]]
+        items = [f"'{p}'" for p, c in found_vague[:5]]
         details = (
-            f"Found {len(found_vague)} vague phrase type(s): {', '.join(items)}."
-            " Replace these with specific, measurable statements."
+            f"We found {len(found_vague)} phrase(s) that may weaken the impact of your CV: "
+            f"{', '.join(items)}. Recruiters and ATS systems respond better to concrete "
+            "examples backed by achievements and metrics."
         )
 
     return {"pass": passed, "details": details, "vague_phrases": found_vague}
@@ -354,85 +561,36 @@ def check_clarity(cv_text: str) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 #  CHECK 4 – Quantifiable impact: ≥ 5 measurable results
 # ══════════════════════════════════════════════════════════════════════════════
-
 def check_quantifiable_impact(cv_parsed_content: dict) -> dict:
     sentences = extract_experience_sentences(cv_parsed_content)
-    results = []  # list of (sentence, category, matched_text)
-    seen_keys = set()
-
-    PATTERNS = [
-      # (compiled_regex, category, unique_label)
-      (MONEY_PERCENT_PATTERN, 'Money/Finance', 'money_percent'),
-      (AWARD_KEYWORDS,'Other','award'),
-      (TASK_KEYWORDS, 'Tasks/Operations','task'),
-      (PEOPLE_KEYWORDS,'People','people'),
-      (MONEY_PATTERN,'Money/Finance','money'),
-      (PERCENT_PATTERN,'Tasks/Operations','percent'),
-      (NUMBER_PATTERN,'Tasks/Operations','number'),
-    ]
+    results = []
 
     for sent in sentences:
-        for rx, category, label in PATTERNS:
-            match = rx.search(sent)
-            if match:
-                key = f"{sent[:60].lower()}::{label}"
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    matched_text = match.group(0).strip()
-                    results.append((sent[:120], category, matched_text))
+        matches = find_all_matches(sent)
+
+        if not matches:
+            continue
+
+        for category, matched_text, label in matches:
+            results.append({
+                "sentence": sent[:150],
+                "category": category,
+                "type": label,
+                "match": matched_text
+            })
 
     count = len(results)
     passed = count >= 5
-
-    details_parts = [
-        f"Found {count} measurable result(s). Minimum target is 5."
-    ]
-
-    if results:
-        by_cat: dict = {}
-        for _, cat, _ in results:
-            by_cat[cat] = by_cat.get(cat, 0) + 1
-        cat_summary = ", ".join(f"{cat}: {n}" for cat, n in sorted(by_cat.items()))
-        details_parts.append(f"Category breakdown: {cat_summary}.")
-
-    if not passed:
-        details_parts.append(
-            "Add more metrics such as percentages, dollar impact, team size, delivery volume, or time saved."
-        )
+    details = (
+            f"Your CV has only {count} measurable achievement(s). " if len(results)>0 else "No measurable achievement(s) Found. "
+            "Add more impact using metrics like percentages, revenue, team size, time saved, or scale of work."
+        ) if not passed else "Your CV contains sufficient measurable achievements. Great job!"
 
     return {
         "pass": passed,
-        "details": " ".join(details_parts),
+        "details": details,
         "count": count,
-        "results": results,  # now (sentence, category, matched_text)
-    }
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  CHECK 5 – Spelling and grammar quality
-# ══════════════════════════════════════════════════════════════════════════════
-def check_spelling_and_grammar(cv_text: str, extra_skills: set = None, user_info: dict = None) -> dict:
-    typos = get_typos_with_suggestions(cv_text, user_info, extra_skills)
-    VALID_CATEGORIES = {"TYPOS"}
-    typos = [t for t in typos if t.get('category') in VALID_CATEGORIES]
-    passed = len(typos) <= 2  # Allow up to 2 minor issues without failing
-
-    details_parts = []
-    if len(typos) == 0:
-        details_parts.append("No spelling or grammar issues detected.")
-    else:
-        details_parts.append(
-            f"Found {len(typos)} potential spelling/grammar issue(s)."
-        )
-        for t in typos[:5]:  # Show up to 5 issues
-            error = t['error']
-            suggestions = ", ".join(t['suggestions'][:3]) if t['suggestions'] else "no suggestions"
-            details_parts.append(f"- '{error}' Suggested fixes: {suggestions}")
-
-    return {
-        "pass": passed,
-        "details": "; ".join(details_parts),
-        "typos": typos,
+        "results": results,
     }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -448,12 +606,6 @@ def check_cv_content_quality(cv_text: str, cv_parsed_content: dict) -> dict:
         score         – "X / 5"
         checks        – list of individual check results
     """
-    masked_text = pii_pipeline(cv_text)['masked_text'] if cv_text else ""
-    user_info = {
-        "name": cv_parsed_content.get("name"),
-        "email": cv_parsed_content.get("email"),
-        "phone": cv_parsed_content.get("phone"),
-    }
     checks = [
         {
             "id": 1,
@@ -463,24 +615,23 @@ def check_cv_content_quality(cv_text: str, cv_parsed_content: dict) -> dict:
         {
             "id": 2,
             "name": "Action verbs used, no personal pronouns",
-            **check_action_verbs_and_pronouns(cv_text),
+            **check_action_verbs_occurrences(cv_text),
         },
         {
             "id": 3,
+            "name": "no personal pronouns used",
+            **check_pronouns(cv_text),
+        },
+        {
+            "id": 4,
             "name": "Clear and specific wording (no vague/generic phrases)",
             **check_clarity(cv_text),
         },
         {
-            "id": 4,
+            "id": 5,
             "name": "Quantifiable impact: ≥ 5 measurable results",
             **check_quantifiable_impact(cv_parsed_content),
         },
-        {
-            "id": 5,
-            "name": "Spelling and grammar quality",
-            **check_spelling_and_grammar(masked_text, extra_skills=set(cv_parsed_content.get("skills", [])), user_info=user_info),
-        },
-
     ]
 
     passed_count = sum(1 for c in checks if c["pass"])

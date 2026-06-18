@@ -61,6 +61,7 @@ class JobMatchingNotifier extends StateNotifier<JobMatchingState> {
   String? _userId;
   final Set<String> _savedIds = {};
   bool _persistenceLoaded = false;
+  final Set<String> _pendingToggle = {};
 
   JobMatchingNotifier(this._repository) : super(const JobMatchingState());
 
@@ -238,48 +239,86 @@ class JobMatchingNotifier extends StateNotifier<JobMatchingState> {
   }
 
   Future<void> toggleSave(String jobId) async {
-    await _ensureLoaded();
-    final wasSaved = _savedIds.contains(jobId);
+    // تجاهل التكرار لو لسه في عملية شغالة لنفس الـ job
+    if (_pendingToggle.contains(jobId)) return;
 
-    if (wasSaved) {
-      _savedIds.remove(jobId);
-    } else {
-      _savedIds.add(jobId);
-    }
-    await _persistSaved();
+    _pendingToggle.add(jobId);
 
-    final updatedRec = state.recommendedJobs.map((j) {
-      if (j.id == jobId) return j.copyWith(isSaved: !wasSaved);
-      return j;
-    }).toList();
+    try {
+      await _ensureLoaded();
 
-    List<JobEntity> updatedSaved = List.from(state.savedJobs);
-    if (wasSaved) {
-      updatedSaved.removeWhere((j) => j.id == jobId);
-    } else {
-      final job = state.recommendedJobs.firstWhere(
-        (j) => j.id == jobId,
-        orElse: () => state.savedJobs.firstWhere(
+      final wasSaved = _savedIds.contains(jobId);
+
+      if (wasSaved) {
+        _savedIds.remove(jobId);
+      } else {
+        _savedIds.add(jobId);
+      }
+
+      await _persistSaved();
+
+      final updatedRec = state.recommendedJobs.map((j) {
+        if (j.id == jobId) return j.copyWith(isSaved: !wasSaved);
+        return j;
+      }).toList();
+
+      List<JobEntity> updatedSaved = List.from(state.savedJobs);
+
+      if (wasSaved) {
+        updatedSaved.removeWhere((j) => j.id == jobId);
+      } else {
+        final job = state.recommendedJobs.firstWhere(
+          (j) => j.id == jobId,
+          orElse: () => state.savedJobs.firstWhere(
+            (j) => j.id == jobId,
+            orElse: () => _emptyJob(jobId),
+          ),
+        );
+
+        if (job.id.isNotEmpty) {
+          updatedSaved.add(job.copyWith(isSaved: true));
+        }
+      }
+
+      state = state.copyWith(
+        recommendedJobs: updatedRec,
+        savedJobs: updatedSaved,
+      );
+
+      // sync with backend
+      if (wasSaved) {
+        _repository.unsaveJob(jobId);
+      } else {
+        final job = updatedRec.firstWhere(
           (j) => j.id == jobId,
           orElse: () => _emptyJob(jobId),
-        ),
-      );
-      if (job.id.isNotEmpty) updatedSaved.add(job.copyWith(isSaved: true));
-    }
+        );
 
-    state = state.copyWith(
-      recommendedJobs: updatedRec,
-      savedJobs: updatedSaved,
-    );
+        if (job.id.isNotEmpty) {
+          final realId = await _repository.saveJob(job);
 
-    if (wasSaved) {
-      _repository.unsaveJob(jobId);
-    } else {
-      final job = updatedRec.firstWhere(
-        (j) => j.id == jobId,
-        orElse: () => _emptyJob(jobId),
-      );
-      if (job.id.isNotEmpty) _repository.saveJob(job);
+          if (realId != null && realId != jobId) {
+            _savedIds.remove(jobId);
+            _savedIds.add(realId);
+            await _persistSaved();
+
+            final newRec = state.recommendedJobs
+                .map((j) => j.id == jobId ? j.copyWith(id: realId) : j)
+                .toList();
+
+            final newSaved = state.savedJobs
+                .map((j) => j.id == jobId ? j.copyWith(id: realId) : j)
+                .toList();
+
+            state = state.copyWith(
+              recommendedJobs: newRec,
+              savedJobs: newSaved,
+            );
+          }
+        }
+      }
+    } finally {
+      _pendingToggle.remove(jobId);
     }
   }
 

@@ -1,5 +1,5 @@
 import 'package:equatable/equatable.dart';
-import 'package:flutter/material.dart'; // 👈 أضف ده عشان الـ Color
+import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 
 enum AlertType { resume, jobs, interview, plan }

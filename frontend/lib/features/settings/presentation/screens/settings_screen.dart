@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../home/presentation/widgets/home_bottom_nav.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
-import '../../services/notification_service.dart';
+import '../../../../core/services/notification_service.dart';
 import '../widgets/settings_switch.dart';
 import '../../../../core/extensions/responsive_extension.dart';
 
@@ -20,7 +19,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _notificationsEnabled = false;
-  final NotificationService _notificationService = NotificationService();
+  final NotificationService _notificationService = NotificationService.instance;
 
   @override
   void initState() {
@@ -34,10 +33,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _loadPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
+    final systemGranted =
+        await _notificationService.isSystemPermissionGranted();
+
+    await _notificationService.toggleNotifications(systemGranted);
+
     if (!mounted) return;
     setState(() {
-      _notificationsEnabled = prefs.getBool('notifications_enabled') ?? false;
+      _notificationsEnabled = systemGranted;
     });
   }
 

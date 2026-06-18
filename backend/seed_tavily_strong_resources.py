@@ -41,8 +41,8 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 TAVILY_URL = "https://api.tavily.com/search"
 
-SKILLS_LIMIT = int(os.getenv("TAVILY_SEED_SKILLS_LIMIT", "30"))
-START_OFFSET = int(os.getenv("TAVILY_SEED_START_OFFSET", "0"))
+SKILLS_LIMIT = int(os.getenv("TAVILY_SEED_SKILLS_LIMIT", "50"))
+START_OFFSET = int(os.getenv("TAVILY_SEED_START_OFFSET", "140"))
 
 MAX_PER_TYPE_PER_SKILL = int(os.getenv("TAVILY_MAX_PER_TYPE_PER_SKILL", "2"))
 
@@ -356,8 +356,8 @@ async def search_resources_for_skill(
                 "plan_id": None,
                 "week_topic": week_topic_for(skill_name, resource_type),
                 "canonical_topic": canonical_topic_for(skill_name, resource_type),
-                "current_level": "none",
-                "target_level": "beginner",
+                "current_level": "intermmediate",
+                "target_level": "advanced",
                 "resource_type": resource_type,
                 "title": title[:300],
                 "url": url,
@@ -383,7 +383,7 @@ async def search_resources_for_skill(
             if added_for_type >= MAX_PER_TYPE_PER_SKILL:
                 break
 
-        await asyncio.sleep(0.15)
+        await asyncio.sleep(0.55)
 
     return rows
 

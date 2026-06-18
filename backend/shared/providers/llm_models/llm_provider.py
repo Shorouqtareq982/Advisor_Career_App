@@ -29,10 +29,12 @@ class LLMProvider(ABC):
 
 def create_llm_provider(
     settings: Optional[Settings] = None,
-    system_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None,
+    provider_name: Optional[str] = None,
+    model: Optional[str] = None
 ) -> LLMProvider:
     settings = settings or get_settings()
-    provider = (settings.LLM_PROVIDER or "openrouter-with-fallback").strip().lower()  # Default to OpenRouter with fallback
+    provider = (provider_name or settings.LLM_PROVIDER or "openrouter-with-fallback").strip().lower()  # Default to OpenRouter with fallback
 
     # Log which provider is being used
     import logging
@@ -41,17 +43,18 @@ def create_llm_provider(
 
     if provider == "mistral":
         from .mistral_provider import MistralProvider
-        return MistralProvider(settings, system_prompt=system_prompt)
+        return MistralProvider(settings, system_prompt=system_prompt, model=model)
 
     if provider == "openrouter":
         from .openrouter_provider import OpenRouterProvider
-        return OpenRouterProvider(settings, system_prompt=system_prompt)
+        return OpenRouterProvider(settings, system_prompt=system_prompt, model=model)
 
     if provider == "openrouter-with-fallback":
         from .fallback_provider import FallbackLLMProvider
         return FallbackLLMProvider(
             settings,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            model=model
         )
 
     raise ValueError(f"Unsupported LLM provider: {provider}. Use: mistral, openrouter, or openrouter-with-fallback")

@@ -1,6 +1,3 @@
-// lib/core/utils/file_utils.dart
-// الحل النهائي لمشكلة اسم الـ CV
-
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
@@ -9,27 +6,20 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 
 class FileUtils {
-  /// UUID pattern للتعرف على الـ UUIDs
   static final _uuidPattern = RegExp(
     r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
   );
 
-  /// استخرج اسم الملف الأصلي من الـ URL
   static String? getFileNameFromUrl(String? url) {
     if (url == null || url.isEmpty) return null;
 
     try {
       final uri = Uri.parse(url);
 
-      // ── Case 1: URL مع ?original= param (الكود الجديد) ──────────────────
-      // مثال: .../1771274419752.pdf?original=Ranim_CV.pdf
       final originalParam = uri.queryParameters['original'];
       if (originalParam != null && originalParam.isNotEmpty) {
         return Uri.decodeComponent(originalParam);
       }
-
-      // ── Case 2: Supabase Storage URL (الكود القديم) ───────────────────────
-      // مثال: .../cvs/UUID/cv_UUID_timestamp.pdf
       if (uri.host.contains('supabase.co') ||
           uri.host.contains('supabase.in')) {
         final segments = uri.pathSegments;
@@ -38,13 +28,10 @@ class FileUtils {
           final ext =
               fileName.contains('.') ? '.${fileName.split('.').last}' : '.pdf';
 
-          // لو الاسم بيبدأ بـ cv_ وبعده UUID → اسم قديم → رجّع "CV"
-          // Pattern: cv_UUID_timestamp.ext
           if (RegExp(r'^cv_[0-9a-fA-F\-]+_\d+\.\w+$').hasMatch(fileName)) {
             return 'CV$ext';
           }
 
-          // لو الاسم مجرد timestamp → رجّع "CV"
           final nameOnly = fileName.contains('.')
               ? fileName.substring(0, fileName.lastIndexOf('.'))
               : fileName;
@@ -52,18 +39,14 @@ class FileUtils {
             return 'CV$ext';
           }
 
-          // لو فيه UUID في الاسم → رجّع "CV"
           if (_uuidPattern.hasMatch(nameOnly)) {
             return 'CV$ext';
           }
 
-          // غير كده → الاسم صح، ارجعه
           return fileName;
         }
       }
 
-      // ── Case 3: Cloudinary URL ────────────────────────────────────────────
-      // مثال: https://res.cloudinary.com/.../cv_UUID_Ranim_CV.pdf
       if (uri.host.contains('cloudinary.com')) {
         final segments = uri.pathSegments;
         if (segments.isNotEmpty) {
@@ -73,7 +56,6 @@ class FileUtils {
               dotIdx > 0 ? lastSegment.substring(0, dotIdx) : lastSegment;
           final ext = dotIdx > 0 ? lastSegment.substring(dotIdx) : '.pdf';
 
-          // Pattern: cv_UUID_originalname.ext
           final cvUuidMatch = RegExp(
             r'^cv_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}_(.+)$',
           ).firstMatch(nameOnly);
@@ -83,7 +65,6 @@ class FileUtils {
             return extracted.isNotEmpty ? '$extracted$ext' : 'CV$ext';
           }
 
-          // لو مجرد UUID أو timestamp
           if (_uuidPattern.hasMatch(nameOnly) ||
               RegExp(r'^\d+$').hasMatch(nameOnly)) {
             return 'CV$ext';
@@ -93,7 +74,6 @@ class FileUtils {
         }
       }
 
-      // ── Case 4: أي URL تاني ───────────────────────────────────────────────
       final segments = uri.pathSegments;
       if (segments.isNotEmpty) {
         final fileName = segments.last.split('?').first;
@@ -153,7 +133,6 @@ class FileUtils {
           'cv_${DateTime.now().millisecondsSinceEpoch}.pdf';
       final filePath = '${directory.path}/$fileName';
 
-      // شيل الـ ?original= قبل الـ download
       final downloadUrl =
           url.contains('?original=') ? url.split('?original=').first : url;
 

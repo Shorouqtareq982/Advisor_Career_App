@@ -864,34 +864,34 @@ async def save_plan(
                 detail="No draft plan found. Call /generate-plan first."
             )
 
-        detected_level = cached.get("detected_level")
-        confirmed_level = cached.get("level_used") or detected_level
-        skill_gaps = cached.get("skill_gaps", []) or []
         available_hours_per_week = (
             draft_plan.get("available_hours_per_week")
             or cached.get("available_hours_per_week")
         )
+
         duration_weeks = draft_plan.get("duration_weeks")
 
-        if not detected_level:
-            raise HTTPException(status_code=400, detail="Detected level is missing from cache.")
-
-        if not confirmed_level:
-            raise HTTPException(status_code=400, detail="Confirmed level is missing from cache. Call /confirm-time first.")
-
         if not duration_weeks:
-            raise HTTPException(status_code=400, detail="Draft plan duration is missing.")
+            raise HTTPException(
+                status_code=400,
+                detail="Draft plan duration is missing."
+            )
+
+        weekly_breakdown = draft_plan.get("weekly_breakdown", []) or []
+        if not weekly_breakdown:
+            raise HTTPException(
+                status_code=400,
+                detail="Draft plan weekly_breakdown is missing."
+            )
 
         result = await service.save_plan(
             user_id=request.user_id,
             cv_id=request.cv_id,
             track_id=request.track_id,
-            detected_level=detected_level,
-            confirmed_level=confirmed_level,
             duration_weeks=duration_weeks,
             plan_data={
                 "available_hours_per_week": available_hours_per_week,
-                "weekly_breakdown": draft_plan.get("weekly_breakdown", []),
+                "weekly_breakdown": weekly_breakdown,
                 "planning_mode": draft_plan.get("planning_mode"),
                 "study_intensity": draft_plan.get("study_intensity"),
                 "plan_summary": draft_plan.get("plan_summary"),
@@ -899,10 +899,7 @@ async def save_plan(
                 "generation_metadata": draft_plan.get("generation_metadata", {}),
                 "used_learning_targets": draft_plan.get("used_learning_targets", []),
                 "deferred_learning_targets": draft_plan.get("deferred_learning_targets", []),
-                "current_average_level": draft_plan.get("current_average_level"),
-                "final_expected_level": draft_plan.get("final_expected_level"),
             },
-            skill_gaps=skill_gaps
         )
 
         return {
@@ -918,3 +915,27 @@ async def save_plan(
     except Exception as e:
         logger.error(f"Save plan failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    
+     
+@router.post("/benchmark-generate-plan")
+async def benchmark_generate_plan(
+    request: PlanGenerateRequest,
+    repo: CareerRepository = Depends(get_repository),
+    analysis_service: CareerAnalysisService = Depends(get_analysis_service),
+):
+    from features.career_builder.services.plan_generation_benchmark import PlanGenerationBenchmark
+
+    service = PlanGenerationService(
+        repository=repo,
+        analysis_service=analysis_service,
+    )
+
+    benchmark = PlanGenerationBenchmark(service)
+
+    return await benchmark.run_benchmark(
+        cv_id=request.cv_id,
+        track_id=request.track_id,
+        duration_weeks=request.duration_weeks,
+        available_hours_per_week=request.available_hours_per_week,
+        user_level=request.user_level,
+    )

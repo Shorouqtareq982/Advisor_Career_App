@@ -147,6 +147,37 @@ class ResourceSearchService:
             logger.warning("LLM init failed inside ResourceSearchService. Continuing without LLM reranking: %s", e)
             self.llm = None
 
+        # Per service-instance circuit breaker.
+        # PlanGenerationService creates this service for a generation flow, so if a
+        # provider is rate-limited/unavailable once, later weeks skip it immediately.
+        self.disabled_providers = set()
+        self.provider_failure_reasons = {}
+
+    # -----------------------------
+    # Provider circuit breaker helpers
+    # -----------------------------
+    def _is_provider_enabled(self, provider: str) -> bool:
+        return provider not in self.disabled_providers
+
+    def _disable_provider(self, provider: str, reason: str) -> None:
+        if provider not in self.disabled_providers:
+            logger.warning(
+                "Resource provider disabled for current generation | provider=%s | reason=%s",
+                provider,
+                reason,
+            )
+        self.disabled_providers.add(provider)
+        self.provider_failure_reasons[provider] = reason
+
+    def _should_disable_for_http_error(self, status_code: int) -> bool:
+        return status_code in {401, 403, 408, 409, 425, 429, 500, 502, 503, 504}
+
+    def provider_health_snapshot(self) -> Dict[str, Any]:
+        return {
+            "disabled_providers": sorted(self.disabled_providers),
+            "failure_reasons": dict(self.provider_failure_reasons),
+        }
+
     # -----------------------------
     # Helpers
     # -----------------------------
@@ -465,6 +496,8 @@ class ResourceSearchService:
     # Search providers
     # -----------------------------
     async def _fetch_youtube_durations(self, video_ids: List[str]) -> Dict[str, int]:
+        if not self._is_provider_enabled("youtube"):
+            return {}
         if not self.youtube_api_key or not video_ids:
             return {}
 
@@ -479,6 +512,12 @@ class ResourceSearchService:
                 response = await client.get(self.youtube_videos_base_url, params=params)
                 response.raise_for_status()
                 data = response.json()
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code if e.response is not None else 0
+            if self._should_disable_for_http_error(status_code):
+                self._disable_provider("youtube", f"duration fetch HTTP {status_code}")
+            logger.warning("YouTube duration fetch failed. Videos will require verified duration. reason=%s", e)
+            return {}
         except Exception as e:
             # Do NOT fake video duration here. If duration cannot be verified,
             # YouTube videos will be skipped so we keep the >= 5 min quality rule.
@@ -500,7 +539,10 @@ class ResourceSearchService:
         target_level: Optional[str],
         available_hours_per_week: Optional[int],
     ) -> List[Dict[str, Any]]:
+        if not self._is_provider_enabled("youtube"):
+            return []
         if not self.youtube_api_key:
+            self._disable_provider("youtube", "missing API key")
             logger.warning("YouTube API key is missing. Skipping YouTube search.")
             return []
 
@@ -521,6 +563,12 @@ class ResourceSearchService:
                 response = await client.get(self.youtube_base_url, params=params)
                 response.raise_for_status()
                 data = response.json()
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code if e.response is not None else 0
+            if self._should_disable_for_http_error(status_code):
+                self._disable_provider("youtube", f"search HTTP {status_code}")
+            logger.warning("YouTube search failed for query='%s': %s", query, e)
+            return []
         except Exception as e:
             logger.warning("YouTube search failed for query='%s': %s", query, e)
             return []
@@ -618,7 +666,10 @@ class ResourceSearchService:
         return results
 
     async def _search_tavily(self, query: str, resource_type: str, title: str) -> List[Dict[str, Any]]:
+        if not self._is_provider_enabled("tavily"):
+            return []
         if not self.tavily_api_key:
+            self._disable_provider("tavily", "missing API key")
             return []
 
         payload = {
@@ -628,10 +679,20 @@ class ResourceSearchService:
             "max_results": 6,
         }
 
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.post(self.tavily_base_url, json=payload)
-            response.raise_for_status()
-            data = response.json()
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.post(self.tavily_base_url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code if e.response is not None else 0
+            if self._should_disable_for_http_error(status_code):
+                self._disable_provider("tavily", f"HTTP {status_code}")
+            logger.warning("Tavily search failed for query='%s': %s", query, e)
+            return []
+        except Exception as e:
+            logger.warning("Tavily search failed for query='%s': %s", query, e)
+            return []
 
         results = []
         for item in data.get("results", []):
@@ -649,7 +710,10 @@ class ResourceSearchService:
         return results
 
     async def _search_serpapi(self, query: str, resource_type: str, title: str) -> List[Dict[str, Any]]:
+        if not self._is_provider_enabled("serpapi"):
+            return []
         if not self.serpapi_api_key:
+            self._disable_provider("serpapi", "missing API key")
             return []
 
         params = {
@@ -659,10 +723,20 @@ class ResourceSearchService:
             "num": 6,
         }
 
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(self.serpapi_base_url, params=params)
-            response.raise_for_status()
-            data = response.json()
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(self.serpapi_base_url, params=params)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code if e.response is not None else 0
+            if self._should_disable_for_http_error(status_code):
+                self._disable_provider("serpapi", f"HTTP {status_code}")
+            logger.warning("SerpAPI search failed for query='%s': %s", query, e)
+            return []
+        except Exception as e:
+            logger.warning("SerpAPI search failed for query='%s': %s", query, e)
+            return []
 
         results = []
         for item in data.get("organic_results", []):
@@ -680,7 +754,10 @@ class ResourceSearchService:
         return results
 
     async def _search_github(self, query: str, resource_type: str, title: str) -> List[Dict[str, Any]]:
+        if not self._is_provider_enabled("github"):
+            return []
         if not self.github_token:
+            self._disable_provider("github", "missing API token")
             return []
 
         headers = {
@@ -695,10 +772,20 @@ class ResourceSearchService:
             "per_page": 6,
         }
 
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(self.github_base_url, headers=headers, params=params)
-            response.raise_for_status()
-            data = response.json()
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(self.github_base_url, headers=headers, params=params)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code if e.response is not None else 0
+            if self._should_disable_for_http_error(status_code):
+                self._disable_provider("github", f"HTTP {status_code}")
+            logger.warning("GitHub search failed for query='%s': %s", query, e)
+            return []
+        except Exception as e:
+            logger.warning("GitHub search failed for query='%s': %s", query, e)
+            return []
 
         results = []
         for item in data.get("items", []):
@@ -1210,6 +1297,8 @@ class ResourceSearchService:
         available_hours_per_week: Optional[int],
         max_final: int,
     ) -> List[Dict[str, Any]]:
+        if not self._is_provider_enabled("llm_rerank"):
+            return resources[:max_final]
         if not self.llm or not self.enable_llm_rerank or not resources:
             return resources[:max_final]
 
@@ -1924,5 +2013,8 @@ Return:
             clean_week_topic,
             self._resource_type_counts(final_candidates),
         )
+
+        if self.disabled_providers:
+            logger.info("Resource provider health | %s", self.provider_health_snapshot())
 
         return final_candidates[:max(max_per_week, 8)]

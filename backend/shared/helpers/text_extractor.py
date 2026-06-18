@@ -175,9 +175,22 @@ class TextExtractor:
                     if para_text:
                         final_text.append(para_text)
                 elif isinstance(child, CT_Tbl):
-                    for row in child.iter():
-                        for cell in row.iter():
-                            extract_text_recursive(cell)
+                    # Extract text from table properly - iterate through paragraphs in table cells
+                    for para in child.findall(".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
+                        para_text = get_text_from_element(para)
+                        # Handle hyperlinks in table cells
+                        for hyperlink in para.findall(".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hyperlink"):
+                            rId = hyperlink.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+                            if rId and rId not in seen_uris:
+                                rel = doc.part.rels.get(rId)
+                                if rel and hasattr(rel, "target_ref"):
+                                    url = rel.target_ref
+                                    anchor = get_text_from_element(hyperlink)
+                                    if anchor:
+                                        para_text = para_text.replace(anchor, f"{anchor} ({url})", 1)
+                                        seen_uris.add(rId)
+                        if para_text:
+                            final_text.append(para_text)
                 # Textboxes / shapes
                 else:
                     if "txbxContent" in child.tag:

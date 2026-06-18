@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 class OpenRouterProvider(LLMProvider):
-    def __init__(self, settings: Settings, system_prompt: Optional[str] = None):
+    def __init__(self, settings: Settings, system_prompt: Optional[str] = None, model: Optional[str] = None):
         self.settings = settings
         self.system_prompt = system_prompt
         self.api_key = settings.OPENROUTER_API_KEY
-        self.model = settings.OPENROUTER_MODEL or "openai/gpt-4o-mini"
+        self.model = model or settings.OPENROUTER_MODEL or "openai/gpt-4o-mini"
         self.base_url = "https://openrouter.ai/api/v1"
 
         if not self.api_key:

@@ -109,7 +109,8 @@ class JobMatchingRepository {
 
   // ── Save a job ─────────────────────────────────────────────────────────────
   /// POST /job-matching/ with { job_data: {...} }
-  Future<void> saveJob(JobEntity job) async {
+  // job_matching_repository.dart
+  Future<String?> saveJob(JobEntity job) async {
     try {
       final payload = JobModel(
         id: job.id,
@@ -126,11 +127,15 @@ class JobMatchingRepository {
         explanation: job.explanation,
       ).toSavePayload();
 
-      await _dio.post(
+      final response = await _dio.post(
         '${ApiConstants.baseUrl}${ApiConstants.jobMatchingSaved}',
         data: {'job_data': payload},
       );
-    } catch (_) {}
+      final data = response.data as Map<String, dynamic>;
+      return data['id'] as String?; // ✅ رجّع الـ UUID الحقيقي
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── Unsave a job ───────────────────────────────────────────────────────────

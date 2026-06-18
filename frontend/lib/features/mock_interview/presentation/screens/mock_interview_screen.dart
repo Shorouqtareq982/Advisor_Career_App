@@ -10,6 +10,7 @@ class MockInterviewScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       backgroundColor: AppColors.blue500,
       body: Stack(
@@ -92,12 +93,16 @@ class MockInterviewScreen extends StatelessWidget {
                               width: context.w(150),
                               height: context.w(150),
                               decoration: BoxDecoration(
-                                color: AppColors.lightBlue700.withOpacity(0.1),
+                                color: isDark
+                                    ? AppColors.lightBlue500
+                                    : AppColors.lightBlue700.withOpacity(0.1),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
                                 Icons.record_voice_over_outlined,
-                                color: AppColors.lightBlue700,
+                                color: isDark
+                                    ? AppColors.lightBlue500
+                                    : AppColors.lightBlue700,
                                 size: context.icon(80),
                               ),
                             ),
@@ -108,7 +113,9 @@ class MockInterviewScreen extends StatelessWidget {
                                 fontFamily: 'Inter',
                                 fontSize: context.sp(28),
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.lightBlue700,
+                                color: isDark
+                                    ? AppColors.lightBlue500
+                                    : AppColors.lightBlue700,
                               ),
                             ),
                             SizedBox(height: context.h(16)),
@@ -117,7 +124,9 @@ class MockInterviewScreen extends StatelessWidget {
                               style: TextStyle(
                                 fontFamily: 'Inter',
                                 fontSize: context.sp(16),
-                                color: AppColors.grey800,
+                                color: isDark
+                                    ? AppColors.grey300
+                                    : AppColors.grey800,
                                 height: 1.5,
                               ),
                               textAlign: TextAlign.center,

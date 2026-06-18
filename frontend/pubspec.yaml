@@ -35,6 +35,8 @@ dependencies:
   flutter_svg: ^2.2.3
   app_links: ^6.3.2
   cached_network_image: ^3.3.0
+  flutter_widget_from_html: ^0.16.0
+  webview_flutter: ^4.8.0
 
   # File picking (for CV upload)
   file_picker: ^10.3.10
@@ -48,13 +50,27 @@ dependencies:
   # Notifications
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.2
+  firebase_core: ^3.0.0
+  firebase_messaging: ^15.0.0
+
+  # PDF Export
+  pdf: ^3.11.1
+  printing: ^5.13.4
+
+  # Preview Capture Export
+  screenshot: ^3.0.0
 
   # Utils
   url_launcher: ^6.2.4
-  path_provider: ^2.1.1              # ✨ مرة واحدة
-  permission_handler: ^11.3.1        # ✨ مرة واحدة (آخر إصدار)
+  path_provider: ^2.1.1             
+  permission_handler: ^11.3.1       
   intl: ^0.18.1
   http_parser: ^4.0.2
+  just_audio: ^0.9.39
+  camera: ^0.10.5+9
+  record: ^6.1.1 
+  video_compress: ^3.1.2
+  connectivity_plus: ^6.0.0
 
 #           
 # Dev Dependencies
@@ -102,6 +118,12 @@ flutter:
     - assets/images/branding/
     - assets/images/onboarding/
 
+    # Mock interview icons 
+    - assets/images/mock_interview/
+    # Feature assets
+    - assets/images/career_build/
+    - assets/images/ai_protifilo/
+    - assets/images/market_insights/
     # Home icons
     - assets/images/home_icons/
 

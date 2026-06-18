@@ -1,16 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    
-    <!-- للاندرويد القديم (قبل 10) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
                      android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     
-    <!-- للاندرويد الجديد (11+) -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     
-    <!-- دمج كل الـ queries في مكان واحد -->
     <queries>
-        <!-- للروابط -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
@@ -20,7 +19,6 @@
             <data android:scheme="http" />
         </intent>
         
-        <!-- للنصوص -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
@@ -31,7 +29,7 @@
         android:label="growza"
         android:name="android.app.Application"
         android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true"> <!-- مهم للاندرويد القديم -->
+        android:requestLegacyExternalStorage="true"> 
         
         <activity
             android:name=".MainActivity"

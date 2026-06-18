@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "686018400273",
+    "project_id": "growza-ca476",
+    "storage_bucket": "growza-ca476.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:686018400273:android:de253c3ae1a934509221b0",
+        "android_client_info": {
+          "package_name": "com.example.growza"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB-yL_KFQUpoV7BCnXQZBG97_ROOO1qAog"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

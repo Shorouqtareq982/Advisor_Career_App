@@ -4,7 +4,9 @@ GROWZA Career Advisor - FastAPI Application Entry Point
 import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
-
+import uvicorn
+import webbrowser
+from threading import Timer
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,18 +25,27 @@ from core.config import settings
 from shared.providers import supabase_client, db
 from shared.providers.storage.cloudinary_provider import configure_cloudinary
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan events with Supabase connection test."""
-    print("🚀 Starting up GROWZA Career Advisor API...")
+    print("\n" + "=" * 60)
+    print("🚀 Starting GROWZA Career Advisor API...")
+    print("=" * 60)
+    sys.stdout.flush()
+
     if supabase_client.test_connection():
         print("✅ Supabase connected successfully")
     else:
         print("⚠️ Supabase connection failed – check .env")
 
-    configure_cloudinary()  # Ensure Cloudinary is configured at startup
+    configure_cloudinary()
+    print("✅ Cloudinary configured")
+    sys.stdout.flush()
+
     yield
-    print("🛑 Shutting down...")
+
+    print("\n🛑 Shutting down...\n")
+    sys.stdout.flush()
 
 
 def create_application() -> FastAPI:
@@ -57,15 +68,16 @@ def create_application() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Auth middleware
     app.add_middleware(SupabaseAuthMiddleware)
 
-    # ----------------------------
-    # 3. Basic endpoints (prevent 404)
-    # ----------------------------
+    # ------------------------------------------------------------
+    # Basic endpoints
+    # ------------------------------------------------------------
     @app.get("/", tags=["Root"])
     async def root():
         return {
-            "message": "🚀 GROWZA Career Advisor API",
+            "message": "GROWZA Career Advisor API",
             "version": settings.VERSION,
             "docs": f"{settings.API_V1_PREFIX}/docs"
         }
@@ -81,7 +93,6 @@ def create_application() -> FastAPI:
 
     @app.get("/profiles", tags=["Test"])
     async def get_profiles(limit: int = 10):
-        """Test endpoint – fetch profiles from Supabase."""
         profiles = db.read("profiles", limit=limit)
         return {
             "success": True,
@@ -89,30 +100,44 @@ def create_application() -> FastAPI:
             "profiles": profiles
         }
 
-    # Include API routers
+    # ------------------------------------------------------------
+    # Routers
+    # ------------------------------------------------------------
     from app.api.router import api_router
-    app.include_router(api_router, prefix=settings.API_V1_PREFIX)
-    
-    # Include feature routers
     from features.career_builder.routers.career_router import router as level_router
     from features.career_builder.routers.llm_health_router import router as llm_health_router
-    #from features.career_builder.routers.level_endpoints import router as level_router1
-    #from features.career_builder.routers.testing_endpoints import router as testing_endpoints
+    from features.mock_interview.routers.mock_interview_router import router as mock_interview_router
+    from features.market_insights.routers.market_router import router as market_router
+    from features.job_matching.routers.job_matching_router import router as job_matching_router
+    from features.job_matching.routers.saved_jobs_router import router as saved_jobs_router
 
-
+    app.include_router(api_router, prefix=settings.API_V1_PREFIX)
     app.include_router(level_router, prefix=settings.API_V1_PREFIX)
     app.include_router(llm_health_router, prefix=settings.API_V1_PREFIX)
-    #app.include_router(level_router1, prefix=settings.API_V1_PREFIX)
-    #app.include_router(testing_endpoints, prefix=settings.API_V1_PREFIX)
-    return app
+    app.include_router(mock_interview_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(market_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(job_matching_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(saved_jobs_router, prefix=settings.API_V1_PREFIX)
 
-    #from app.api.cv_optmization import router as cv_optmization_router
-    #app.include_router(cv_optmization_router, prefix=settings.API_V1_PREFIX)
-    #return app
+    return app
 
 
 app = create_application()
 
+
 if __name__ == "__main__":
-    import uvicorn
+    print("\n" + "=" * 60)
+    print("📡 Available Routes:")
+    print("=" * 60)
+    print("🏠 Home (Market Insights): http://localhost:8000/api/v1/market/")
+    print("📊 Dashboard: http://localhost:8000/api/v1/market/dashboard?job=<job_name>")
+    print("📖 API Docs: http://localhost:8000/api/v1/docs")
+    print("=" * 60 + "\n")
+    sys.stdout.flush()
+
+    def open_browser():
+        webbrowser.open("http://localhost:8000/api/v1/market/")
+
+    Timer(1.5, open_browser).start()
+
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

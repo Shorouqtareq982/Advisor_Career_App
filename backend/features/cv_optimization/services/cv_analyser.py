@@ -17,7 +17,7 @@ from shared.helpers.cv_pii_masker import remove_pii_fields
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
 from shared.providers.storage import CloudinaryProvider
 
-from ..models import CVOptimizationRequest, CVOptimizationReport, JobPosting
+from ..models import CVOptimizationRequest, CVOptimizationReport, JobPosting, CVOptimizationReportDetailed, FinalReportAnalysis
 from ..prompts import CV_ANALYST
 from ..schemas import ATSAnalysisResponse
 from .cv_layout_analyzer import CVLayoutAnalyzer
@@ -29,13 +29,14 @@ TODO:
 [x] save layout analysis results to database and include in report
 [x] return job title or cv title in response for better UI display
 [x] implement caching for previously analyzed CVs (e.g. if same file hash is uploaded again, return previous results)
+[x] return final report from cv_analyzer service in form of CVOptimizationReportDetailed
 [ ] optmize LLM prompt by including layout analysis results and file metadata (e.g. file size, number of pages, fonts used) to help LLM better understand the CV structure and provide more tailored optimization suggestions
 [ ] implement retry logic for LLM calls in case of transient errors
 """
 
 class CVAnalyser:
     def __init__(self, llm: LLMProvider = None):
-        self.llm = llm or create_llm_provider()
+        self.llm = llm or create_llm_provider(None,None,None,'google/gemini-2.5-flash-lite')
         self.parser = DocumentParser(self.llm)
         self.storage_provider = CloudinaryProvider()
         self.repo = CVOptRepository()
@@ -51,7 +52,7 @@ class CVAnalyser:
     # PUBLIC METHODS
     # ========================
 
-    async def analyze_cv(self, user_id: str, cv_file: UploadFile, jd_text: Optional[str] = None) -> dict:
+    async def analyze_cv(self, user_id: str, cv_file: UploadFile, jd_text: Optional[str] = None) -> CVOptimizationReportDetailed:
         """Main orchestration method for CV analysis."""
         try:
             logger.info(f"Starting CV analysis for user: {user_id}")
@@ -92,7 +93,7 @@ class CVAnalyser:
                 detail=f"CV analysis failed: {str(e)}"
             )
 
-    async def analyze_saved_cv(self, user_id: str, cv_id: str, jd_text: Optional[str] = None) -> dict:
+    async def analyze_saved_cv(self, user_id: str, cv_id: str, jd_text: Optional[str] = None) -> CVOptimizationReportDetailed:
         """Analyze a previously saved CV by its ID with caching support."""
         try:
             logger.info(f"Starting analysis for saved CV: {cv_id} for user: {user_id}")
@@ -141,7 +142,7 @@ class CVAnalyser:
     # CACHING HANDLERS
     # ========================
 
-    async def _handle_saved_cv_with_cached_jd(self, user_id: str, cv_id: str, cv_record: dict, jd_record: dict) -> dict:
+    async def _handle_saved_cv_with_cached_jd(self, user_id: str, cv_id: str, cv_record: dict, jd_record: dict) -> CVOptimizationReportDetailed:
         """Handle saved CV analysis when JD exists in cache."""
         logger.info(f"Found cached JD (id: {jd_record['job_id']}) for saved CV analysis")
         return await self._get_or_create_report(
@@ -155,7 +156,7 @@ class CVAnalyser:
             log_context="saved CV with cached JD"
         )
 
-    async def _handle_saved_cv_with_new_jd(self, user_id: str, cv_id: str, cv_record: dict, jd_text: str, jd_hash: str) -> dict:
+    async def _handle_saved_cv_with_new_jd(self, user_id: str, cv_id: str, cv_record: dict, jd_text: str, jd_hash: str) -> CVOptimizationReportDetailed:
         """Handle saved CV analysis when JD is new."""
         logger.info("Parsing new JD for saved CV analysis")
         parsed_jd, jd_id = await self._process_new_jd(jd_text, jd_hash)
@@ -171,7 +172,7 @@ class CVAnalyser:
             log_context="saved CV with new JD"
         )
 
-    async def _handle_saved_cv_without_jd(self, user_id: str, cv_id: str, cv_record: dict) -> dict:
+    async def _handle_saved_cv_without_jd(self, user_id: str, cv_id: str, cv_record: dict) -> CVOptimizationReportDetailed:
         """Handle saved CV analysis when no JD is provided."""
         logger.info("No JD provided, checking for existing report without JD")
         return await self._get_or_create_report(
@@ -186,7 +187,7 @@ class CVAnalyser:
             no_jd=True
         )
 
-    async def _handle_both_cached(self, user_id: str, cv_record: dict, jd_record: dict) -> dict:
+    async def _handle_both_cached(self, user_id: str, cv_record: dict, jd_record: dict) -> CVOptimizationReportDetailed:
         """Handle scenario where both CV and JD exist in cache."""
         logger.info(f"Found cached CV (id: {cv_record['cv_id']}) and JD (id: {jd_record['job_id']})")
         return await self._get_or_create_report(
@@ -200,7 +201,7 @@ class CVAnalyser:
             log_context="cached CV and JD"
         )
 
-    async def _handle_cv_cached_only(self, user_id: str, cv_record: dict, jd_text: Optional[str], jd_hash: Optional[str]) -> dict:
+    async def _handle_cv_cached_only(self, user_id: str, cv_record: dict, jd_text: Optional[str], jd_hash: Optional[str]) -> CVOptimizationReportDetailed:
         """Handle scenario where only CV exists in cache."""
         logger.info(f"Found cached CV (id: {cv_record['cv_id']}), parsing new JD")
         parsed_jd, jd_id = await self._process_new_jd(jd_text, jd_hash)
@@ -219,7 +220,7 @@ class CVAnalyser:
     async def _handle_jd_cached_only(
         self, user_id: str, file_url: str, jd_record: dict, 
         parse_buf: io.BytesIO, file_size_kb: float, content_type: str, cv_hash: str
-    ) -> dict:
+    ) -> CVOptimizationReportDetailed:
         """Handle scenario where only JD exists in cache."""
         logger.info(f"Found cached JD (id: {jd_record['job_id']}), parsing new CV")
         cv_id, cv_data, cv_layout, cv_text = await self._process_new_cv(
@@ -241,7 +242,7 @@ class CVAnalyser:
         self, user_id: str, file_url: str, parse_buf: io.BytesIO, 
         file_size_kb: float, content_type: str, jd_text: Optional[str], 
         cv_hash: str, jd_hash: Optional[str]
-    ) -> dict:
+    ) -> CVOptimizationReportDetailed:
         """Handle scenario where nothing exists in cache."""
         logger.info("No cached data found, processing CV and JD from scratch")
         
@@ -264,12 +265,13 @@ class CVAnalyser:
         analysis_results.update(cv_evaluation_scores)
         final_report = await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
         if final_report:
-            final_report["cv"] = {
+            # Update cv and job_posting metadata
+            final_report.cv = {
                 "title": parsed_cv.get("title", "CV"),
                 "original_filename": self._get_layout_value(cv_layout_analysis, "original_filename")
             }
-            final_report["job_posting"] = {
-                "job_title": parsed_jd.get("job_title") if jd_text else None
+            final_report.job_posting = {
+                "job_title": parsed_jd.get("job_title") if parsed_jd else None
             }
         
         logger.info(f"CV analysis completed successfully for user: {user_id}, request_id: {request_id}")
@@ -284,16 +286,22 @@ class CVAnalyser:
         cv_data: dict, jd_data: Optional[dict], cv_layout: Optional[dict],
         cv_text: Optional[str],
         log_context: str, no_jd: bool = False
-    ) -> dict:
+    ) -> CVOptimizationReportDetailed:
         """Check for existing report or create new one with analysis."""
         # Check for existing report
+        no_jd = no_jd or jd_id is None
         existing_report = await self._check_existing_report(cv_id, jd_id, no_jd)
         if existing_report:
-            existing_report["cv"] = {
+            # Convert existing report dict to CVOptimizationReportDetailed
+            if isinstance(existing_report, dict):
+                existing_report = self._convert_to_detailed_report(existing_report, existing_report.get("analysis", {}))
+            
+            # Update cv and job_posting metadata
+            existing_report.cv = {
                 "title": cv_data.get("title", "CV"),
                 "original_filename": self._get_layout_value(cv_layout, "original_filename")
             }
-            existing_report["job_posting"] = {
+            existing_report.job_posting = {
                 "job_title": jd_data.get("job_title") if jd_data else None
             }
             logger.info(f"Returning existing report for {log_context}")
@@ -310,11 +318,11 @@ class CVAnalyser:
         final_report = await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
 
         if final_report:
-            final_report["cv"] = {
+            final_report.cv = {
                 "title": cv_data.get("title", "CV"),
                 "original_filename": self._get_layout_value(cv_layout, "original_filename")
             }
-            final_report["job_posting"] = {
+            final_report.job_posting = {
                 "job_title": jd_data.get("job_title") if jd_data else None
             }
         
@@ -585,22 +593,28 @@ class CVAnalyser:
 
     async def _save_optimization_report(
         self, request_id: str, cv_id: str, jd_id: str, analysis_results: dict
-    ) -> dict:
+    ) -> CVOptimizationReportDetailed:
         """Save optimization report to database."""
+        # Cast analysis_results to FinalReportAnalysis for type validation
+        final_analysis = self._get_final_report(analysis_results)
+        analysis_dict = final_analysis.model_dump(mode="json", exclude_none=True)
+        
         report = CVOptimizationReport(
             request_id=request_id,
             cv_id=cv_id,
             job_posting_id=jd_id,
-            analysis=analysis_results
+            analysis=analysis_dict
         )
 
-        final_report = await self.repo.create_optimization_report(
+        report_dict = await self.repo.create_optimization_report(
             report.model_dump(mode="json", exclude_none=True)
         )
 
         await self.repo.update_optimization_request_status(request_id, "completed")
 
-        return final_report
+        # Convert report dict to CVOptimizationReportDetailed instance
+        detailed_report = self._convert_to_detailed_report(report_dict, analysis_dict)
+        return detailed_report
 
     # ========================
     # ANALYSIS
@@ -667,6 +681,177 @@ class CVAnalyser:
         if hasattr(data, 'model_dump'):
             return data.model_dump(mode="json", exclude_none=True)
         return data
+
+    def _convert_to_detailed_report(self, report_dict: dict, analysis_results: dict) -> CVOptimizationReportDetailed:
+        """Convert report dict to CVOptimizationReportDetailed instance."""
+        try:
+            _combined_analysis = self._get_final_report(analysis_results,report_dict)
+            
+            # Create CVOptimizationReportDetailed instance
+            detailed_report = CVOptimizationReportDetailed(
+                report_id=report_dict.get("report_id") or report_dict.get("_id"),
+                request_id=report_dict.get("request_id"),
+                cv_id=report_dict.get("cv_id"),
+                job_posting_id=report_dict.get("job_posting_id"),
+                generated_at=report_dict.get("generated_at"),
+                cv=report_dict.get("cv"),
+                job_posting=report_dict.get("job_posting"),
+                analysis=_combined_analysis
+            )
+            return detailed_report
+        except Exception as e:
+            logger.error(f"Failed to convert report to CVOptimizationReportDetailed: {str(e)}", exc_info=True)
+            raise
+
+    def _get_final_report(self, analysis_results: dict, report_dict: Optional[dict]=None) -> FinalReportAnalysis:
+        """Combine report dict and analysis results into a CVOptimizationReportDetailed instance."""
+        try:
+            from ..models.cv_report import (
+                FinalReportAnalysis, ATSReadability, ContentQuality, 
+                SectionAnalysis, PassNotes, LLMInsights, NamedCheck
+            )
+            
+            # Extract nested analysis if it exists
+            analysis = analysis_results or report_dict.get("analysis", {})
+            
+            # Build ATS Readability Analysis
+            # Handle both CVScoringService format (lowercase) and potential Pydantic format
+            ats_readability_data = analysis.get("ATS_Readability_Analysis", {})
+            if isinstance(ats_readability_data, dict):
+                # Map CVScoringService fields (lowercase) to ATSReadability fields (uppercase)
+                ats_score = ats_readability_data.get("Score") or ats_readability_data.get("score", 0)
+                ats_passed = ats_readability_data.get("Number_of_Passed_Checks") or ats_readability_data.get("passed_checks", 0)
+                ats_total = ats_readability_data.get("Total_Number_of_Checks") or ats_readability_data.get("total_checks", 0)
+                
+                # Convert "issues" to NamedCheck objects for "ATS_Issues"
+                failed_checks = []
+                issues = ats_readability_data.get("issues") or ats_readability_data.get("ATS_Issues", [])
+                if isinstance(issues, list):
+                    for issue in issues:
+                        if isinstance(issue, dict):
+                            # Extract Result as string
+                            result_value = issue.get("Result")
+                            if isinstance(result_value, dict):
+                                result_str = result_value.get("description", str(result_value))
+                            else:
+                                result_str = str(result_value or issue.get("description", "Unknown issue"))
+                            
+                            failed_checks.append(NamedCheck(
+                                Check_Name=issue.get("Check_Name", issue.get("name", "Unknown Check")),
+                                Result=result_str
+                            ))
+                        elif isinstance(issue, str):
+                            failed_checks.append(NamedCheck(
+                                Check_Name=issue,
+                                Result=issue
+                            ))
+                
+                ats_readability = ATSReadability(
+                    Score=ats_score,
+                    Number_of_Passed_Checks=ats_passed,
+                    Total_Number_of_Checks=ats_total,
+                    ATS_Issues=failed_checks
+                )
+            else:
+                ats_readability = ats_readability_data
+            
+            # Build Content Quality Analysis
+            content_quality_data = analysis.get("Content_Quality_Analysis", {})
+            if isinstance(content_quality_data, dict):
+                # Map CVScoringService fields (lowercase) to ContentQuality fields (uppercase)
+                cq_score = content_quality_data.get("Score") or content_quality_data.get("score", 0)
+                cq_passed = content_quality_data.get("Number_of_Passed_Checks") or content_quality_data.get("passed_checks", 0)
+                cq_total = content_quality_data.get("Total_Number_of_Checks") or content_quality_data.get("total_checks", 0)
+                
+                # Convert "issues" to NamedCheck objects for "Content_Issues"
+                failed_checks = []
+                issues = content_quality_data.get("issues") or content_quality_data.get("Content_Issues", [])
+                if isinstance(issues, list):
+                    for issue in issues:
+                        if isinstance(issue, dict):
+                            # Extract Result as string
+                            result_value = issue.get("Result")
+                            if isinstance(result_value, dict):
+                                result_str = result_value.get("description", str(result_value))
+                            else:
+                                result_str = str(result_value or issue.get("description", "Unknown issue"))
+                            
+                            failed_checks.append(NamedCheck(
+                                Check_Name=issue.get("Check_Name", issue.get("name", "Unknown Check")),
+                                Result=result_str
+                            ))
+                        elif isinstance(issue, str):
+                            failed_checks.append(NamedCheck(
+                                Check_Name=issue,
+                                Result=issue
+                            ))
+                
+                content_quality = ContentQuality(
+                    Score=cq_score,
+                    Number_of_Passed_Checks=cq_passed,
+                    Total_Number_of_Checks=cq_total,
+                    Content_Issues=failed_checks
+                )
+            else:
+                content_quality = content_quality_data
+            
+            # Build Section Analysis
+            section_analysis_data = analysis.get("Section_Analysis", {})
+            if isinstance(section_analysis_data, dict):
+                # Create PassNotes for each section
+                section_analysis = SectionAnalysis(
+                    Contact_Info=PassNotes(
+                        Pass=section_analysis_data.get("Contact_Info", {}).get("Pass", False),
+                        Notes=section_analysis_data.get("Contact_Info", {}).get("Notes", "")
+                    ) if isinstance(section_analysis_data.get("Contact_Info"), dict) else section_analysis_data.get("Contact_Info", PassNotes(Pass=False, Notes="")),
+                    Work_Experience=PassNotes(
+                        Pass=section_analysis_data.get("Work_Experience", {}).get("Pass", False),
+                        Notes=section_analysis_data.get("Work_Experience", {}).get("Notes", "")
+                    ) if isinstance(section_analysis_data.get("Work_Experience"), dict) else section_analysis_data.get("Work_Experience", PassNotes(Pass=False, Notes="")),
+                    Education=PassNotes(
+                        Pass=section_analysis_data.get("Education", {}).get("Pass", False),
+                        Notes=section_analysis_data.get("Education", {}).get("Notes", "")
+                    ) if isinstance(section_analysis_data.get("Education"), dict) else section_analysis_data.get("Education", PassNotes(Pass=False, Notes="")),
+                    Skills=PassNotes(
+                        Pass=section_analysis_data.get("Skills", {}).get("Pass", False),
+                        Notes=section_analysis_data.get("Skills", {}).get("Notes", "")
+                    ) if isinstance(section_analysis_data.get("Skills"), dict) else section_analysis_data.get("Skills", PassNotes(Pass=False, Notes="")),
+                    Additional_Sections=PassNotes(
+                        Pass=section_analysis_data.get("Additional_Sections", {}).get("Pass", False),
+                        Notes=section_analysis_data.get("Additional_Sections", {}).get("Notes", "")
+                    ) if isinstance(section_analysis_data.get("Additional_Sections"), dict) else section_analysis_data.get("Additional_Sections", PassNotes(Pass=False, Notes=""))
+                )
+            else:
+                section_analysis = section_analysis_data
+            
+            # Build LLM Insights from Job_Alignment and Industry_Keyword_Optimization
+            llm_insights = analysis.get("LLM_Insights")
+            job_alignment = analysis.get("Job_Alignment")
+            industry_keywords = analysis.get("Industry_Keyword_Optimization")
+            improvement_tips = analysis.get("Improvement_Tips")
+            
+            # Only create LLMInsights if we have at least one of the expected fields
+            if job_alignment or industry_keywords or improvement_tips:
+                if not llm_insights:
+                    # Create LLMInsights with available data (None values are acceptable for Optional fields)
+                    llm_insights = LLMInsights(
+                        Job_Alignment=job_alignment,
+                        Keyword_Optimization=industry_keywords,
+                        Improvement_Tips=improvement_tips
+                    )
+            
+            final_report_analysis = FinalReportAnalysis(
+                ATS_Readability_Analysis=ats_readability,
+                Content_Quality_Analysis=content_quality,
+                Section_Analysis=section_analysis,
+                LLM_Insights=llm_insights,
+                Additional_Metadata=analysis.get("Additional_Metadata")
+            )
+
+            return final_report_analysis
+        except Exception as e:
+            logger.error(f"Failed to combine final report: {str(e)}", exc_info=True)
+            raise
 
 def get_cv_analyser():
     return CVAnalyser()

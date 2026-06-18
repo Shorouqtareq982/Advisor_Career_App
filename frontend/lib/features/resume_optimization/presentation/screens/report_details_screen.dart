@@ -139,6 +139,13 @@ class _ReportDetailsScreenState extends ConsumerState<ReportDetailsScreen> {
                     textTheme: textTheme),
                 SizedBox(height: context.h(16)),
               ],
+              if (report.contentIssues.isNotEmpty) ...[
+                _ContentIssuesCard(
+                    issues: report.contentIssues,
+                    isDark: isDark,
+                    textTheme: textTheme),
+                SizedBox(height: context.h(16)),
+              ],
               if (report.improvementTips.isNotEmpty) ...[
                 _ImprovementTipsCard(
                     tips: report.improvementTips,
@@ -576,7 +583,7 @@ class _IssuesCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _InfoCard(
       isDark: isDark,
-      title: 'Resume Issues',
+      title: 'ATS Readability Issues',
       titleColor: AppColors.red500,
       iconData: Icons.error_outline_rounded,
       child: Column(
@@ -620,6 +627,30 @@ class _ImprovementTipsCard extends StatelessWidget {
   }
 }
 
+class _ContentIssuesCard extends StatelessWidget {
+  final List<String> issues;
+  final bool isDark;
+  final AppTextTheme textTheme;
+
+  const _ContentIssuesCard(
+      {required this.issues, required this.isDark, required this.textTheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return _InfoCard(
+      isDark: isDark,
+      title: 'Content Quality Issues',
+      titleColor: AppColors.orange600,
+      iconData: Icons.warning_amber_rounded,
+      child: Column(
+        children: issues
+            .map((i) =>
+                _BulletItem(text: i, isDark: isDark, textTheme: textTheme))
+            .toList(),
+      ),
+    );
+  }
+}
 // ─── Shared Widgets ───────────────────────────────────────────────────────────
 
 class _InfoCard extends StatelessWidget {

@@ -24,11 +24,22 @@ class AlertCard extends StatelessWidget {
 
   String _timeText(DateTime dt) {
     final now = DateTime.now();
-    final diff = now.difference(dt);
+    final diff = now.difference(dt).abs();
 
-    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-    if (diff.inHours < 24) return '${diff.inHours} hours ago';
-    return '${diff.inDays} day${diff.inDays == 1 ? '' : 's'} ago';
+    if (diff.inSeconds < 60) return 'Just now';
+    if (diff.inMinutes < 60) {
+      final mins = diff.inMinutes;
+      return '$mins min${mins == 1 ? '' : 's'} ago';
+    }
+    if (diff.inHours < 24) {
+      final hrs = diff.inHours;
+      return '$hrs hour${hrs == 1 ? '' : 's'} ago';
+    }
+    if (diff.inDays < 7) {
+      final days = diff.inDays;
+      return '$days day${days == 1 ? '' : 's'} ago';
+    }
+    return '${dt.day}/${dt.month}/${dt.year}';
   }
 
   @override

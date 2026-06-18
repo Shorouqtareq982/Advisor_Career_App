@@ -16,6 +16,9 @@ import '../../../resume_optimization/presentation/widgets/analysis_pending_dialo
 import '../../domain/entities/job_entity.dart';
 import '../providers/job_matching_provider.dart';
 import '../widgets/job_matching_dialogs.dart';
+import '../../../mock_interview/data/datasources/interview_roles.dart';
+import '../../../mock_interview/presentation/widgets/mock_interview_dialogs.dart';
+import '../../../mock_interview/domain/entities/interview_entities.dart';
 
 class JobDetailsScreen extends ConsumerStatefulWidget {
   final JobEntity job;
@@ -116,9 +119,16 @@ class _JobDetailsScreenState extends ConsumerState<JobDetailsScreen> {
   void _handleMockInterview() {
     showDialog(
       context: context,
-      barrierDismissible: true,
-      builder: (_) => AiInterviewConfirmDialog(
-        onStartInterview: () => context.push('/mock-interview'),
+      builder: (_) => SelectJobDialog(
+        prefilledJobTitle: widget.job.title,
+        onStart: (roleName, roleId, sessionType, languagePreferred) {
+          context.push('/interview-session', extra: {
+            'roleName': roleName,
+            'roleId': roleId,
+            'sessionType': sessionType,
+            'languagePreferred': languagePreferred,
+          });
+        },
       ),
     );
   }
@@ -522,13 +532,11 @@ class _JobMatchingResumeUploadDialogState
   File? _selectedFile;
   String? _selectedFileName;
 
-  // ── FIX 2: track whether we're using existing CV ──────────────────────────
   bool _useExistingCv = false;
 
   @override
   void initState() {
     super.initState();
-    // لو فيه CV موجود → نفعّله تلقائياً
     if (widget.currentCvUrl != null && widget.currentCvUrl!.isNotEmpty) {
       _useExistingCv = true;
       _selectedFileName = widget.currentCvFileName ?? 'CV.pdf';
@@ -556,12 +564,11 @@ class _JobMatchingResumeUploadDialogState
       setState(() {
         _selectedFile = File(file.path!);
         _selectedFileName = file.name;
-        _useExistingCv = false; // اختار ملف جديد
+        _useExistingCv = false;
       });
     }
   }
 
-  /// لو بنستخدم الـ existing CV URL، نعمل download مؤقت عشان نحوله لـ File
   Future<File?> _downloadExistingCv() async {
     try {
       final cvUrl = widget.currentCvUrl!;
@@ -711,7 +718,6 @@ class _JobMatchingResumeUploadDialogState
               width: double.infinity,
               height: context.h(52),
               child: ElevatedButton(
-                // ── FIX 2: يتفعل لو hasCV ──────────────────────────────────
                 onPressed: !hasCV
                     ? null
                     : () async {

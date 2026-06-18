@@ -15,14 +15,14 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 YOUTUBE_VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
 
-MIN_YOUTUBE_MINUTES = 5
+MIN_YOUTUBE_MINUTES = 10
 MAX_VIDEOS_PER_SKILL = 4
 
 # Use env vars to batch safely:
 # set YOUTUBE_SEED_SKILLS_LIMIT=50
 # set YOUTUBE_SEED_START_OFFSET=0
-SKILLS_LIMIT = int(os.getenv("YOUTUBE_SEED_SKILLS_LIMIT", "100"))
-START_OFFSET = int(os.getenv("YOUTUBE_SEED_START_OFFSET", "0"))
+SKILLS_LIMIT = int(os.getenv("YOUTUBE_SEED_SKILLS_LIMIT", "40"))
+START_OFFSET = int(os.getenv("YOUTUBE_SEED_START_OFFSET", "140"))
 
 BAD_TITLE_WORDS = [
     "#shorts", "shorts", "meme", "funny", "tiktok", "status", "whatsapp", "motivation"
@@ -179,8 +179,8 @@ async def search_youtube_for_skill(
     if not skill_id or not skill_name:
         return []
 
-    current_level = "none"
-    target_level = "beginner"
+    current_level = "beginner"
+    target_level = "intermediate"
     week_topic = week_topic_for(skill_name)
     canonical_topic = canonical_topic_for(skill_name)
 
@@ -332,7 +332,7 @@ async def main() -> None:
                 total_inserted += len(rows)
 
                 print(f"OK {index}/{len(skills)} {skill_name}: inserted {len(rows)} videos")
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(0.5)
 
             except Exception as e:
                 print(f"FAILED {index}/{len(skills)} {skill_name}: {e}")

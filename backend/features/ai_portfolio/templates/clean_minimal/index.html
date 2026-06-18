@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ portfolio.name }} | Clean Minimal</title>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <style>
+
+        *{
+            margin:0;
+            padding:0;
+            box-sizing:border-box;
+        }
+
+        body{
+            background:#ffffff;
+            color:#2d3748;
+            font-family:'Roboto',sans-serif;
+            line-height:1.6;
+        }
+
+        :root{
+            --primary:#2d3748;
+            --secondary:#4299e1;
+            --light:#f7fafc;
+        }
+
+        h1,h2,h3,h4{
+            font-family:'Poppins',sans-serif;
+        }
+
+        img{
+            display:block;
+            max-width:100%;
+        }
+
+        .container{
+            width:90%;
+            max-width:1000px;
+            margin:auto;
+        }
+
+        /* =========================
+            HERO
+        ========================== */
+
+        .hero{
+            background:var(--primary);
+            color:white;
+            padding:80px 20px 60px;
+            border-bottom-left-radius:40px;
+            border-bottom-right-radius:40px;
+            text-align:center;
+        }
+
+        .hero-avatar{
+            width:130px;
+            height:130px;
+            border-radius:50%;
+            overflow:hidden;
+            margin:auto;
+            background:white;
+            padding:5px;
+        }
+
+        .hero-avatar img{
+            width:100%;
+            height:100%;
+            border-radius:50%;
+            object-fit:cover;
+        }
+
+        .hero h1{
+            margin-top:24px;
+            font-size:38px;
+            font-weight:700;
+        }
+
+        .hero p{
+            margin-top:10px;
+            font-size:18px;
+            color:rgba(255,255,255,0.75);
+        }
+
+        /* =========================
+            CONTENT
+        ========================== */
+
+        .content{
+            padding:40px 0 60px;
+        }
+
+        .section{
+            margin-bottom:45px;
+        }
+
+        .section-title{
+            font-size:28px;
+            font-weight:600;
+            margin-bottom:20px;
+            color:var(--primary);
+        }
+
+        /* =========================
+            CONTACT
+        ========================== */
+
+        .contact-list{
+            display:flex;
+            flex-direction:column;
+            gap:15px;
+        }
+
+        .contact-item{
+            display:flex;
+            align-items:center;
+            gap:14px;
+        }
+
+        .contact-icon{
+            width:42px;
+            height:42px;
+            border-radius:10px;
+            background:rgba(66,153,225,0.1);
+            color:var(--secondary);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            flex-shrink:0;
+        }
+
+        /* =========================
+            SKILLS
+        ========================== */
+
+        .skills{
+            display:flex;
+            flex-wrap:wrap;
+            gap:10px;
+        }
+
+        .skill-badge{
+            padding:10px 18px;
+            border-radius:25px;
+            background:rgba(66,153,225,0.1);
+            color:var(--secondary);
+            font-weight:500;
+            font-size:14px;
+        }
+
+        /* =========================
+            CARDS
+        ========================== */
+
+        .card{
+            background:white;
+            border-radius:14px;
+            padding:22px;
+            margin-bottom:18px;
+            box-shadow:0 3px 12px rgba(0,0,0,0.06);
+            border:1px solid #edf2f7;
+        }
+
+        .card h3{
+            font-size:20px;
+            font-weight:600;
+            color:var(--primary);
+        }
+
+        .card-subtitle{
+            margin-top:5px;
+            color:#718096;
+            font-size:14px;
+        }
+
+        .card p{
+            margin-top:12px;
+            font-size:15px;
+            color:#4a5568;
+            line-height:1.8;
+        }
+
+        .project-link{
+            display:inline-block;
+            margin-top:14px;
+            color:var(--secondary);
+            font-weight:500;
+            text-decoration:none;
+        }
+
+        /* =========================
+            RESPONSIVE
+        ========================== */
+
+        @media(max-width:768px){
+
+            .hero{
+                padding:60px 20px 50px;
+            }
+
+            .hero h1{
+                font-size:30px;
+            }
+
+            .hero p{
+                font-size:16px;
+            }
+
+            .section-title{
+                font-size:24px;
+            }
+
+            .card{
+                padding:18px;
+            }
+        }
+
+    </style>
+</head>
+
+<body>
+
+<!-- ================= HERO ================= -->
+
+<section class="hero">
+
+    <div class="hero-avatar">
+        <img
+            src="{{ portfolio.profile_image_url or 'https://via.placeholder.com/300' }}"
+            alt="{{ portfolio.name }}"
+        >
+    </div>
+
+    <h1>
+        {{ portfolio.name or 'John Doe' }}
+    </h1>
+
+    <p>
+        {{ portfolio.title or 'Software Developer' }}
+    </p>
+
+</section>
+
+<!-- ================= CONTENT ================= -->
+
+<div class="container content">
+
+    <!-- ABOUT -->
+
+    <section class="section">
+
+        <h2 class="section-title">
+            About Me
+        </h2>
+
+        <p>
+            {{ portfolio.about or 'I am a passionate developer with experience in building amazing applications.' }}
+        </p>
+
+    </section>
+
+    <!-- CONTACT -->
+
+    <section class="section">
+
+        <h2 class="section-title">
+            Contact
+        </h2>
+
+        <div class="contact-list">
+
+            <div class="contact-item">
+
+                <div class="contact-icon">
+                    <i class="fa-solid fa-envelope"></i>
+                </div>
+
+                <div>
+                    {{ portfolio.email or 'john@example.com' }}
+                </div>
+
+            </div>
+
+            <div class="contact-item">
+
+                <div class="contact-icon">
+                    <i class="fa-solid fa-phone"></i>
+                </div>
+
+                <div>
+                    {{ portfolio.phone or '+20 123 456 7890' }}
+                </div>
+
+            </div>
+
+            <div class="contact-item">
+
+                <div class="contact-icon">
+                    <i class="fa-solid fa-location-dot"></i>
+                </div>
+
+                <div>
+                    {{ portfolio.location or 'Cairo, Egypt' }}
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+    <!-- SKILLS -->
+
+    <section class="section">
+
+        <h2 class="section-title">
+            Skills
+        </h2>
+
+        <div class="skills">
+
+            {% if portfolio.skills %}
+                {% for skill in portfolio.skills %}
+                    <div class="skill-badge">
+                        {{ skill }}
+                    </div>
+                {% endfor %}
+            {% else %}
+                {% for skill in ['Flutter', 'Dart', 'UI/UX', 'Firebase', 'Git'] %}
+                    <div class="skill-badge">
+                        {{ skill }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+        </div>
+
+    </section>
+
+    <!-- EXPERIENCE -->
+
+    {% if portfolio.experiences %}
+
+    <section class="section">
+
+        <h2 class="section-title">
+            Experience
+        </h2>
+
+        {% for exp in portfolio.experiences %}
+
+        <div class="card">
+
+            <h3>
+                {{ exp.job_title or 'Job Title' }}
+            </h3>
+
+            <div class="card-subtitle">
+                {{ exp.company or 'Company Name' }}
+
+                {% if exp.period %}
+                    • {{ exp.period }}
+                {% endif %}
+            </div>
+
+            <p>
+                {{ exp.description or 'Job description and responsibilities...' }}
+            </p>
+
+        </div>
+
+        {% endfor %}
+
+    </section>
+
+    {% endif %}
+
+    <!-- EDUCATION -->
+
+    {% if portfolio.education %}
+
+    <section class="section">
+
+        <h2 class="section-title">
+            Education
+        </h2>
+
+        {% for edu in portfolio.education %}
+
+        <div class="card">
+
+            <h3>
+                {{ edu.degree or 'Degree' }}
+            </h3>
+
+            <div class="card-subtitle">
+
+                {{ edu.institution or 'Institution' }}
+
+                {% if edu.period %}
+                    • {{ edu.period }}
+                {% endif %}
+
+            </div>
+
+            {% if edu.description %}
+            <p>
+                {{ edu.description }}
+            </p>
+            {% endif %}
+
+        </div>
+
+        {% endfor %}
+
+    </section>
+
+    {% endif %}
+
+    <!-- PROJECTS -->
+
+    {% if portfolio.projects %}
+
+    <section class="section">
+
+        <h2 class="section-title">
+            Projects
+        </h2>
+
+        {% for proj in portfolio.projects %}
+
+        <div class="card">
+
+            <h3>
+                {{ proj.name or 'Project Name' }}
+            </h3>
+
+            <p>
+                {{ proj.description or 'Project description...' }}
+            </p>
+
+            {% if proj.technologies %}
+            <div class="card-subtitle">
+                Technologies: {{ proj.technologies }}
+            </div>
+            {% endif %}
+
+            {% if proj.link %}
+            <a
+                href="{{ proj.link }}"
+                target="_blank"
+                class="project-link"
+            >
+                View Project →
+            </a>
+            {% endif %}
+
+        </div>
+
+        {% endfor %}
+
+    </section>
+
+    {% endif %}
+
+</div>
+
+</body>
+</html>

@@ -2,6 +2,7 @@ plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
+    id "com.google.gms.google-services"  
 }
 
 android {
@@ -12,7 +13,7 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
-        coreLibraryDesugaringEnabled true  //     ده موجود كويس
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
@@ -21,14 +22,10 @@ android {
 
     defaultConfig {
         applicationId = "com.example.growza"
-        
-        //     التعديل الأهم هنا - خلي minSdk 21 مش flutter.minSdkVersion
-        minSdkVersion flutter.minSdkVersion  // <- غير flutter.minSdkVersion إلى 21
+        minSdkVersion flutter.minSdkVersion
         targetSdkVersion 36
-        
         versionCode flutter.versionCode
         versionName flutter.versionName
-        
         manifestPlaceholders = [appAuthRedirectScheme: "io.supabase.growza"]
     }
 
@@ -45,5 +42,5 @@ flutter {
 
 dependencies {
     implementation "androidx.core:core-ktx:1.12.0"
-    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"  //     موجود كويس
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
 }

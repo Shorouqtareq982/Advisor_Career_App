@@ -1,78 +1,165 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/alert_entity.dart';
 import '../models/alert_model.dart';
+import 'dart:async';
+
+class AlertsNotifier {
+  AlertsNotifier._();
+  static final AlertsNotifier instance = AlertsNotifier._();
+
+  final _controller = StreamController<void>.broadcast();
+  Stream<void> get onAlertsChanged => _controller.stream;
+
+  void notify() => _controller.add(null);
+
+  void dispose() => _controller.close();
+}
 
 abstract class AlertsLocalDataSource {
   Future<List<AlertModel>> fetchAlerts();
   Future<List<AlertModel>> markAllRead();
   Future<List<AlertModel>> markRead(String id);
-
-  //     optional: عشان تختبري "مرن"
   Future<List<AlertModel>> addAlert(AlertModel alert);
 }
 
 class AlertsLocalDataSourceImpl implements AlertsLocalDataSource {
-  final List<AlertModel> _cache = [
-    AlertModel(
-      id: '1',
-      title: 'Resume Optimization',
-      body: 'Your resume has been optimized with AI suggestions',
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-      isRead: false,
-      type: AlertType.resume,
-    ),
-    AlertModel(
-      id: '2',
-      title: 'Job Matches Updated',
-      body: '12 new jobs match your profile - Senior Developer at Tech Corp',
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-      isRead: false,
-      type: AlertType.jobs,
-    ),
-    AlertModel(
-      id: '3',
-      title: 'Interview feedback',
-      body: 'AI feedback on your recent interview is available',
-      createdAt: DateTime.now().subtract(const Duration(days: 1)),
-      isRead: false,
-      type: AlertType.interview,
-    ),
-    AlertModel(
-      id: '4',
-      title: 'Career Plan',
-      body: 'View your next steps and growth recommendations',
-      createdAt: DateTime.now().subtract(const Duration(days: 1)),
-      isRead: true,
-      type: AlertType.plan,
-    ),
-  ];
+  static const String _cacheKey = 'growza_alerts_cache';
+  final SupabaseClient _supabase = Supabase.instance.client;
+
+  String? get _userId => _supabase.auth.currentUser?.id;
+
+  // ─── Supabase ────────────────────────────────────────────────────────────────
+
+  Future<List<AlertModel>> _fetchFromSupabase() async {
+    final uid = _userId;
+    if (uid == null) return [];
+    final res = await _supabase
+        .from('user_alerts')
+        .select()
+        .eq('user_id', uid)
+        .order('created_at', ascending: false);
+    return (res as List)
+        .map((e) => AlertModel.fromSupabase(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> _upsertToSupabase(AlertModel alert) async {
+    final uid = _userId;
+    if (uid == null) return;
+    await _supabase.from('user_alerts').upsert({
+      'id': alert.id,
+      'user_id': uid,
+      'title': alert.title,
+      'body': alert.body,
+      'type': alert.type.toString().split('.').last,
+      'route': alert.route,
+      'is_read': alert.isRead,
+      'created_at': alert.createdAt.toIso8601String(),
+    });
+  }
+
+  Future<void> _markReadInSupabase(String id) async {
+    final uid = _userId;
+    if (uid == null) return;
+    await _supabase
+        .from('user_alerts')
+        .update({'is_read': true})
+        .eq('id', id)
+        .eq('user_id', uid);
+  }
+
+  Future<void> _markAllReadInSupabase() async {
+    final uid = _userId;
+    if (uid == null) return;
+    await _supabase
+        .from('user_alerts')
+        .update({'is_read': true}).eq('user_id', uid);
+  }
+
+  // ─── Cache (SharedPreferences fallback) ──────────────────────
+
+  Future<List<AlertModel>> _loadCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cacheKey);
+      if (raw == null || raw.trim().isEmpty) return [];
+      final list = jsonDecode(raw) as List<dynamic>;
+      final alerts = list
+          .whereType<Map<String, dynamic>>()
+          .map(AlertModel.fromJson)
+          .toList();
+
+      alerts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return alerts;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveCache(List<AlertModel> alerts) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _cacheKey,
+        jsonEncode(alerts.map((a) => a.toJson()).toList()),
+      );
+    } catch (_) {}
+  }
+
+// ─── Public API ───────────────────────────────────────────────
 
   @override
   Future<List<AlertModel>> fetchAlerts() async {
-    await Future.delayed(const Duration(milliseconds: 120));
-    _cache.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return List<AlertModel>.from(_cache);
+    try {
+      final alerts = await _fetchFromSupabase();
+      alerts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      await _saveCache(alerts);
+      return alerts;
+    } catch (_) {
+      return _loadCache();
+    }
   }
 
   @override
   Future<List<AlertModel>> markAllRead() async {
-    for (int i = 0; i < _cache.length; i++) {
-      _cache[i] = _cache[i].copyWith(isRead: true);
-    }
+    try {
+      await _markAllReadInSupabase();
+    } catch (_) {}
+    final cached = await _loadCache();
+    final updated = cached.map((a) => a.copyWith(isRead: true)).toList();
+    await _saveCache(updated);
     return fetchAlerts();
   }
 
   @override
   Future<List<AlertModel>> markRead(String id) async {
-    final idx = _cache.indexWhere((a) => a.id == id);
-    if (idx != -1) {
-      _cache[idx] = _cache[idx].copyWith(isRead: true);
-    }
+    try {
+      await _markReadInSupabase(id);
+    } catch (_) {}
+    final cached = await _loadCache();
+    final updated =
+        cached.map((a) => a.id == id ? a.copyWith(isRead: true) : a).toList();
+    await _saveCache(updated);
     return fetchAlerts();
   }
 
   @override
   Future<List<AlertModel>> addAlert(AlertModel alert) async {
-    _cache.add(alert);
+    final cached = await _loadCache();
+    if (cached.any((a) => a.id == alert.id)) return fetchAlerts();
+
+    try {
+      await _upsertToSupabase(alert);
+    } catch (_) {
+      cached.insert(0, alert);
+      cached.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      await _saveCache(cached);
+      AlertsNotifier.instance.notify();
+      return cached;
+    }
+    AlertsNotifier.instance.notify();
     return fetchAlerts();
   }
 }
