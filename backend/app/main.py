@@ -103,13 +103,31 @@ def create_application() -> FastAPI:
     # ------------------------------------------------------------
     # Routers
     # ------------------------------------------------------------
+    # from app.api.router import api_router
+    # from features.career_builder.routers.career_router import router as level_router
+    # from features.career_builder.routers.llm_health_router import router as llm_health_router
+    # from features.mock_interview.routers.mock_interview_router import router as mock_interview_router
+    # from features.market_insights.routers.market_router import router as market_router
+    # from features.job_matching.routers.job_matching_router import router as job_matching_router
+    # from features.job_matching.routers.saved_jobs_router import router as saved_jobs_router
+
+    print("Importing api_router")
     from app.api.router import api_router
+    
+    print("Importing career_router")
     from features.career_builder.routers.career_router import router as level_router
+    
+    print("Importing llm_health_router")
     from features.career_builder.routers.llm_health_router import router as llm_health_router
+    
+    print("Importing mock_interview_router")
     from features.mock_interview.routers.mock_interview_router import router as mock_interview_router
+    
+    print("Importing market_router")
     from features.market_insights.routers.market_router import router as market_router
+    
+    print("Importing job_matching_router")
     from features.job_matching.routers.job_matching_router import router as job_matching_router
-    from features.job_matching.routers.saved_jobs_router import router as saved_jobs_router
 
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
     app.include_router(level_router, prefix=settings.API_V1_PREFIX)
