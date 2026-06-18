@@ -415,7 +415,7 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
                                     return Transform.scale(
                                       scale: 0.5 + (value * 0.5),
                                       child: Opacity(
-                                        opacity: value,
+                                        opacity: value.clamp(0.0, 1.0),
                                         child: child,
                                       ),
                                     );

@@ -1,6 +1,6 @@
 class ApiConstants {
   // Base URL
-  static const String baseUrl = 'http://192.168.1.18:8000';
+  static const String baseUrl = 'http://192.168.1.2:8000';
 
   // Auth endpoints
   static const String verifyToken = '/auth/verify';
