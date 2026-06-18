@@ -1,0 +1,137 @@
+ backend/.env                                       |  15 [32m+[m
+ .../repositories/job_matching_repository.py        |  52 [32m++[m
+ .../job_matching/routers/saved_jobs_router.py      |  27 [32m+[m[31m-[m
+ .../features/job_matching/schemas/job_matching.py  |  10 [32m+[m
+ frontend/lib/app.dart                              |  41 [32m+[m[31m-[m
+ frontend/lib/config/routes/app_router.dart         |   3 [32m+[m
+ frontend/lib/core/constants/api_constants.dart     |  35 [32m+[m[31m-[m
+ frontend/lib/core/network/api_client.dart          |   2 [32m+[m[31m-[m
+ .../lib/core/services/notification_service.dart    |  47 [32m+[m[31m-[m
+ .../data/datasources/alerts_local_datasource.dart  |  18 [32m+[m
+ .../job_matching/data/models/job_model.dart        | 118 [32m+++[m[31m-[m
+ .../data/repositories/job_matching_repository.dart | 310 [32m+++++[m[31m----[m
+ .../job_matching/domain/entities/job_entity.dart   |  22 [32m+[m[31m-[m
+ .../domain/entities/match_result_entity.dart       | 143 [32m++++[m
+ .../providers/job_matching_provider.dart           | 346 [32m+++++++[m[31m---[m
+ .../presentation/screens/job_details_screen.dart   |   1 [32m+[m
+ .../presentation/screens/job_preferences_gate.dart |  57 [32m+[m[31m-[m
+ .../screens/job_preferences_screen.dart            | 719 [32m++++++++++++[m[31m---------[m
+ .../screens/recommended_jobs_screen.dart           |  73 [32m+[m[31m--[m
+ .../presentation/widgets/job_card.dart             | 269 [32m+++++[m[31m---[m
+ .../presentation/widgets/job_search_dialogs.dart   | 203 [32m++++++[m
+ .../splash/presentation/screens/splash_screen.dart |  27 [32m+[m
+ 22 files changed, 1791 insertions(+), 747 deletions(-)
+
+[1mdiff --git a/backend/.env b/backend/.env[m
+[1mindex 89006a5..904015b 100644[m
+[1m--- a/backend/.env[m
+[1m+++ b/backend/.env[m
+[36m@@ -100,6 +100,21 @@[m [mELEVENLABS_API_KEY=sk_6d46a83e69b539be91a4bdcfc7ee4c490b787285f2b36acc[m
+ # ========================[m
+ API_KEYS=[{"app_id": "982a7605", "app_key": "e32b481b7bdfec606882aa277da6dae0"}, {"app_id": "ce3acf76", "app_key": "dfa8410abf621c7dfc3886333b2d6b4c"}, {"app_id": "f8b2c9d1", "app_key": "a7e4f5b8c9d2e3f4a5b6c7d8e9f0a1b2"}, {"app_id": "g3h4i5j6", "app_key": "k7l8m9n0o1p2q3r4s5t6u7v8w9x0y1"}, {"app_id": "z2a3b4c5", "app_key": "d6e7f8g9h0i1j2k3l4m5n6o7p8q9r0"}, {"app_id": "s1t2u3v4", "app_key": "w5x6y7z8a9b0c1d2e3f4g5h6i7j8k9"}, {"app_id": "l0m1n2o3", "app_key": "p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8"}, {"app_id": "e9f0g1h2", "app_key": "i3j4k5l6m7n8o9p0q1r2s3t4u5v6w7"}, {"app_id": "x8y9z0a1", "app_key": "b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"}][m
+ [m
+[32m+[m[32m# ==========================================[m
+[32m+[m[32m# JOB MATCHING FEATURE - API Keys[m
+[32m+[m[32m# ==========================================[m
+[32m+[m
+[32m+[m[32m# Gemini API Keys (Multiple for load balancing)[m
+[32m+[m[32mGEMINI_API_KEY_1=AIzaSyAOgbmUxVWqa7Xb7tQJamsSv8Ita4SJ_-8[m
+[32m+[m[32mGEMINI_API_KEY_2=AQ.Ab8RN6KNgb-5BjVILr7n3GiNeQOd0Vj1-Nr33gIb9hBXraSclA[m
+[32m+[m[32mGEMINI_API_KEY_3=AQ.Ab8RN6LThuquF9091HoBidhqlJTsbWmbo4EbCrWf98-Y4S2Zew[m
+[32m+[m
+[32m+[m[32m# JSearch API Keys (Multiple for load balancing)[m
+[32m+[m[32mJSEARCH_API_KEY_1=487a165ed7msh5c42ce668f4997fp1b4929jsn3336f2692a8d[m
+[32m+[m[32mJSEARCH_API_KEY_2=a7e2c06bebmsh08793de538b0a9dp195b4fjsnfaa7fe6d2447[m
+[32m+[m[32mJSEARCH_API_KEY_3=1750dabdafmshe3c6e9c569a1a5fp14a0abjsn09305f75db5d[m
+[32m+[m[32mJSEARCH_API_KEY_4=bd2d13d70fmshdc8385ef15537d8p1533a0jsnb2aa964c1098[m
+[32m+[m
+ # =======[m
+ #GitHub[m
+ # =======[m
+[1mdiff --git a/backend/features/job_matching/repositories/job_matching_repository.py b/backend/features/job_matching/repositories/job_matching_repository.py[m
+[1mindex 73d6c77..634a857 100644[m
+[1m--- a/backend/features/job_matching/repositories/job_matching_repository.py[m
+[1m+++ b/backend/features/job_matching/repositories/job_matching_repository.py[m
+[36m@@ -73,3 +73,55 @@[m [mdef get_all_countries() -> List[Dict[str, str]]:[m
+         supabase.table("jm_countries").select("code", "name").order("name").execute()[m
+     )[m
+     return response.data if response.data else [][m
+[32m+[m
+[32m+[m[32m# ========== job match results (persistent) ==========[m
+[32m+[m
+[32m+[m[32mdef save_match_results(user_id: str, results: List[Dict[str, Any]]) -> bool:[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        supabase.table("job_match_results") \[m
+[32m+[m[32m            .delete() \[m
+[32m+[m[32m            .eq("user_id", user_id) \[m
+[32m+[m[32m            .execute()[m
+[32m+[m[41m        [m
+[32m+[m[32m        rows = [[m
+[32m+[m[32m            {[m
+[32m+[m[32m                "user_id": user_id,[m
+[32m+[m[32m                "job_data": job,[m
+[32m+[m[32m                "matched_at": datetime.now().isoformat(),[m
+[32m+[m[32m            }[m
+[32m+[m[32m            for job in results[m
+[32m+[m[32m        ][m
+[32m+[m[41m        [m
+[32m+[m[32m        if rows:[m
+[32m+[m[32m            supabase.table("job_match_results").insert(rows).execute()[m
+[32m+[m[41m        [m
+[32m+[m[32m        return True[m
+[32m+[m[32m    except Exception as e:[m
+[32m+[m[32m        print(f"Error saving match results: {e}")[m
+[32m+[m[32m        return False[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef get_match_results(user_id: str) -> List[Dict[str, Any]]:[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        response = ([m
+[32m+[m[32m            supabase.table("job_match_results")[m
+[32m+[m[32m            .select("*")[m
+[32m+[m[32m            .eq("user_id", user_id)[m
+[32m+[m[32m            .order("matched_at", desc=False)[m[41m [m
+[32m+[m[32m            .execute()[m
+[32m+[m[32m        )[m
+[32m+[m[32m        return response.data if response.data else [][m
+[32m+[m[32m    except Exception as e:[m
+[32m+[m[32m        print(f"Error fetching match results: {e}")[m
+[32m+[m[32m        return [][m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef delete_match_results(user_id: str) -> bool:[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        supabase.table("job_match_results") \[m
+[32m+[m[32m            .delete() \[m
+[32m+[m[32m            .eq("user_id", user_id) \[m
+[32m+[m[32m            .execute()[m
+[32m+[m[32m        return True[m
+[32m+[m[32m    except Exception as e:[m
+[32m+[m[32m        return False[m
+[1mdiff --git a/backend/features/job_matching/routers/saved_jobs_router.py b/backend/features/job_matching/routers/saved_jobs_router.py[m
+[1mindex 9cc39f8..2cb66a4 100644[m
+[1m--- a/backend/features/job_matching/routers/saved_jobs_router.py[m
+[1m+++ b/backend/features/job_matching/routers/saved_jobs_router.py[m
+[36m@@ -1,8 +1,11 @@[m
+ from fastapi import APIRouter, HTTPException, Request, Depends[m
+ from fastapi.security import HTTPBearer[m
+ from typing import List, Dict, Any[m
+[31m-from ..repositories.job_matching_repository import save_job, get_saved_jobs, delete_saved_job, is_job_already_saved[m
+[31m-from ..schemas.job_matching import SavedJob, SaveJobRequest, SavedJobsResponse, DeleteSavedJobResponse[m
+[32m+[m[32mfrom ..repositories.job_matching_repository import ( save_job, get_saved_jobs, delete_saved_job, is_job_already_saved, save_match_results, get_match_results)[m
+[32m+[m[32mfrom ..schemas.job_matching import ([m
+[32m+[m[32m    SavedJob, SaveJobRequest, SavedJobsResponse, DeleteSavedJobResponse,[m
+[32m+[m[32m    MatchResultsResponse, SaveMatchResultsRequest[m
+[32m+[m[32m)[m
+ [m
+ router = APIRouter([m
+     prefix="/job-matching",[m
+[36m@@ -61,4 +64,22 @@[m [masync def remove_saved_job([m
+     deleted = delete_saved_job(user_id, job_id)[m
+     if not deleted:[m
+         raise HTTPException(status_code=404, detail="Saved job not found")[m
+[31m-    return DeleteSavedJobResponse(success=True, message="Job removed from saved list", error=None)[m
+\ No newline at end of file[m
+[32m+[m[32m    return DeleteSavedJobResponse(success=True, message="Job removed from saved list", error=None)[m
+[32m+[m
+[32m+[m[32m# ────── Match Resu

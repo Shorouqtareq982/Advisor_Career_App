@@ -16,9 +16,24 @@ class NotificationService {
 
   static const _prefNotificationsEnabled = 'notifications_enabled';
 
-  static bool _launchHandled = false;
+  // ── Cold-launch payload (التطبيق كان مقفول وفتح بسبب تاب على إشعار) ────────
+  // بيتخزن من غير أي تأخير، والسبلاش سكرين هي اللي تستهلكه وقت ما تقرر
+  // تنتقل لأي صفحة، عشان ميحصلش تعارض بينها وبين أي navigation تاني.
+  static String? _pendingLaunchPayload;
+  static bool _launchPayloadConsumed = false;
 
-  // ── Navigation callback ────────────────────────────────────────────────────
+  /// لازم تتنادى مرة واحدة من السبلاش سكرين قبل ما تقرر تروح فين.
+  /// لو ترجع غير null، يبقى التطبيق فتح من تاب على إشعار ولسه محدش
+  /// تعامل مع ده.
+  static String? consumeLaunchPayload() {
+    if (_launchPayloadConsumed || _pendingLaunchPayload == null) return null;
+    _launchPayloadConsumed = true;
+    final payload = _pendingLaunchPayload;
+    _pendingLaunchPayload = null;
+    return payload;
+  }
+
+  // ── Navigation callback (للتاب وقت ما الابليكيشن شغالة فعلاً) ──────────────
   static void Function(String payload)? onNotificationTapCallback;
 
   static final List<String> _pendingPayloads = [];
@@ -73,14 +88,12 @@ class NotificationService {
         ?.createNotificationChannel(channel);
 
     // ── Handle notification tap that launched the app (cold launch) ────────
+    // مهم: متعملش أي navigation أو delay هنا. خزّن الـ payload بس،
+    // والسبلاش سكرين هي اللي تقرر تروح فين وقتها، عشان مفيش تعارض.
     final launchDetails = await _plugin.getNotificationAppLaunchDetails();
-    if (launchDetails?.didNotificationLaunchApp == true && !_launchHandled) {
-      _launchHandled = true;
-      final payload = launchDetails!.notificationResponse?.payload ?? 'alerts';
-
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        _dispatchPayload(payload);
-      });
+    if (launchDetails?.didNotificationLaunchApp == true) {
+      _pendingLaunchPayload =
+          launchDetails!.notificationResponse?.payload ?? 'alerts';
     }
   }
 
@@ -158,6 +171,18 @@ class NotificationService {
     await _showNotification(title: title, body: body, payload: 'alerts');
   }
 
+  Future<void> showJobResultsReady({
+    required String jobTitle,
+  }) async {
+    if (!await isNotificationsEnabled()) return;
+    await _showNotification(
+      title: 'Your Job Matches Are Ready! ',
+      body:
+          'We found the best $jobTitle opportunities for you. Tap to see results.',
+      payload: 'job_results', // ← تأكد الـ payload ده
+    );
+  }
+
   // ── Private ────────────────────────────────────────────────────────────────
 
   Future<void> _showNotification({
@@ -204,12 +229,14 @@ class NotificationService {
     _isHandlingTap = true;
 
     final payload = response.payload ?? '';
+    debugPrint('Notification tapped with payload: $payload'); // للـ debug
 
     Future.delayed(const Duration(milliseconds: 300), () {
       _dispatchPayload(payload);
     });
 
-    Future.delayed(const Duration(seconds: 1), () {
+    Future.delayed(const Duration(seconds: 2), () {
+      // ← قلّل من 1 لـ 2 عشان أأمن
       _isHandlingTap = false;
     });
   }

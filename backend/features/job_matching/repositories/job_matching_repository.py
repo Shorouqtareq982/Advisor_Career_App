@@ -73,3 +73,55 @@ def get_all_countries() -> List[Dict[str, str]]:
         supabase.table("jm_countries").select("code", "name").order("name").execute()
     )
     return response.data if response.data else []
+
+# ========== job match results (persistent) ==========
+
+def save_match_results(user_id: str, results: List[Dict[str, Any]]) -> bool:
+    try:
+        supabase.table("job_match_results") \
+            .delete() \
+            .eq("user_id", user_id) \
+            .execute()
+        
+        rows = [
+            {
+                "user_id": user_id,
+                "job_data": job,
+                "matched_at": datetime.now().isoformat(),
+            }
+            for job in results
+        ]
+        
+        if rows:
+            supabase.table("job_match_results").insert(rows).execute()
+        
+        return True
+    except Exception as e:
+        print(f"Error saving match results: {e}")
+        return False
+
+
+def get_match_results(user_id: str) -> List[Dict[str, Any]]:
+    try:
+        response = (
+            supabase.table("job_match_results")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("matched_at", desc=False) 
+            .execute()
+        )
+        return response.data if response.data else []
+    except Exception as e:
+        print(f"Error fetching match results: {e}")
+        return []
+
+
+def delete_match_results(user_id: str) -> bool:
+    try:
+        supabase.table("job_match_results") \
+            .delete() \
+            .eq("user_id", user_id) \
+            .execute()
+        return True
+    except Exception as e:
+        return False

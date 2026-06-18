@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app_links/app_links.dart';
@@ -11,8 +10,7 @@ import 'core/services/auth_service.dart';
 import 'features/settings/providers/theme_provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
 import '../../../../core/theme/app_text_theme.dart';
-import 'main.dart' show saveFcmTokenForUser;
-import 'core/services/notification_service.dart';
+import '../../../../core/services/notification_service.dart';
 
 class GrowzaApp extends ConsumerStatefulWidget {
   const GrowzaApp({super.key});
@@ -28,7 +26,7 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
   final AuthService _authService = AuthService();
 
   bool _isProcessingOAuth = false;
-  static bool _isNavigating = false;
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -38,25 +36,36 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
 
     // ── Notification tap → navigate ────────────────────────────────────────
     // FIX: استخدم setCallback بدل الـ direct assignment عشان يشغّل أي
-    //      payloads كانت معلقة من قبل ما الـ widget يتبنى
     NotificationService.setCallback((payload) {
       if (_isNavigating) return;
-
-      final currentLocation =
-          AppRouter.router.routerDelegate.currentConfiguration.uri.toString();
-      if (currentLocation.contains('interview-feedback-detail')) return;
-
       _isNavigating = true;
-      if (payload.startsWith('interview_feedback:')) {
-        final sessionId = payload.replaceFirst('interview_feedback:', '');
-        AppRouter.router.push('/interview-feedback-detail', extra: sessionId);
-      } else if (payload == 'career_plan') {
-        AppRouter.router.push('/career-build/plans');
-      } else {
-        AppRouter.router.go('/alerts');
-      }
-      Future.delayed(const Duration(seconds: 2), () {
-        _isNavigating = false;
+
+      // Add small delay to ensure router is ready
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) {
+          _isNavigating = false;
+          return;
+        }
+
+        try {
+          if (payload.startsWith('interview_feedback:')) {
+            final sessionId = payload.replaceFirst('interview_feedback:', '');
+            AppRouter.router
+                .push('/interview-feedback-detail', extra: sessionId);
+          } else if (payload == 'job_results') {
+            AppRouter.router.go('/recommended-jobs'); // ← ده صح
+          } else if (payload == 'career_plan') {
+            AppRouter.router.push('/career-build/plans');
+          } else {
+            AppRouter.router.go('/alerts');
+          }
+        } catch (e) {
+          debugPrint('Navigation error: $e');
+        }
+
+        Future.delayed(const Duration(seconds: 2), () {
+          _isNavigating = false;
+        });
       });
     });
 
@@ -67,9 +76,6 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
         print(' [AUTH] State changed: ${data.event}');
         if (data.event == AuthChangeEvent.signedIn) {
           print(' [AUTH] User signed in!');
-
-          _saveFcmTokenAfterLogin();
-
           if (_isProcessingOAuth && mounted) {
             setState(() {
               _isProcessingOAuth = false;
@@ -81,18 +87,6 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
         }
       },
     );
-  }
-
-  Future<void> _saveFcmTokenAfterLogin() async {
-    try {
-      await Future.delayed(const Duration(seconds: 1));
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null) {
-        await saveFcmTokenForUser(token);
-      }
-    } catch (e) {
-      debugPrint('FCM token save after login failed: $e');
-    }
   }
 
   void _handleAuthStateChanged() {
@@ -186,6 +180,7 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
       });
 
       final accessToken = fragmentParams['access_token'];
+      final refreshToken = fragmentParams['refresh_token'];
 
       if (accessToken != null) {
         print('    [DEEP LINK] OAuth tokens found in fragment!');
@@ -234,6 +229,7 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
         );
         print('[DEEP LINK] Supabase SDK will exchange code automatically...');
 
+        // Set flag to prevent unwanted navigation
         if (mounted) {
           setState(() {
             _isProcessingOAuth = true;
@@ -384,7 +380,7 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
                               Color.lerp(
                                 const Color(0xFF2E3469),
                                 const Color(0xFF1E2451),
-                                value.clamp(0.0, 1.0), // ✅ FIX
+                                value,
                               )!,
                             ],
                           ),
@@ -417,10 +413,9 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
                                   curve: Curves.elasticOut,
                                   builder: (context, value, child) {
                                     return Transform.scale(
-                                      scale:
-                                          (0.5 + (value * 0.5)).clamp(0.0, 2.0),
+                                      scale: 0.5 + (value * 0.5),
                                       child: Opacity(
-                                        opacity: value.clamp(0.0, 1.0),
+                                        opacity: value,
                                         child: child,
                                       ),
                                     );
@@ -454,7 +449,7 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
                                   duration: const Duration(milliseconds: 600),
                                   builder: (context, value, child) {
                                     return Opacity(
-                                      opacity: value.clamp(0.0, 1.0),
+                                      opacity: value,
                                       child: child,
                                     );
                                   },
@@ -502,7 +497,7 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
                                   duration: const Duration(milliseconds: 800),
                                   builder: (context, value, child) {
                                     return Opacity(
-                                      opacity: value.clamp(0.0, 1.0),
+                                      opacity: value,
                                       child: child,
                                     );
                                   },
@@ -570,8 +565,7 @@ class _GrowzaAppState extends ConsumerState<GrowzaApp> {
   }
 }
 
-// ─── Animated Loading Text ────────────────────────────────────────────────────
-
+// Animated Loading Text Widget
 class _AnimatedLoadingText extends StatefulWidget {
   final double fontSize;
   const _AnimatedLoadingText({this.fontSize = 18.0});
@@ -616,7 +610,7 @@ class _AnimatedLoadingTextState extends State<_AnimatedLoadingText>
       duration: const Duration(milliseconds: 600),
       builder: (context, value, child) {
         return Opacity(
-          opacity: value.clamp(0.0, 1.0),
+          opacity: value,
           child: Text(
             'Completing sign in${"." * _dotCount}',
             style: TextStyle(
@@ -634,8 +628,7 @@ class _AnimatedLoadingTextState extends State<_AnimatedLoadingText>
   }
 }
 
-// ─── Animated Progress Dots ───────────────────────────────────────────────────
-
+// Animated Progress Dots Widget
 class _AnimatedProgressDots extends StatefulWidget {
   const _AnimatedProgressDots();
 
@@ -669,7 +662,7 @@ class _AnimatedProgressDotsState extends State<_AnimatedProgressDots>
       duration: const Duration(milliseconds: 1000),
       builder: (context, value, child) {
         return Opacity(
-          opacity: value.clamp(0.0, 1.0),
+          opacity: value,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(3, (index) {

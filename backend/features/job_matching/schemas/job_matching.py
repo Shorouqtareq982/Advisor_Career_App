@@ -100,3 +100,13 @@ class CountriesResponse(BaseModel):
     success: bool
     countries: List[CountryItem]
     error: Optional[str] = None
+
+class SaveMatchResultsRequest(BaseModel):
+    results: List[Dict[str, Any]]
+
+
+class MatchResultsResponse(BaseModel):
+    """Response لـ GET /results"""
+    success: bool
+    results: List[Dict[str, Any]]
+    error: Optional[str] = None

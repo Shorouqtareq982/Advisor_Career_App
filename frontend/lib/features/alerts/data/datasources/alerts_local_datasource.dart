@@ -188,6 +188,24 @@ class AlertsStore {
     await _ds.addAlert(alert);
   }
 
+  Future<void> addJobMatchingAlert({
+    required String jobTitle,
+    required int matchCount,
+  }) async {
+    final alert = AlertModel(
+      id: 'jobs_${DateTime.now().millisecondsSinceEpoch}',
+      title: 'Your Job Matches Are Ready! 🎉',
+      body: matchCount > 0
+          ? 'We found $matchCount $jobTitle opportunities for you. Tap to view.'
+          : 'Your $jobTitle search finished — tap to view the results.',
+      createdAt: DateTime.now().toUtc(),
+      isRead: false,
+      type: AlertType.jobs,
+      route: '/recommended-jobs',
+    );
+    await _ds.addAlert(alert);
+  }
+
   Future<void> addCareerPlanAlert({
     required String planTitle,
     required String planId,

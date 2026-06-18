@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../models/job_model.dart';
@@ -7,166 +9,235 @@ import '../../domain/entities/job_entity.dart';
 class JobMatchingRepository {
   final Dio _dio = apiClient.dio;
 
-  // ── Endpoints (will be confirmed when backend sends them) ──────────────────
-  static const String _base = '/api/v1/job_matching';
-  static const String _recommended = '$_base/recommendations';
-  static const String _saved = '$_base/saved';
-  static const String _save = '$_base/save'; // POST  {job_id}
-  static const String _unsave = '$_base/unsave'; // DELETE {job_id}
-  static const String _rate = '$_base/rate'; // POST  {job_id, rating}
-  static const String _markSeen = '$_base/seen'; // POST  {job_id}
-  static const String _preferences = '/api/v1/job_preferences'; // GET/POST
-
-  // ── Mock data (used until backend endpoints are ready) ────────────────────
-  static final List<JobEntity> _mockJobs = [
-    JobEntity(
-      id: '1',
-      title: 'UI/UX Designer',
-      company: 'Digital Creative Studio',
-      location: 'New York',
-      workType: 'Full-time',
-      workLocation: 'Hybrid',
-      jobUrl: 'https://example.com/job/1',
-      jobDescription:
-          'We are looking for an enthusiastic and motivated E-commerce Web Design Intern to join our growing team. This is an excellent opportunity for recent graduates passionate about e-commerce and web development to gain hands-on experience. The intern will assist our development team in designing, updating, and maintaining e-commerce websites on WordPress, Shopify and will be introduced to regional platforms like Salla and Zid.\n\nRequirements:\n• Graduates from the Faculty of Computer Science and Information Systems will be given priority.\n• Previous experience in website design on any platform.\n• Proficiency in Microsoft Office Tools.',
-      requiredSkills: [
-        'Figma',
-        'Wireframing',
-        'Prototyping',
-        'Design Systems',
-        'User Research'
-      ],
-      postedAt: DateTime.now().subtract(const Duration(hours: 1)),
-      isSaved: false,
-      isNew: true,
-    ),
-    JobEntity(
-      id: '2',
-      title: 'UI/UX Designer',
-      company: 'Ulemt',
-      location: 'Los Angeles',
-      workType: 'Part-time',
-      workLocation: 'Remote',
-      jobUrl: 'https://example.com/job/2',
-      jobDescription:
-          'We are looking for a talented UI/UX designer to join our remote team. You will work closely with product managers and developers to create beautiful, user-friendly interfaces.',
-      requiredSkills: ['Figma', 'Adobe XD', 'User Research', 'Prototyping'],
-      postedAt: DateTime.now().subtract(const Duration(hours: 2)),
-      isSaved: false,
-      isNew: true,
-    ),
-    JobEntity(
-      id: '3',
-      title: 'Product Designer',
-      company: 'Tech Innovations',
-      location: 'San Francisco',
-      workType: 'Full-time',
-      workLocation: 'Onsite',
-      jobUrl: 'https://example.com/job/3',
-      jobDescription:
-          'Join our product team as a Product Designer and help shape the future of our platform.',
-      requiredSkills: [
-        'Figma',
-        'Design Systems',
-        'User Testing',
-        'Interaction Design'
-      ],
-      postedAt: DateTime.now().subtract(const Duration(days: 1)),
-      isSaved: false,
-      isNew: false,
-    ),
-  ];
-
-  // ── Get recommended jobs ───────────────────────────────────────────────────
-  Future<List<JobEntity>> getRecommendedJobs() async {
+  // ── Get job titles for dropdown ────────────────────────────────────────────
+  Future<List<String>> getJobTitles() async {
     try {
       final response = await _dio.get(
-        '${ApiConstants.baseUrl}$_recommended',
+        '${ApiConstants.baseUrl}${ApiConstants.jobMatchingJobTitles}',
       );
-      final List<dynamic> data = response.data as List<dynamic>? ?? [];
-      return data
-          .map((item) =>
-              JobModel.fromJson(item as Map<String, dynamic>).toEntity())
-          .toList();
+      final data = response.data as Map<String, dynamic>;
+      if (data['success'] == true) {
+        return List<String>.from(data['job_titles'] as List? ?? []);
+      }
+      return _fallbackJobTitles;
     } catch (_) {
-      // Return mock data until API is ready
-      return _mockJobs;
+      return _fallbackJobTitles;
     }
+  }
+
+  // ── Get countries for dropdown ─────────────────────────────────────────────
+  Future<List<Map<String, String>>> getCountries() async {
+    try {
+      final response = await _dio.get(
+        '${ApiConstants.baseUrl}${ApiConstants.jobMatchingCountries}',
+      );
+      final data = response.data as Map<String, dynamic>;
+      if (data['success'] == true) {
+        return (data['countries'] as List? ?? [])
+            .map((e) => Map<String, String>.from(e as Map))
+            .toList();
+      }
+      return _fallbackCountries;
+    } catch (_) {
+      return _fallbackCountries;
+    }
+  }
+
+  // ── Match jobs ─────────────────────────────────────────────────────────────
+  /// POST multipart/form-data to /job-matching/match-jobs
+  /// Returns top 5 matched jobs with scores and explanations.
+  Future<List<JobEntity>> matchJobs({
+    required String jobTitle,
+    required String jobType, // "Full-time" / "Part-time"
+    required String country, // Country name e.g. "Egypt"
+    required String workMode, // "Remote" / "Onsite" / "Hybrid"
+    required File cvFile,
+  }) async {
+    final formData = FormData.fromMap({
+      'job_title': jobTitle,
+      'job_type': jobType,
+      'country': country,
+      'work_mode': workMode,
+      'cv_file': await MultipartFile.fromFile(
+        cvFile.path,
+        filename: cvFile.path.split('/').last,
+      ),
+    });
+
+    final response = await _dio.post(
+      '${ApiConstants.baseUrl}${ApiConstants.jobMatchingMatchJobs}',
+      data: formData,
+      options: Options(
+        contentType: 'multipart/form-data',
+        // Override global timeout — LLM analysis can take up to 3 min
+        sendTimeout: const Duration(minutes: 2),
+        receiveTimeout: const Duration(minutes: 6),
+      ),
+    );
+
+    final data = response.data as Map<String, dynamic>;
+    if (data['success'] == true) {
+      final matches = data['matches'] as List? ?? [];
+      return matches
+          .map((e) =>
+              JobModel.fromMatchJson(e as Map<String, dynamic>).toEntity())
+          .toList();
+    }
+
+    throw Exception(data['error'] ?? data['message'] ?? 'Job matching failed');
   }
 
   // ── Get saved jobs ─────────────────────────────────────────────────────────
   Future<List<JobEntity>> getSavedJobs() async {
     try {
       final response = await _dio.get(
-        '${ApiConstants.baseUrl}$_saved',
+        '${ApiConstants.baseUrl}${ApiConstants.jobMatchingSaved}',
       );
-      final List<dynamic> data = response.data as List<dynamic>? ?? [];
-      return data
-          .map((item) =>
-              JobModel.fromJson(item as Map<String, dynamic>).toEntity())
-          .toList();
+      final data = response.data as Map<String, dynamic>;
+      if (data['success'] == true) {
+        final saved = data['saved_jobs'] as List? ?? [];
+        return saved
+            .map((e) =>
+                JobModel.fromSavedJson(e as Map<String, dynamic>).toEntity())
+            .toList();
+      }
+      return [];
     } catch (_) {
       return [];
     }
   }
 
-  // ── Save / unsave a job ────────────────────────────────────────────────────
-  Future<void> saveJob(String jobId) async {
+  // ── Save a job ─────────────────────────────────────────────────────────────
+  /// POST /job-matching/ with { job_data: {...} }
+  // job_matching_repository.dart
+  Future<String?> saveJob(JobEntity job) async {
     try {
-      await _dio.post(
-        '${ApiConstants.baseUrl}$_save',
-        data: {'job_id': jobId},
+      final payload = JobModel(
+        id: job.id,
+        title: job.title,
+        company: job.company,
+        location: job.location,
+        workType: job.workType,
+        workLocation: job.workLocation,
+        jobUrl: job.jobUrl,
+        jobDescription: job.jobDescription,
+        postedAt: job.postedAt,
+        rank: job.rank,
+        matchScore: job.matchScore,
+        explanation: job.explanation,
+      ).toSavePayload();
+
+      final response = await _dio.post(
+        '${ApiConstants.baseUrl}${ApiConstants.jobMatchingSaved}',
+        data: {'job_data': payload},
       );
+      final data = response.data as Map<String, dynamic>;
+      return data['id'] as String?; // ✅ رجّع الـ UUID الحقيقي
     } catch (_) {
-      // silently fail in mock mode
+      return null;
     }
   }
 
+  // ── Unsave a job ───────────────────────────────────────────────────────────
+  /// DELETE /job-matching/{job_id}
   Future<void> unsaveJob(String jobId) async {
     try {
       await _dio.delete(
-        '${ApiConstants.baseUrl}$_unsave',
-        data: {'job_id': jobId},
+        '${ApiConstants.baseUrl}${ApiConstants.jobMatchingDeleteSaved(jobId)}',
       );
     } catch (_) {}
   }
 
-  // ── Rate a job ─────────────────────────────────────────────────────────────
-  Future<void> rateJob({required String jobId, required int rating}) async {
+  Future<bool> hasUsedJobMatchingInCloud(String userId) async {
     try {
-      await _dio.post(
-        '${ApiConstants.baseUrl}$_rate',
-        data: {'job_id': jobId, 'rating': rating},
+      final res = await _dio.get(
+        '${ApiConstants.baseUrl}${ApiConstants.jobMatchingSaved}',
       );
-    } catch (_) {}
+      final data = res.data as Map<String, dynamic>;
+      if (data['success'] == true) {
+        final saved = data['saved_jobs'] as List? ?? [];
+        return saved.isNotEmpty;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
-  // ── Mark job as seen (removes "New" badge) ─────────────────────────────────
-  Future<void> markJobSeen(String jobId) async {
+  // ── Save match results to server ──────────────────────────────────────────
+  Future<void> saveMatchResults(List<JobEntity> jobs) async {
     try {
+      final results = jobs
+          .map((j) => {
+                'rank': j.rank,
+                'job_title': j.title,
+                'company': j.company,
+                'location': j.location,
+                'job_type': j.workType,
+                'work_mode': j.workLocation,
+                'link': j.jobUrl,
+                'description_preview': j.jobDescription,
+                'match_score': j.matchScore,
+                'explanation': j.explanation,
+              })
+          .toList();
+
       await _dio.post(
-        '${ApiConstants.baseUrl}$_markSeen',
-        data: {'job_id': jobId},
+        '${ApiConstants.baseUrl}${ApiConstants.jobMatchingResults}',
+        data: {'results': results},
       );
-    } catch (_) {}
+    } catch (e) {
+      // silent fail — الـ local cache هيكون موجود
+      debugPrint('Failed to save results to server: $e');
+    }
   }
 
-  // ── Check if preferences are complete ─────────────────────────────────────
-  /// This checks from the auth user directly — no API call needed.
-  /// Used in provider to decide whether to show preferences screen first.
-  Future<bool> arePreferencesComplete({
-    required String? jobTitle,
-    required List<String> workType,
-    required List<String> workLocation,
-    required List<String> jobPlatforms,
-    required String? cvUrl,
-  }) async {
-    return jobTitle != null &&
-        jobTitle.isNotEmpty &&
-        workType.isNotEmpty &&
-        workLocation.isNotEmpty &&
-        jobPlatforms.isNotEmpty &&
-        cvUrl != null &&
-        cvUrl.isNotEmpty;
+// ── Get match results from server ─────────────────────────────────────────
+  Future<List<JobEntity>> getMatchResults() async {
+    try {
+      final response = await _dio.get(
+        '${ApiConstants.baseUrl}${ApiConstants.jobMatchingResults}',
+      );
+      final data = response.data as Map<String, dynamic>;
+      if (data['success'] == true) {
+        final results = data['results'] as List? ?? [];
+        return results.map((e) {
+          final jobData = e['job_data'] as Map<String, dynamic>? ?? {};
+          return JobModel.fromResultJson(jobData, e['id'] as String? ?? '')
+              .toEntity();
+        }).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Failed to get results from server: $e');
+      return [];
+    }
   }
+
+  // ── Fallback data ──────────────────────────────────────────────────────────
+  static const List<String> _fallbackJobTitles = [
+    'Data Analyst',
+    'Machine Learning Engineer',
+    'AI Engineer',
+    'BI Engineer',
+    'Data Engineer',
+    'Backend Engineer',
+    'Frontend Engineer',
+    'Full Stack Engineer',
+    'Software Engineer',
+    'Mobile Engineer',
+    'DevOps Engineer',
+    'Cloud Engineer',
+    'Cybersecurity Engineer',
+    'Database Engineer',
+    'Network Engineer',
+  ];
+
+  static const List<Map<String, String>> _fallbackCountries = [
+    {'code': 'EG', 'name': 'Egypt'},
+    {'code': 'SA', 'name': 'Saudi Arabia'},
+    {'code': 'AE', 'name': 'United Arab Emirates'},
+    {'code': 'KW', 'name': 'Kuwait'},
+    {'code': 'US', 'name': 'United States'},
+  ];
 }

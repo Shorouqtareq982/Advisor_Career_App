@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../widgets/splash_panels.dart';
 
@@ -64,6 +65,10 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _handoffToNext() async {
     if (!mounted) return;
 
+    // لو الابليكيشن كان مقفول وفتح بسبب تاب على إشعار، نستهلك الـ payload
+    // ده الأول قبل أي حساب تاني، عشان نقرر نروح فين على أساسه.
+    final launchPayload = NotificationService.consumeLaunchPayload();
+
     final prefs = await SharedPreferences.getInstance();
     final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
 
@@ -76,6 +81,11 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     if (isAuthenticated) {
+      if (launchPayload != null) {
+        _goToPayloadRoute(launchPayload);
+        return;
+      }
+
       try {
         final container = ProviderScope.containerOf(context, listen: false);
         final authNotifier = container.read(authProvider.notifier);
@@ -89,6 +99,23 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     context.go('/');
+  }
+
+  /// نفس منطق التوجيه الموجود في app.dart عند تلقي إشعار والابليكيشن
+  /// شغالة، عشان السلوك يكون متطابق سواء التطبيق كان مقفول أو شغال.
+  void _goToPayloadRoute(String payload) {
+    if (payload.startsWith('interview_feedback:')) {
+      final sessionId = payload.replaceFirst('interview_feedback:', '');
+      context.go('/home');
+      context.push('/interview-feedback-detail', extra: sessionId);
+    } else if (payload == 'job_results') {
+      context.go('/recommended-jobs');
+    } else if (payload == 'career_plan') {
+      context.go('/home');
+      context.push('/career-build/plans');
+    } else {
+      context.go('/alerts');
+    }
   }
 
   @override
