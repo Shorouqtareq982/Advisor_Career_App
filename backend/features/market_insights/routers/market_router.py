@@ -603,27 +603,40 @@ async def market_analytics(job: str):
         if "experience_level" in df.columns:
 
             levels = df["experience_level"].astype(str).str.strip().str.lower()
+            
+            # Mapping للحسابات
+            experience_values = []
 
             for lvl in levels:
 
                 if lvl in ["entry", "entry level", "intern", "trainee"]:
                     exp_distribution["Entry Level"] += 1
+                    experience_values.append(0.5)
 
                 elif lvl in ["junior", "jr", "junior level"]:
                     exp_distribution["Junior"] += 1
+                    experience_values.append(1.5)
 
                 elif lvl in ["mid", "mid level", "middle", "intermediate"]:
                     exp_distribution["Mid Level"] += 1
+                    experience_values.append(4)
 
                 elif lvl in ["senior", "sr", "senior level"]:
                     exp_distribution["Senior"] += 1
+                    experience_values.append(6.5)
 
                 elif lvl in ["expert", "lead", "principal", "staff", "architect"]:
                     exp_distribution["Expert"] += 1
+                    experience_values.append(10)
 
                 else:
                     # لو قيمة جديدة مش معروفة نحطها في Junior افتراضي
                     exp_distribution["Junior"] += 1
+                    experience_values.append(1.5)
+            
+            # حساب المتوسط
+            if experience_values:
+                avg_experience = round(sum(experience_values) / len(experience_values), 2)
 
         # fallback (optional) لو العمود مش موجود
         elif {"min_experience", "max_experience"}.issubset(df.columns):
@@ -671,12 +684,27 @@ async def market_analytics(job: str):
                     .sort_index()
                 )
 
-                if len(monthly) >= 2:
-                    first = monthly.iloc[0]
-                    last = monthly.iloc[-1]
+                if len(monthly) >= 6:
+                    # مقارنة الـ 3 أشهر قبل الأخير مع الـ 3 أشهر قبل ذلك
+                    values = monthly.values.astype(float)
+                    
+                    prev_period = values[-6:-3].mean()  # الـ 3 أشهر من 6 إلى 3 أشهر الماضية
+                    curr_period = values[-3:].mean()     # آخر 3 أشهر
 
-                    if first != 0:
-                        market_growth = round(((last - first) / first) * 100, 2)
+                    if prev_period > 0:
+                        growth = ((curr_period - prev_period) / prev_period) * 100
+                        # حد أقصى 50% (نمو معقول)
+                        market_growth = round(max(min(growth, 50), -100), 2)
+                        
+                elif len(monthly) >= 2:
+                    # إذا كانت أقل من 6 شهور، قارن الشهر الأول مع الأخير
+                    values = monthly.values.astype(float)
+                    first_val = values[0]
+                    last_val = values[-1]
+                    
+                    if first_val > 0:
+                        growth = ((last_val - first_val) / first_val) * 100
+                        market_growth = round(min(growth, 100), 2)
 
         # =========================
         # GOVERNORATES
@@ -720,10 +748,19 @@ async def market_analytics(job: str):
         # =========================
         # RESPONSE
         # =========================
+        # حساب الوظائف الفريدة بأفضل معرف متاح (job_id ثم job_url)
+        if "job_id" in df.columns and df["job_id"].notna().any():
+            unique_keys = df["job_id"].fillna(df.get("job_url", ""))
+            unique_jobs = len(unique_keys[unique_keys != ""].unique())
+        elif "job_url" in df.columns:
+            unique_jobs = len(df["job_url"].dropna().astype(str).unique())
+        else:
+            unique_jobs = len(df)
+
         return {
             "status": "success",
             "job": job,
-            "total_jobs": len(df),
+            "total_jobs": unique_jobs,
 
             "salary": salary_data,
             "top_skills": top_skills,
@@ -774,7 +811,6 @@ def _daily_scheduler():
         else:
             # check كل دقيقة
             time.sleep(60)
-
 
 @router.on_event("startup")
 def start_scheduler():

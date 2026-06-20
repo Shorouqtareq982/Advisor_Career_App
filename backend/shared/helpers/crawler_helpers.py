@@ -80,42 +80,96 @@ def get_experience_level(raw_exp: str, avg_exp: Optional[float], title: str = ""
 
 def extract_governorate(location_text: str) -> str:
     """Extract governorate from location text."""
-    parts = [p.strip() for p in str(location_text).split(",")]
-    if len(parts) >= 2:
-        return parts[-2]
-    return parts[0]
+    text = str(location_text or "").strip()
+    if not text:
+        return ""
+
+    # Normalize separators and split into tokens
+    normalized = re.sub(r"[\/|\-]", ",", text)
+    parts = [p.strip() for p in normalized.split(",") if p.strip()]
+
+    # If last part is a country name, try previous token
+    if len(parts) >= 2 and parts[-1].lower() in {"egypt", "egyptian republic", "eg"}:
+        parts = parts[:-1]
+
+    # Search tokens from right to left for known governorate names
+    for token in reversed(parts):
+        token_norm = token.lower()
+        if token_norm in GOV_TRANSLATION:
+            return GOV_TRANSLATION[token_norm]
+
+    # Fallback: return the most likely governorate token
+    return parts[-1] if parts else ""
 
 
 # Translation dictionary for Egyptian governorates
 GOV_TRANSLATION = {
+    # Arabic names
     "القاهرة": "Cairo",
     "الجيزة": "Giza",
     "الإسكندرية": "Alexandria",
     "اسكندرية": "Alexandria",
+    "الإسكندeriya": "Alexandria",
     "الدقهلية": "Dakahlia",
     "الشرقية": "Sharqia",
     "الغربية": "Gharbia",
-    "المنوفية": "Monufia",
-    "القليوبية": "Qalyubia",
+    "المنوفية": "Menofia",
+    "القليوبية": "Qaliubiya",
     "البحيرة": "Beheira",
     "بورسعيد": "Port Said",
     "السويس": "Suez",
     "الاسماعيلية": "Ismailia",
     "الإسماعيلية": "Ismailia",
-    "أسيوط": "Asyut",
+    "أسيوط": "Assiut",
     "سوهاج": "Sohag",
     "قنا": "Qena",
     "الأقصر": "Luxor",
     "أسوان": "Aswan",
     "بني سويف": "Beni Suef",
-    "الفيوم": "Faiyum",
+    "الفيوم": "Fayoum",
     "مطروح": "Matrouh",
     "شمال سيناء": "North Sinai",
     "جنوب سيناء": "South Sinai",
     "المنيا": "Minya",
     "دمياط": "Damietta",
     "البحر الأحمر": "Red Sea",
-    "البحر الاحمر": "Red Sea"
+    "البحر الاحمر": "Red Sea",
+
+    # English variants
+    "cairo": "Cairo",
+    "giza": "Giza",
+    "alexandria": "Alexandria",
+    "dakahlia": "Dakahlia",
+    "dakahliya": "Dakahlia",
+    "sharqia": "Sharqia",
+    "gharbia": "Gharbia",
+    "menofia": "Menofia",
+    "monufia": "Menofia",
+    "monufiya": "Menofia",
+    "qalyubia": "Qaliubiya",
+    "qaliubiya": "Qaliubiya",
+    "beheira": "Beheira",
+    "port said": "Port Said",
+    "portsaid": "Port Said",
+    "suez": "Suez",
+    "ismailia": "Ismailia",
+    "ismailiya": "Ismailia",
+    "asyut": "Assiut",
+    "assiut": "Assiut",
+    "sohag": "Sohag",
+    "qena": "Qena",
+    "luxor": "Luxor",
+    "aswan": "Aswan",
+    "beni suef": "Beni Suef",
+    "faiyum": "Fayoum",
+    "fayoum": "Fayoum",
+    "matrouh": "Matrouh",
+    "matruh": "Matrouh",
+    "north sinai": "North Sinai",
+    "south sinai": "South Sinai",
+    "minya": "Minya",
+    "damietta": "Damietta",
+    "red sea": "Red Sea"
 }
 
 
@@ -123,8 +177,8 @@ def normalize_governorate(gov: str) -> Optional[str]:
     """Normalize governorate name using translation dictionary."""
     if not gov:
         return None
-    gov = gov.strip()
-    return GOV_TRANSLATION.get(gov, gov)
+    gov = gov.strip().lower()
+    return GOV_TRANSLATION.get(gov, gov.title())
 
 
 def init_state(state: Optional[dict], sheet: str) -> dict:
